@@ -1,0 +1,86 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Session {
+  id            String    @id
+  shop          String
+  state         String
+  isOnline      Boolean   @default(false)
+  scope         String?
+  expires       DateTime?
+  accessToken   String
+  userId        BigInt?
+  firstName     String?
+  lastName      String?
+  email         String?
+  accountOwner  Boolean   @default(false)
+  locale        String?
+  collaborator  Boolean?  @default(false)
+  emailVerified Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+model Shop {
+  id        String   @id // myshopify_domain e.g. "my-store.myshopify.com"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  outfits       Outfit[]
+  creditBalance CreditBalance?
+  transactions  CreditTransaction[]
+}
+
+model Outfit {
+  id              String   @id @default(cuid())
+  shopId          String
+  name            String
+  frontFlatLayUrl String
+  backFlatLayUrl  String?
+  garmentSpec     Json?
+  modelId         String   // preset model ID or batchId of user-generated model
+  status          String   @default("pending") // pending | processing | completed | failed
+  jobId           String?  // Trigger.dev runId
+  createdAt       DateTime @default(now())
+
+  shop   Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  images GeneratedImage[]
+}
+
+model GeneratedImage {
+  id        String   @id @default(cuid())
+  shopId    String
+  outfitId  String
+  imageUrl  String   // Vercel Blob URL
+  pose      String   // front | three-quarter | back
+  styleId   String?  // styling direction preset
+  createdAt DateTime @default(now())
+
+  outfit Outfit @relation(fields: [outfitId], references: [id], onDelete: Cascade)
+}
+
+model CreditBalance {
+  shopId    String   @id
+  balance   Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+}
+
+model CreditTransaction {
+  id          String   @id @default(cuid())
+  shopId      String
+  amount      Int      // positive = purchase, negative = usage
+  type        String   // purchase | usage | refund
+  description String?
+  createdAt   DateTime @default(now())
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+}
