@@ -2,7 +2,7 @@
 
 client_id = "e6b019e8e3b778b97883dac2d0c46755"
 name = "tiny-lemon"
-application_url = "https://example.com"
+application_url = "https://tinylemon.vercel.app"
 embedded = true
 
 [build]
@@ -38,4 +38,4 @@ api_version = "2026-04"
 scopes = "read_products,write_products"
 
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = [ "https://tinylemon.vercel.app/api/auth" ]
