@@ -1,8 +1,8 @@
 import { redirect } from "react-router";
 import type { LoaderFunctionArgs } from "react-router";
-import { authenticate } from "../shopify.server";
 
-export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await authenticate.admin(request);
+// Parent layout (app.tsx) already handles authentication.
+// This route just redirects to the main tab.
+export const loader = async (_: LoaderFunctionArgs) => {
   return redirect("/app/dress-model");
 };
