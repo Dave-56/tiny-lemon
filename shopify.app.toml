@@ -26,4 +26,4 @@ api_version = "2026-04"
 scopes = "read_products,write_products"
 
 [auth]
-redirect_urls = [ "https://tinylemon.vercel.app/api/auth" ]
+redirect_urls = [ "https://tinylemon.vercel.app/auth/callback" ]
