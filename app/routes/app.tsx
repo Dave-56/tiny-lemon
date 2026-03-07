@@ -1,27 +1,50 @@
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { Outlet, useLoaderData, useRouteError } from "react-router";
+import { Link, Outlet, useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 
 import { authenticate } from "../shopify.server";
+import prisma from "../db.server";
+import { getMonthlyUsage, PLAN_LIMITS } from "../lib/billing.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await authenticate.admin(request);
+  const { session } = await authenticate.admin(request);
+
+  const [shop, used] = await Promise.all([
+    prisma.shop.findUnique({ where: { id: session.shop }, select: { plan: true } }),
+    getMonthlyUsage(session.shop),
+  ]);
+
+  const plan = shop?.plan ?? "free";
+  const limit = PLAN_LIMITS[plan] ?? PLAN_LIMITS.free;
 
   // eslint-disable-next-line no-undef
-  return { apiKey: process.env.SHOPIFY_API_KEY || "" };
+  return { apiKey: process.env.SHOPIFY_API_KEY || "", plan, used, limit };
 };
 
 export default function App() {
-  const { apiKey } = useLoaderData<typeof loader>();
+  const { apiKey, plan, used, limit } = useLoaderData<typeof loader>();
 
   return (
     <AppProvider embedded apiKey={apiKey}>
       <s-app-nav>
         <s-link href="/app/dress-model">Dress model</s-link>
+        <s-link href="/app/outfits">Outfits</s-link>
         <s-link href="/app/model-builder">Model builder</s-link>
         <s-link href="/app/brand-style">Brand style</s-link>
+        <s-link href="/app/billing">Billing</s-link>
       </s-app-nav>
+
+      {/* Usage counter — rendered outside s-app-nav to avoid App Bridge conflicts */}
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-krea-border bg-white text-xs text-krea-muted">
+        <span>{used}/{limit} generations this month</span>
+        {plan === "free" && (
+          <Link to="/app/billing" className="text-krea-accent underline underline-offset-2">
+            Upgrade
+          </Link>
+        )}
+      </div>
+
       <Outlet />
     </AppProvider>
   );

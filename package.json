@@ -3,7 +3,8 @@
   "private": true,
   "scripts": {
     "build": "react-router build",
-    "dev": "shopify app dev",
+    "dev": "shopify app dev --tunnel-url https://unacoustical-nonembryonic-jaimie.ngrok-free.dev:3000",
+    "tunnel": "ngrok http --domain=unacoustical-nonembryonic-jaimie.ngrok-free.dev 3000",
     "config:link": "shopify app config link",
     "generate": "shopify app generate",
     "deploy": "shopify app deploy",
@@ -33,6 +34,7 @@
     "@shopify/app-bridge-react": "^4.2.4",
     "@shopify/shopify-app-react-router": "^1.1.0",
     "@shopify/shopify-app-session-storage-prisma": "^8.0.0",
+    "@trigger.dev/sdk": "^4.4.2",
     "@vercel/blob": "^2.3.1",
     "isbot": "^5.1.31",
     "lucide-react": "^0.577.0",
@@ -75,5 +77,8 @@
   "overrides": {
     "p-map": "^4.0.0"
   },
-  "author": "preciousemakenemi"
+  "author": "preciousemakenemi",
+  "optionalDependencies": {
+    "@img/sharp-linux-x64": "^0.34.0"
+  }
 }

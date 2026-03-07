@@ -1,61 +1,65 @@
-import { useState } from 'react';
-import type { HeadersFunction, LoaderFunctionArgs } from 'react-router';
-import { useRouteError } from 'react-router';
+import { useState, useEffect } from 'react';
+import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from 'react-router';
+import { useFetcher, useLoaderData, useRouteError } from 'react-router';
 import { boundary } from '@shopify/shopify-app-react-router/server';
 import { Check } from 'lucide-react';
+import { authenticate } from '../shopify.server';
+import prisma, { ensureShop } from '../db.server';
 import { PDP_STYLE_PRESETS, ANGLE_PRESETS, STYLING_DIRECTION_PRESETS } from '../lib/pdpPresets';
 
-export const loader = async (_: LoaderFunctionArgs) => {
-  return null;
+// ── Loader ────────────────────────────────────────────────────────────────────
+
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const { session } = await authenticate.admin(request);
+  const brandStyle = await prisma.brandStyle.findUnique({ where: { shopId: session.shop } });
+  return {
+    styleIds: brandStyle?.styleIds ?? [PDP_STYLE_PRESETS[0].id],
+    angleIds: brandStyle?.angleIds ?? ANGLE_PRESETS.map((p) => p.id),
+    stylingDirectionId: brandStyle?.stylingDirectionId ?? STYLING_DIRECTION_PRESETS[0].id,
+  };
 };
 
-function readPrefs() {
-  try {
-    const saved = localStorage.getItem('nanobanana_pdp_presets');
-    if (saved) return JSON.parse(saved) as Record<string, unknown>;
-  } catch (_) {}
-  return null;
-}
+// ── Action ────────────────────────────────────────────────────────────────────
+
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { session } = await authenticate.admin(request);
+  const shopId = session.shop;
+  const fd = await request.formData();
+
+  const styleIds = fd.getAll('styleIds') as string[];
+  const angleIds = fd.getAll('angleIds') as string[];
+  const stylingDirectionId = fd.get('stylingDirectionId') as string;
+
+  await ensureShop(shopId);
+  await prisma.brandStyle.upsert({
+    where: { shopId },
+    update: { styleIds, angleIds, stylingDirectionId },
+    create: { shopId, styleIds, angleIds, stylingDirectionId },
+  });
+
+  return { ok: true };
+};
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function BrandStyle() {
-  const [selectedStyleIds, setSelectedStyleIds] = useState<string[]>(() => {
-    const prefs = readPrefs();
-    if (prefs) {
-      if (Array.isArray(prefs.styleIds) && (prefs.styleIds as string[]).length > 0) {
-        const valid = (prefs.styleIds as string[]).filter((id) => PDP_STYLE_PRESETS.some((p) => p.id === id));
-        if (valid.length > 0) return valid;
-      }
-      if (typeof prefs.styleId === 'string' && PDP_STYLE_PRESETS.some((p) => p.id === prefs.styleId)) {
-        return [prefs.styleId as string];
-      }
-    }
-    return [PDP_STYLE_PRESETS[0].id];
-  });
+  const { styleIds: savedStyleIds, angleIds: savedAngleIds, stylingDirectionId: savedStylingId } =
+    useLoaderData<typeof loader>();
+  const fetcher = useFetcher<typeof action>();
 
-  const [selectedAngleIds, setSelectedAngleIds] = useState<string[]>(() => {
-    const prefs = readPrefs();
-    if (prefs) {
-      if (Array.isArray(prefs.angleIds) && (prefs.angleIds as string[]).length > 0) {
-        const valid = (prefs.angleIds as string[]).filter((id) => ANGLE_PRESETS.some((p) => p.id === id));
-        if (valid.length > 0) return valid;
-      }
-      if (typeof prefs.angleId === 'string' && ANGLE_PRESETS.some((p) => p.id === prefs.angleId)) {
-        return [prefs.angleId as string];
-      }
-    }
-    return ANGLE_PRESETS.map((p) => p.id);
-  });
-
-  const [stylingDirectionId, setStylingDirectionId] = useState<string>(() => {
-    const prefs = readPrefs();
-    if (prefs && typeof prefs.stylingDirectionId === 'string') {
-      const id = prefs.stylingDirectionId === 'clean' ? 'minimal' : prefs.stylingDirectionId;
-      if (STYLING_DIRECTION_PRESETS.some((p) => p.id === id)) return id;
-    }
-    return STYLING_DIRECTION_PRESETS[0].id;
-  });
-
+  const [selectedStyleIds, setSelectedStyleIds] = useState<string[]>(savedStyleIds);
+  const [selectedAngleIds, setSelectedAngleIds] = useState<string[]>(savedAngleIds);
+  const [stylingDirectionId, setStylingDirectionId] = useState<string>(savedStylingId);
   const [saveFeedback, setSaveFeedback] = useState(false);
+
+  // Show "Saved" briefly after successful action
+  useEffect(() => {
+    if (fetcher.state === 'idle' && (fetcher.data as { ok?: boolean } | undefined)?.ok) {
+      setSaveFeedback(true);
+      const t = window.setTimeout(() => setSaveFeedback(false), 2000);
+      return () => clearTimeout(t);
+    }
+  }, [fetcher.state, fetcher.data]);
 
   const toggleStyleId = (id: string) => {
     setSelectedStyleIds((prev) => {
@@ -71,18 +75,16 @@ export default function BrandStyle() {
     });
   };
 
-  const handleSave = () => {
-    try {
-      localStorage.setItem(
-        'nanobanana_pdp_presets',
-        JSON.stringify({ styleIds: selectedStyleIds, angleIds: selectedAngleIds, stylingDirectionId }),
-      );
-      setSaveFeedback(true);
-      window.setTimeout(() => setSaveFeedback(false), 2000);
-    } catch (_) {}
-  };
+  function handleSave() {
+    const fd = new FormData();
+    selectedStyleIds.forEach((id) => fd.append('styleIds', id));
+    selectedAngleIds.forEach((id) => fd.append('angleIds', id));
+    fd.set('stylingDirectionId', stylingDirectionId);
+    fetcher.submit(fd, { method: 'post' });
+  }
 
   const selectedDirection = STYLING_DIRECTION_PRESETS.find((p) => p.id === stylingDirectionId);
+  const isSaving = fetcher.state !== 'idle';
 
   return (
     <div className="min-h-screen bg-krea-bg p-6">
@@ -156,14 +158,18 @@ export default function BrandStyle() {
 
         {/* Save */}
         <button
+          type="button"
           onClick={handleSave}
-          className="flex items-center gap-2 h-9 px-5 rounded-md bg-krea-accent text-white text-sm font-medium hover:opacity-90 active:scale-95 transition-all"
+          disabled={isSaving}
+          className="flex items-center gap-2 h-9 px-5 rounded-md bg-krea-accent text-white text-sm font-medium hover:opacity-90 active:scale-95 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {saveFeedback ? (
             <>
               <Check className="w-3.5 h-3.5" />
               Saved
             </>
+          ) : isSaving ? (
+            'Saving…'
           ) : (
             'Save brand style'
           )}

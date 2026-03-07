@@ -14,3 +14,12 @@ if (process.env.NODE_ENV !== "production") {
 const prisma = global.prismaGlobal ?? new PrismaClient();
 
 export default prisma;
+
+/** Upsert a Shop record so FK constraints are satisfied before writing Outfits. */
+export async function ensureShop(shopId: string) {
+  await prisma.shop.upsert({
+    where: { id: shopId },
+    update: {},
+    create: { id: shopId },
+  });
+}
