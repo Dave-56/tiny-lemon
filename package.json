@@ -24,6 +24,7 @@
     "node": ">=20.19 <22 || >=22.12"
   },
   "dependencies": {
+    "@google/genai": "^1.44.0",
     "@prisma/client": "^6.16.3",
     "@react-router/dev": "^7.12.0",
     "@react-router/fs-routes": "^7.12.0",
@@ -32,16 +33,21 @@
     "@shopify/app-bridge-react": "^4.2.4",
     "@shopify/shopify-app-react-router": "^1.1.0",
     "@shopify/shopify-app-session-storage-prisma": "^8.0.0",
+    "@vercel/blob": "^2.3.1",
     "isbot": "^5.1.31",
+    "lucide-react": "^0.577.0",
+    "motion": "^12.35.0",
     "prisma": "^6.16.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router": "^7.12.0",
+    "sharp": "^0.34.5",
     "vite-tsconfig-paths": "^5.1.4"
   },
   "devDependencies": {
     "@shopify/api-codegen-preset": "^1.2.0",
     "@shopify/polaris-types": "^1.0.1",
+    "@tailwindcss/vite": "^4.2.1",
     "@types/eslint": "^9.6.1",
     "@types/node": "^22.18.8",
     "@types/react": "^18.3.25",
@@ -56,6 +62,7 @@
     "eslint-plugin-react-hooks": "^4.6.2",
     "graphql-config": "^5.1.1",
     "prettier": "^3.6.2",
+    "tailwindcss": "^4.2.1",
     "typescript": "^5.9.3",
     "vite": "^6.3.6"
   },

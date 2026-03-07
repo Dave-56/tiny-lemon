@@ -34,17 +34,42 @@ model Shop {
   updatedAt DateTime @updatedAt
 
   outfits       Outfit[]
+  models        Model[]
   creditBalance CreditBalance?
   transactions  CreditTransaction[]
+}
+
+model Model {
+  id           String   @id @default(cuid())
+  shopId       String
+  name         String
+  gender       String
+  ethnicity    String
+  skinTone     String
+  bodyBuild    String
+  height       String
+  hairStyle    String
+  hairColor    String
+  ageRange     String
+  estimatedAge String?
+  imageUrl     String
+  isPreset     Boolean  @default(false)
+  styleId      String
+  angleId      String
+  createdAt    DateTime @default(now())
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
 }
 
 model Outfit {
   id              String   @id @default(cuid())
   shopId          String
   name            String
-  frontFlatLayUrl String
-  backFlatLayUrl  String?
-  garmentSpec     Json?
+  frontFlatLayUrl      String
+  backFlatLayUrl       String?
+  cleanFlatLayUrl      String?  // cleaned studio flat lay (Gemini post-process) — input to all generation
+  cleanBackFlatLayUrl  String?  // cleaned back flat lay
+  garmentSpec          Json?
   modelId         String   // preset model ID or batchId of user-generated model
   status          String   @default("pending") // pending | processing | completed | failed
   jobId           String?  // Trigger.dev runId
@@ -59,7 +84,7 @@ model GeneratedImage {
   shopId    String
   outfitId  String
   imageUrl  String   // Vercel Blob URL
-  pose      String   // front | three-quarter | back
+  pose      String   // front | three-quarter | back | torso-crop
   styleId   String?  // styling direction preset
   createdAt DateTime @default(now())
 

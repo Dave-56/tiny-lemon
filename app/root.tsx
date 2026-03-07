@@ -1,4 +1,9 @@
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
+import appCss from "./app.css?url";
+
+export function links() {
+  return [{ rel: "stylesheet", href: appCss }];
+}
 
 export default function App() {
   return (

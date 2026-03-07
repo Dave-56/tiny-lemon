@@ -1,0 +1,58 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-krea-bg: var(--krea-bg);
+  --color-krea-sidebar: var(--krea-sidebar);
+  --color-krea-card: var(--krea-card);
+  --color-krea-accent: var(--krea-accent);
+  --color-krea-muted: var(--krea-muted);
+  --color-krea-border: var(--krea-border);
+  --color-krea-text: var(--krea-text);
+  --color-krea-input-bg: var(--krea-input-bg);
+  --color-krea-btn-bg: var(--krea-btn-bg);
+  --color-krea-btn-text: var(--krea-btn-text);
+  --color-krea-btn-sec-bg: var(--krea-btn-sec-bg);
+  --color-krea-btn-sec-text: var(--krea-btn-sec-text);
+}
+
+:root {
+  --krea-bg: #f5f5f5;
+  --krea-sidebar: #ffffff;
+  --krea-card: #ffffff;
+  --krea-accent: #000000;
+  --krea-muted: #666666;
+  --krea-border: rgba(0, 0, 0, 0.1);
+  --krea-text: #000000;
+  --krea-input-bg: #ffffff;
+  --krea-btn-bg: #000000;
+  --krea-btn-text: #ffffff;
+  --krea-btn-sec-bg: rgba(0, 0, 0, 0.05);
+  --krea-btn-sec-text: #000000;
+}
+
+.krea-input {
+  @apply bg-krea-input-bg border border-krea-border text-krea-text rounded-lg px-4 py-2 focus:outline-none focus:border-krea-accent/30 transition-colors;
+}
+
+.krea-button {
+  @apply bg-krea-btn-bg text-krea-btn-text font-medium rounded-lg px-6 py-2 hover:opacity-90 active:scale-95 transition-all disabled:opacity-50 disabled:pointer-events-none;
+}
+
+.krea-button-secondary {
+  @apply bg-krea-btn-sec-bg text-krea-btn-sec-text font-medium rounded-lg px-6 py-2 hover:opacity-80 active:scale-95 transition-all;
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  .krea-scrollbar::-webkit-scrollbar { height: 4px; }
+  .krea-scrollbar::-webkit-scrollbar-track { @apply bg-krea-border/20 rounded-full; }
+  .krea-scrollbar::-webkit-scrollbar-thumb { @apply bg-krea-muted/40 rounded-full hover:bg-krea-muted/60 transition-colors; }
+  .krea-scrollbar { scrollbar-width: thin; scrollbar-color: rgba(128,128,128,0.4) transparent; }
+}
