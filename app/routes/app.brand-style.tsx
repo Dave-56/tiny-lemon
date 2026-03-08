@@ -72,10 +72,7 @@ export default function BrandStyle() {
   }, [fetcher.state, fetcher.data]);
 
   const toggleStyleId = (id: string) => {
-    setSelectedStyleIds((prev) => {
-      const next = prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id];
-      return next.length > 0 ? next : [PDP_STYLE_PRESETS[0].id];
-    });
+    setSelectedStyleIds([id]);
   };
 
   const toggleAngleId = (id: string) => {
