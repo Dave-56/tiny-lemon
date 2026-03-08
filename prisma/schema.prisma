@@ -85,6 +85,7 @@ model Outfit {
   modelId         String   // preset model ID or batchId of user-generated model
   status          String   @default("pending") // pending | processing | completed | failed
   jobId           String?  // Trigger.dev runId
+  errorMessage    String?  // failure reason, set on task failure
   createdAt       DateTime @default(now())
 
   shop   Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)

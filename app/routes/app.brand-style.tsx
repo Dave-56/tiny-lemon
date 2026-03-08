@@ -6,16 +6,21 @@ import { Check } from 'lucide-react';
 import { authenticate } from '../shopify.server';
 import prisma, { ensureShop } from '../db.server';
 import { PDP_STYLE_PRESETS, ANGLE_PRESETS, STYLING_DIRECTION_PRESETS } from '../lib/pdpPresets';
+import { getPlanForShop, PLAN_ANGLES } from '../lib/billing.server';
 
 // ── Loader ────────────────────────────────────────────────────────────────────
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
-  const brandStyle = await prisma.brandStyle.findUnique({ where: { shopId: session.shop } });
+  const [brandStyle, plan] = await Promise.all([
+    prisma.brandStyle.findUnique({ where: { shopId: session.shop } }),
+    getPlanForShop(session.shop),
+  ]);
   return {
     styleIds: brandStyle?.styleIds ?? [PDP_STYLE_PRESETS[0].id],
     angleIds: brandStyle?.angleIds ?? ANGLE_PRESETS.map((p) => p.id),
     stylingDirectionId: brandStyle?.stylingDirectionId ?? STYLING_DIRECTION_PRESETS[0].id,
+    allowedAngleIds: PLAN_ANGLES[plan] ?? PLAN_ANGLES.free,
   };
 };
 
@@ -43,7 +48,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function BrandStyle() {
-  const { styleIds: savedStyleIds, angleIds: savedAngleIds, stylingDirectionId: savedStylingId } =
+  const { styleIds: savedStyleIds, angleIds: savedAngleIds, stylingDirectionId: savedStylingId, allowedAngleIds } =
     useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
 
@@ -51,13 +56,18 @@ export default function BrandStyle() {
   const [selectedAngleIds, setSelectedAngleIds] = useState<string[]>(savedAngleIds);
   const [stylingDirectionId, setStylingDirectionId] = useState<string>(savedStylingId);
   const [saveFeedback, setSaveFeedback] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Show "Saved" briefly after successful action
+  // Show "Saved" briefly after successful action, or an error if it failed
   useEffect(() => {
-    if (fetcher.state === 'idle' && (fetcher.data as { ok?: boolean } | undefined)?.ok) {
+    if (fetcher.state !== 'idle') return;
+    if ((fetcher.data as { ok?: boolean } | undefined)?.ok) {
       setSaveFeedback(true);
       const t = window.setTimeout(() => setSaveFeedback(false), 2000);
       return () => clearTimeout(t);
+    }
+    if (fetcher.data && !(fetcher.data as { ok?: boolean }).ok) {
+      setSaveError('Failed to save. Please try again.');
     }
   }, [fetcher.state, fetcher.data]);
 
@@ -83,6 +93,7 @@ export default function BrandStyle() {
     fetcher.submit(fd, { method: 'post' });
   }
 
+  const allowedAnglePresets = ANGLE_PRESETS.filter(p => allowedAngleIds.includes(p.id));
   const selectedDirection = STYLING_DIRECTION_PRESETS.find((p) => p.id === stylingDirectionId);
   const isSaving = fetcher.state !== 'idle';
 
@@ -116,27 +127,29 @@ export default function BrandStyle() {
           )}
         </section>
 
-        {/* Angles */}
-        <section className="space-y-2">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-krea-muted">Angles</p>
-          <p className="text-xs text-krea-muted">Views generated per outfit.</p>
-          <div className="flex gap-2">
-            {ANGLE_PRESETS.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => toggleAngleId(p.id)}
-                className={`flex-1 h-8 rounded-md border text-xs font-medium transition-colors ${
-                  selectedAngleIds.includes(p.id)
-                    ? 'border-krea-accent bg-krea-accent text-white'
-                    : 'border-krea-border bg-white text-krea-muted hover:border-krea-muted hover:text-krea-text'
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        </section>
+        {/* Poses — only shown to paid plans with multiple options to configure */}
+        {allowedAnglePresets.length > 1 && (
+          <section className="space-y-2">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-krea-muted">Poses</p>
+            <p className="text-xs text-krea-muted">Views generated per outfit.</p>
+            <div className="flex gap-2">
+              {allowedAnglePresets.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => toggleAngleId(p.id)}
+                  className={`flex-1 h-8 rounded-md border text-xs font-medium transition-colors ${
+                    selectedAngleIds.includes(p.id)
+                      ? 'border-krea-accent bg-krea-accent text-white'
+                      : 'border-krea-border bg-white text-krea-muted hover:border-krea-muted hover:text-krea-text'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Styling Direction */}
         <section className="space-y-2">
@@ -157,9 +170,10 @@ export default function BrandStyle() {
         </section>
 
         {/* Save */}
+        {saveError && <p className="text-xs text-red-500">{saveError}</p>}
         <button
           type="button"
-          onClick={handleSave}
+          onClick={() => { setSaveError(null); handleSave(); }}
           disabled={isSaving}
           className="flex items-center gap-2 h-9 px-5 rounded-md bg-krea-accent text-white text-sm font-medium hover:opacity-90 active:scale-95 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
         >

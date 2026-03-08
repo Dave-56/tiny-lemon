@@ -56,15 +56,27 @@ export async function generateModelImage(
   angleSnippet: string,
 ): Promise<string> {
   const prompt = buildModelPrompt(attrs, styleSnippet, angleSnippet);
-  const response = await ai.models.generateContent({
-    model: 'gemini-3.1-flash-image-preview',
-    contents: { parts: [{ text: prompt }] },
-    config: {
-      temperature: 0.4,
-      imageConfig: { aspectRatio: '2:3', imageSize: '1K' },
-      thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
-    },
-  });
+  let response: Awaited<ReturnType<typeof ai.models.generateContent>>;
+  try {
+    response = await ai.models.generateContent({
+      model: 'gemini-3.1-flash-image-preview',
+      contents: { parts: [{ text: prompt }] },
+      config: {
+        temperature: 0.4,
+        imageConfig: { aspectRatio: '2:3', imageSize: '1K' },
+        thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
+      },
+    });
+  } catch (e) {
+    const msg = (e as Error).message ?? '';
+    if (msg.includes('NOT_FOUND') || msg.includes('not found for API version')) {
+      throw new Error('AI model service is temporarily unavailable. Please try again shortly.');
+    }
+    if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota')) {
+      throw new Error('AI rate limit reached. Please wait a moment and try again.');
+    }
+    throw new Error('Failed to generate model image. Please try again.');
+  }
 
   for (const part of response.candidates?.[0]?.content?.parts ?? []) {
     if (part.inlineData?.data) return part.inlineData.data;

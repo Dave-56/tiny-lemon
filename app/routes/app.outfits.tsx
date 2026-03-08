@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useLoaderData, useRouteError, useRevalidator } from 'react-router';
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from 'react-router';
 import { boundary } from '@shopify/shopify-app-react-router/server';
@@ -50,13 +51,19 @@ const POSE_LABEL: Record<string, string> = {
 export default function Outfits() {
   const { outfits } = useLoaderData<typeof loader>();
   const { revalidate } = useRevalidator();
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   async function deleteOutfit(outfitId: string) {
-    await fetch('/app/outfits', {
+    setDeleteError(null);
+    const res = await fetch('/app/outfits', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ intent: 'delete_outfit', outfitId }),
     });
+    if (!res.ok) {
+      setDeleteError('Failed to delete outfit. Please try again.');
+      return;
+    }
     revalidate();
   }
 
@@ -68,6 +75,10 @@ export default function Outfits() {
             Outfits{outfits.length > 0 ? ` — ${outfits.length}` : ''}
           </p>
         </div>
+
+        {deleteError && (
+          <p className="text-xs text-red-500">{deleteError}</p>
+        )}
 
         {outfits.length === 0 ? (
           <p className="text-sm text-krea-muted">No saved outfits yet. Generate some in the Dress model tab.</p>

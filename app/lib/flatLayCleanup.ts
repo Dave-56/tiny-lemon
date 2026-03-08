@@ -31,24 +31,42 @@ export async function cleanFlatLay(
   const ai = new GoogleGenAI({ apiKey });
   const mime = mimeType === 'image/jpeg' ? 'image/jpeg' : 'image/png';
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.0-flash-preview-image-generation',
-    contents: {
-      parts: [
-        { inlineData: { data: rawImageBase64, mimeType: mime } },
-        { text: CLEANUP_PROMPT },
-      ],
-    },
-    config: {
-      responseModalities: ['IMAGE'],
-      temperature: 0.2,
-    },
-  });
+  let response: Awaited<ReturnType<typeof ai.models.generateContent>>;
+  try {
+    response = await ai.models.generateContent({
+      model: 'gemini-3.1-flash-image-preview',
+      contents: {
+        parts: [
+          { inlineData: { data: rawImageBase64, mimeType: mime } },
+          { text: CLEANUP_PROMPT },
+        ],
+      },
+      config: {
+        responseModalities: ['IMAGE'],
+        temperature: 0.2,
+      },
+    });
+  } catch (e) {
+    const msg = (e as Error).message ?? '';
+    if (msg.includes('NOT_FOUND') || msg.includes('not found for API version')) {
+      throw new Error('AI image service is temporarily unavailable. Please try again shortly.');
+    }
+    if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota')) {
+      throw new Error('AI rate limit reached. Please wait a moment and try again.');
+    }
+    if (msg.includes('SAFETY') || msg.includes('safety')) {
+      throw new Error('Image was flagged by the safety filter. Try a different garment photo.');
+    }
+    if (msg.includes('INVALID_ARGUMENT')) {
+      throw new Error('Invalid image format. Please use a JPEG or PNG.');
+    }
+    throw new Error('Failed to process image. Please try again.');
+  }
 
   const parts = response.candidates?.[0]?.content?.parts ?? [];
   for (const part of parts) {
     if (part.inlineData?.data) return part.inlineData.data;
   }
 
-  throw new Error('flatLayCleanup: no image returned from Gemini');
+  throw new Error('No cleaned image was returned. Please try a different garment photo.');
 }

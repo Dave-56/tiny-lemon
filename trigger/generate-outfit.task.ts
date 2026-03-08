@@ -16,6 +16,7 @@ interface GenerateOutfitPayload {
   modelHeight?: string;
   styleId: string;
   stylingDirectionId: string;
+  allowedPoses: string[];
 }
 
 // ── Task ──────────────────────────────────────────────────────────────────────
@@ -29,14 +30,17 @@ export const generateOutfitTask = task({
   retry: { maxAttempts: 2 },
 
   /** Called only after all retry attempts are exhausted — mark outfit failed */
-  onFailure: async ({ payload }: { payload: GenerateOutfitPayload }) => {
+  onFailure: async ({ payload, error }: { payload: GenerateOutfitPayload; error: unknown }) => {
+    const errorMessage = error instanceof Error ? error.message : 'Generation failed.';
     await prisma.outfit
-      .update({ where: { id: payload.outfitId }, data: { status: 'failed' } })
+      .update({ where: { id: payload.outfitId }, data: { status: 'failed', errorMessage } })
       .catch(() => {});
   },
 
   run: async (payload: GenerateOutfitPayload) => {
-    const { outfitId, shopId, modelImageUrl, modelHeight, styleId, stylingDirectionId } = payload;
+    const { outfitId, shopId, modelImageUrl, modelHeight, styleId, stylingDirectionId, allowedPoses } = payload;
+    // Fallback: if payload is missing allowedPoses (old client), default to front only
+    const poses = allowedPoses?.length ? allowedPoses : ['front'];
 
     // ── Clean slate — safe for retries ───────────────────────────────────────
     // Delete any GeneratedImage records from a previous (failed) attempt and
@@ -111,60 +115,64 @@ export const generateOutfitTask = task({
     });
 
     // ── 7. Three-quarter pose ─────────────────────────────────────────────────
-    await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_tq' } });
+    if (poses.includes('three-quarter')) {
+      await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_tq' } });
 
-    const tqPrompt = buildPromptFromSpec(
-      garmentSpec, 'three-quarter', stylePreset.promptSnippet, hasBack, true, modelHeight, stylingDir,
-    );
-    const tqResp = await chat.sendMessage({
-      message: [
-        { inlineData: { data: cleanFlatLayB64, mimeType: 'image/png' as const } },
-        { inlineData: { data: normalizedModelB64, mimeType: 'image/png' as const } },
-        { inlineData: { data: frontB64, mimeType: 'image/png' as const } },
-        { text: tqPrompt },
-      ],
-      config: genConfig,
-    });
-    const tqB64 = extractBase64(tqResp);
-    const tqCropped = await sharp(Buffer.from(tqB64, 'base64'))
-      .resize({ width: 800, height: 1200, fit: 'cover', position: 'top' })
-      .png()
-      .toBuffer();
-    const tqUrl = await uploadImageToBlob(
-      tqCropped,
-      `outfits/${shopId}/${outfitId}/three-quarter.png`,
-    );
-    await prisma.generatedImage.create({
-      data: { shopId, outfitId, imageUrl: tqUrl, pose: 'three-quarter', styleId },
-    });
+      const tqPrompt = buildPromptFromSpec(
+        garmentSpec, 'three-quarter', stylePreset.promptSnippet, hasBack, true, modelHeight, stylingDir,
+      );
+      const tqResp = await chat.sendMessage({
+        message: [
+          { inlineData: { data: cleanFlatLayB64, mimeType: 'image/png' as const } },
+          { inlineData: { data: normalizedModelB64, mimeType: 'image/png' as const } },
+          { inlineData: { data: frontB64, mimeType: 'image/png' as const } },
+          { text: tqPrompt },
+        ],
+        config: genConfig,
+      });
+      const tqB64 = extractBase64(tqResp);
+      const tqCropped = await sharp(Buffer.from(tqB64, 'base64'))
+        .resize({ width: 800, height: 1200, fit: 'cover', position: 'top' })
+        .png()
+        .toBuffer();
+      const tqUrl = await uploadImageToBlob(
+        tqCropped,
+        `outfits/${shopId}/${outfitId}/three-quarter.png`,
+      );
+      await prisma.generatedImage.create({
+        data: { shopId, outfitId, imageUrl: tqUrl, pose: 'three-quarter', styleId },
+      });
+    }
 
     // ── 8. Back pose ──────────────────────────────────────────────────────────
-    await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_back' } });
+    if (poses.includes('back')) {
+      await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_back' } });
 
-    const backPrompt = buildPromptFromSpec(
-      garmentSpec, 'back', stylePreset.promptSnippet, hasBack, true, modelHeight, stylingDir,
-    );
-    const backResp = await chat.sendMessage({
-      message: [
-        { inlineData: { data: cleanBackFlatLayB64 ?? cleanFlatLayB64, mimeType: 'image/png' as const } },
-        { inlineData: { data: normalizedModelB64, mimeType: 'image/png' as const } },
-        { inlineData: { data: frontB64, mimeType: 'image/png' as const } },
-        { text: backPrompt },
-      ],
-      config: genConfig,
-    });
-    const backB64 = extractBase64(backResp);
-    const backCropped = await sharp(Buffer.from(backB64, 'base64'))
-      .resize({ width: 800, height: 1200, fit: 'cover', position: 'top' })
-      .png()
-      .toBuffer();
-    const backUrl = await uploadImageToBlob(
-      backCropped,
-      `outfits/${shopId}/${outfitId}/back.png`,
-    );
-    await prisma.generatedImage.create({
-      data: { shopId, outfitId, imageUrl: backUrl, pose: 'back', styleId },
-    });
+      const backPrompt = buildPromptFromSpec(
+        garmentSpec, 'back', stylePreset.promptSnippet, hasBack, true, modelHeight, stylingDir,
+      );
+      const backResp = await chat.sendMessage({
+        message: [
+          { inlineData: { data: cleanBackFlatLayB64 ?? cleanFlatLayB64, mimeType: 'image/png' as const } },
+          { inlineData: { data: normalizedModelB64, mimeType: 'image/png' as const } },
+          { inlineData: { data: frontB64, mimeType: 'image/png' as const } },
+          { text: backPrompt },
+        ],
+        config: genConfig,
+      });
+      const backB64 = extractBase64(backResp);
+      const backCropped = await sharp(Buffer.from(backB64, 'base64'))
+        .resize({ width: 800, height: 1200, fit: 'cover', position: 'top' })
+        .png()
+        .toBuffer();
+      const backUrl = await uploadImageToBlob(
+        backCropped,
+        `outfits/${shopId}/${outfitId}/back.png`,
+      );
+      await prisma.generatedImage.create({
+        data: { shopId, outfitId, imageUrl: backUrl, pose: 'back', styleId },
+      });
+    }
 
     // ── 9. Complete ───────────────────────────────────────────────────────────
     await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'completed' } });

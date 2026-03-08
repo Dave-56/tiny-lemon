@@ -68,11 +68,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   await prisma.shop.upsert({ where: { id: shopId }, update: {}, create: { id: shopId } });
 
   // Generate image (white-studio front — single image for this step)
-  const base64 = await generateModelImage(
-    attrs,
-    PDP_STYLE_PRESETS[0].promptSnippet,
-    ANGLE_PRESETS[0].promptSnippet,
-  );
+  let base64: string;
+  try {
+    base64 = await generateModelImage(
+      attrs,
+      PDP_STYLE_PRESETS[0].promptSnippet,
+      ANGLE_PRESETS[0].promptSnippet,
+    );
+  } catch (e) {
+    return { errors: [(e as Error).message ?? 'Failed to generate model. Please try again.'] };
+  }
 
   // Crop to 2:3 on the server (dynamic import keeps sharp out of the client bundle)
   const sharp = (await import('sharp')).default;

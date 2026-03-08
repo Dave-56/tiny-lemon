@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from 'react-router';
-import { useLoaderData, useRouteError, useRevalidator } from 'react-router';
+import { useLoaderData, useRouteError, useRevalidator, Link } from 'react-router';
 import { boundary } from '@shopify/shopify-app-react-router/server';
-import { X, Download, Loader2, Plus } from 'lucide-react';
+import { X, Download, Loader2, Plus, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
+import { zipSync } from 'fflate';
 import type { PresetModelEntry } from '../lib/types';
 import { cleanFlatLay } from '../lib/flatLayCleanup';
 import { extractGarmentSpec } from '../lib/garmentSpec';
@@ -30,10 +31,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   await ensureShop(shop);
 
-  const [brandStyle, plan, used] = await Promise.all([
+  const [brandStyle, plan, used, customModels] = await Promise.all([
     prisma.brandStyle.findUnique({ where: { shopId: shop } }),
     getPlanForShop(shop),
     getMonthlyUsage(shop),
+    prisma.model.findMany({
+      where: { shopId: shop, isPreset: false },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, name: true, gender: true, ethnicity: true, imageUrl: true, height: true, bodyBuild: true },
+    }),
   ]);
 
   return {
@@ -44,6 +50,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     used,
     limit: PLAN_LIMITS[plan] ?? PLAN_LIMITS.free,
     angles: PLAN_ANGLES[plan] ?? PLAN_ANGLES.free,
+    customModels,
   };
 };
 
@@ -103,17 +110,41 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     await ensureShop(shopId);
 
+    // Resolve allowed poses: plan ceiling ∩ brand preference
+    // If brand has never configured poses (angleIds null/empty), treat as "all plan-allowed poses"
+    const plan = await getPlanForShop(shopId);
+    const brandStyleRecord = await prisma.brandStyle.findUnique({
+      where: { shopId },
+      select: { angleIds: true },
+    });
+    const effectiveAngleIds = brandStyleRecord?.angleIds?.length
+      ? brandStyleRecord.angleIds
+      : PLAN_ANGLES[plan] ?? PLAN_ANGLES.free;
+    const allowedPoses = (PLAN_ANGLES[plan] ?? PLAN_ANGLES.free).filter(p =>
+      effectiveAngleIds.includes(p),
+    );
+
     const apiKey = process.env.GEMINI_API_KEY!;
 
     // Phase 1: Clean flat lay(s) server-side — no more client key exposure
-    const cleanFlatLayB64 = await cleanFlatLay(frontB64, frontMime, apiKey);
+    let cleanFlatLayB64: string;
+    try {
+      cleanFlatLayB64 = await cleanFlatLay(frontB64, frontMime, apiKey);
+    } catch (e) {
+      return Response.json({ error: (e as Error).message }, { status: 422 });
+    }
     const cleanBackFlatLayB64 =
       backB64 && backMime
         ? await cleanFlatLay(backB64, backMime, apiKey).catch(() => null)
         : null;
 
     // Phase 2: Extract garment spec
-    const garmentSpec = await extractGarmentSpec(cleanFlatLayB64, 'image/png', apiKey);
+    let garmentSpec: Awaited<ReturnType<typeof extractGarmentSpec>>;
+    try {
+      garmentSpec = await extractGarmentSpec(cleanFlatLayB64, 'image/png', apiKey);
+    } catch (e) {
+      return Response.json({ error: (e as Error).message }, { status: 422 });
+    }
 
     // Phase 3: Create outfit record (empty URL placeholder to get the DB-assigned ID)
     const outfit = await prisma.outfit.create({
@@ -149,6 +180,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       modelHeight,
       styleId,
       stylingDirectionId,
+      allowedPoses,
     });
 
     // Phase 6: Back-fill URLs + jobId in one update
@@ -172,11 +204,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       where: { id: outfitId, shopId },
       select: {
         status: true,
+        errorMessage: true,
         images: { select: { id: true, pose: true, imageUrl: true } },
       },
     });
     if (!outfit) return Response.json({ error: 'Not found' }, { status: 404 });
-    return Response.json({ status: outfit.status, images: outfit.images });
+    return Response.json({ status: outfit.status, errorMessage: outfit.errorMessage ?? null, images: outfit.images });
   }
 
   // ── delete_outfit ────────────────────────────────────────────────────────────
@@ -211,6 +244,90 @@ function nanoid() {
   return Math.random().toString(36).slice(2, 9);
 }
 
+function validateFlatLay(file: File): Promise<FlatLayQuality> {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 150;
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+
+      const { data } = ctx.getImageData(0, 0, w, h);
+      const n = w * h;
+      const lum = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        lum[i] = (0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2]) / 255;
+      }
+
+      const avgBrightness = lum.reduce((s, v) => s + v, 0) / n;
+
+      // Corner busyness: 4 corners at 20% of min dimension
+      const pad = Math.round(Math.min(w, h) * 0.2);
+      let cSum = 0, cSumSq = 0, cCount = 0;
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          if ((x < pad || x >= w - pad) && (y < pad || y >= h - pad)) {
+            const v = lum[y * w + x];
+            cSum += v; cSumSq += v * v; cCount++;
+          }
+        }
+      }
+      const cMean = cSum / cCount;
+      const cornerStdDev = Math.sqrt(Math.max(0, cSumSq / cCount - cMean * cMean));
+
+      const ratio = img.width / img.height;
+
+      let issues = 0;
+      if (avgBrightness < 0.25) issues += 2;
+      else if (avgBrightness < 0.4) issues += 1;
+      if (cornerStdDev > 0.25) issues += 2;
+      else if (cornerStdDev > 0.15) issues += 1;
+      if (ratio > 1.8 || ratio < 0.45) issues += 2;
+      else if (ratio > 1.3) issues += 1;
+
+      resolve(issues >= 3 ? 'fail' : issues >= 1 ? 'warn' : 'good');
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve('warn'); };
+    img.src = url;
+  });
+}
+
+async function downloadAllAsZip(items: BatchItem[]) {
+  const doneItems = items.filter(i => i.status === 'done' && i.results.length > 0);
+  if (!doneItems.length) return;
+
+  const entries = doneItems.flatMap(item => [
+    ...(item.cleanPreview ? [{ url: item.cleanPreview, name: `${item.skuName || 'sku'}-flat-lay.png` }] : []),
+    ...item.results.map(s => ({ url: s.url, name: `${item.skuName || 'sku'}-${s.angleId}.png` })),
+  ]);
+
+  const fetched = await Promise.all(
+    entries.map(async ({ url, name }) => {
+      try {
+        const res = await fetch(url);
+        return [name, new Uint8Array(await res.arrayBuffer())] as const;
+      } catch { return null; }
+    }),
+  );
+
+  const files: Record<string, Uint8Array> = {};
+  for (const e of fetched) { if (e) files[e[0]] = e[1]; }
+
+  const zipped = zipSync(files, { level: 0 });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([zipped.buffer as ArrayBuffer], { type: 'application/zip' }));
+  a.download = 'tiny-lemon-exports.zip';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type ItemStatus =
@@ -228,6 +345,8 @@ interface ResultShot {
   url: string;
 }
 
+type FlatLayQuality = 'good' | 'warn' | 'fail';
+
 interface BatchItem {
   id: string;
   frontFile: File;
@@ -240,6 +359,7 @@ interface BatchItem {
   results: ResultShot[];
   error: string | null;
   savedOutfitId: string | null;
+  quality: FlatLayQuality | null;
 }
 
 const MAX_BATCH = 10;
@@ -270,32 +390,41 @@ const ACTIVE_STATUSES: ItemStatus[] = [
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function DressModel() {
-  const { styleIds, stylingDirectionId } = useLoaderData<typeof loader>();
+  const { styleIds, stylingDirectionId, customModels } = useLoaderData<typeof loader>();
   const { revalidate } = useRevalidator();
 
   const [presetModels, setPresetModels] = useState<PresetModelEntry[]>([]);
-  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(customModels[0]?.id ?? null);
   const [previewModel, setPreviewModel] = useState<PresetModelEntry | null>(null);
   const [items, setItems] = useState<BatchItem[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const selectedCardRef = useRef<HTMLDivElement | null>(null);
 
   // Keep a ref to items so the polling interval reads fresh state without
   // being listed as a dependency (avoids clearing/recreating the interval on every state update).
   const itemsRef = useRef(items);
   useEffect(() => { itemsRef.current = items; }, [items]);
 
+  // Track consecutive poll failures per item to surface errors after repeated failures
+  const pollFailuresRef = useRef<Record<string, number>>({});
+
   useEffect(() => {
     fetch('/preset-models.json')
       .then(r => r.json())
       .then((data: PresetModelEntry[]) => {
         setPresetModels(data);
-        if (data[0]) setSelectedModelId(data[0].id);
+        if (data[0] && !customModels.length) setSelectedModelId(data[0].id);
       })
       .catch(() => {});
   }, []);
+
+  // Scroll the selected model card into view when selection changes
+  useEffect(() => {
+    selectedCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  }, [selectedModelId]);
 
   const addFiles = useCallback((files: FileList | File[]) => {
     const arr = Array.from(files).filter(f => f.type.startsWith('image/'));
@@ -313,8 +442,16 @@ export default function DressModel() {
       results: [],
       error: null,
       savedOutfitId: null,
+      quality: null,
     }));
     setItems(prev => [...prev, ...newItems]);
+
+    // Run quality validation asynchronously after items are added
+    newItems.forEach(item => {
+      validateFlatLay(item.frontFile).then(quality => {
+        setItems(prev => prev.map(i => i.id === item.id ? { ...i, quality } : i));
+      });
+    });
   }, [items.length]);
 
   const removeItem = (id: string) => setItems(prev => prev.filter(i => i.id !== id));
@@ -356,10 +493,21 @@ export default function DressModel() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ intent: 'poll_status', outfitId: item.savedOutfitId }),
             });
-            if (!res.ok) return;
+            if (!res.ok) {
+              const failures = (pollFailuresRef.current[item.id] ?? 0) + 1;
+              pollFailuresRef.current[item.id] = failures;
+              if (failures >= 3) {
+                updateItem(item.id, { status: 'error', error: 'Server error while checking status. Please try again.' });
+              }
+              return;
+            }
 
-            const { status, images } = (await res.json()) as {
+            // Reset counter on any successful response
+            pollFailuresRef.current[item.id] = 0;
+
+            const { status, errorMessage, images } = (await res.json()) as {
               status: string;
+              errorMessage?: string | null;
               images: Array<{ id: string; pose: string; imageUrl: string }>;
             };
 
@@ -373,7 +521,7 @@ export default function DressModel() {
               updateItem(item.id, { status: 'done', results, error: null });
               revalidate();
             } else if (status === 'failed') {
-              updateItem(item.id, { status: 'error', error: 'Generation failed. Please try again.' });
+              updateItem(item.id, { status: 'error', error: errorMessage ?? 'Generation failed. Please try again.' });
             } else {
               const uiStatus: ItemStatus =
                 status === 'generating_front' ? 'generating_front'
@@ -383,7 +531,11 @@ export default function DressModel() {
               updateItem(item.id, { status: uiStatus, results });
             }
           } catch {
-            // Silent — will retry on next interval tick
+            const failures = (pollFailuresRef.current[item.id] ?? 0) + 1;
+            pollFailuresRef.current[item.id] = failures;
+            if (failures >= 3) {
+              updateItem(item.id, { status: 'error', error: 'Connection lost. Please check your network and try again.' });
+            }
           }
         }),
       );
@@ -394,12 +546,17 @@ export default function DressModel() {
 
   // ── Generate ─────────────────────────────────────────────────────────────────
 
+  const allModels: PresetModelEntry[] = [
+    ...(customModels as PresetModelEntry[]),
+    ...presetModels,
+  ];
+
   async function handleGenerate() {
     if (!selectedModelId || isRunning) return;
     const pending = items.filter(i => i.status === 'pending' || i.status === 'error');
     if (!pending.length) return;
 
-    const selectedModel = presetModels.find(m => m.id === selectedModelId);
+    const selectedModel = allModels.find(m => m.id === selectedModelId);
     if (!selectedModel) return;
 
     setIsRunning(true);
@@ -475,17 +632,23 @@ export default function DressModel() {
   // ── Delete saved outfit ───────────────────────────────────────────────────────
 
   const pendingCount = items.filter(i => i.status === 'pending' || i.status === 'error').length;
+  const errorCount = items.filter(i => i.status === 'error').length;
   const canGenerate = pendingCount > 0 && !!selectedModelId && !isRunning;
   const doneCount = items.filter(i => i.status === 'done').length;
+  const activeBackground =
+    PDP_STYLE_PRESETS.find(p => p.id === styleIds[0]) ?? PDP_STYLE_PRESETS[0];
   const activeStyle =
     STYLING_DIRECTION_PRESETS.find(p => p.id === stylingDirectionId) ??
     STYLING_DIRECTION_PRESETS[0];
 
   return (
-    <div className="min-h-screen bg-krea-bg">
+    <div className="min-h-screen bg-krea-bg flex gap-6 p-6">
+
+      {/* ── Left column ── */}
+      <div className="w-[420px] flex-shrink-0 space-y-6">
 
       {/* ── Flat lay upload ── */}
-      <div className="px-6 pt-6 max-w-lg space-y-4">
+      <div className="space-y-4">
         <div className="flex items-center justify-between">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-krea-muted">Flat lays</p>
           <p className="text-xs text-krea-muted">{items.length}/{MAX_BATCH}</p>
@@ -521,12 +684,27 @@ export default function DressModel() {
         {items.length > 0 && (
           <div className="space-y-2">
             {items.map(item => (
+              <div key={item.id} className="space-y-1">
               <div
-                key={item.id}
                 className="flex items-center gap-3 bg-white rounded-xl px-3 py-2 border border-krea-border"
               >
-                <div className="w-10 h-10 rounded-md overflow-hidden bg-krea-bg flex-shrink-0">
+                <div className="w-10 h-10 rounded-md overflow-hidden bg-krea-bg flex-shrink-0 relative">
                   <img src={item.frontPreview} alt="" className="w-full h-full object-cover" />
+                  {item.quality === 'good' && (
+                    <span title="Looks good" className="absolute bottom-0.5 right-0.5">
+                      <CheckCircle className="w-3 h-3 text-green-500 bg-white rounded-full" />
+                    </span>
+                  )}
+                  {item.quality === 'warn' && (
+                    <span title="Might struggle" className="absolute bottom-0.5 right-0.5">
+                      <AlertTriangle className="w-3 h-3 text-yellow-500 bg-white rounded-full" />
+                    </span>
+                  )}
+                  {item.quality === 'fail' && (
+                    <span title="Likely to fail" className="absolute bottom-0.5 right-0.5">
+                      <XCircle className="w-3 h-3 text-red-500 bg-white rounded-full" />
+                    </span>
+                  )}
                 </div>
 
                 <input
@@ -589,62 +767,36 @@ export default function DressModel() {
                   </button>
                 )}
               </div>
+              {item.quality === 'warn' && item.status === 'pending' && (
+                <p className="text-[10px] text-yellow-600 flex items-center gap-1 px-1">
+                  <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                  Might struggle — dark or complex background detected
+                </p>
+              )}
+              {item.quality === 'fail' && item.status === 'pending' && (
+                <p className="text-[10px] text-red-500 flex items-center gap-1 px-1">
+                  <XCircle className="w-3 h-3 flex-shrink-0" />
+                  Likely to fail — try a plain white/light background
+                </p>
+              )}
+              {item.status === 'error' && item.error && (
+                <p className="text-[10px] text-red-500 flex items-center gap-1 px-1">
+                  <XCircle className="w-3 h-3 flex-shrink-0" />
+                  {item.error}
+                </p>
+              )}
+              </div>
             ))}
           </div>
         )}
       </div>
 
-      {/* ── Model picker ── */}
-      <section className="px-6 pb-6 space-y-3 mt-8">
-        <p className="text-[11px] font-semibold uppercase tracking-widest text-krea-muted">Model</p>
-        {presetModels.length === 0 ? (
-          <p className="text-xs text-krea-muted">Loading models…</p>
-        ) : (
-          <div className="grid grid-cols-5 gap-3">
-            {presetModels.map(model => {
-              const isSelected = selectedModelId === model.id;
-              return (
-                <div
-                  key={model.id}
-                  className={`group rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
-                    isSelected
-                      ? 'border-krea-accent shadow-sm'
-                      : 'border-transparent hover:border-krea-border'
-                  }`}
-                  onClick={() => setPreviewModel(model)}
-                >
-                  <div className="aspect-[2/3] overflow-hidden bg-white relative">
-                    <img
-                      src={model.imageUrl}
-                      alt={model.name}
-                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                      referrerPolicy="no-referrer"
-                    />
-                    {isSelected && (
-                      <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-krea-accent flex items-center justify-center">
-                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 12 12">
-                          <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      </div>
-                    )}
-                  </div>
-                  <div className="py-2 px-2 bg-white">
-                    <p className="text-sm font-medium text-krea-text truncate">{model.name}</p>
-                    <p className="text-xs text-krea-muted truncate">{model.ethnicity.split(' /')[0]}</p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
       {/* ── Style summary + Generate ── */}
-      <div className="px-6 pb-8 space-y-4">
+      <div className="space-y-4">
         <div className="flex items-center gap-2 text-sm text-krea-muted">
           <span>Style:</span>
-          <span className="font-medium text-krea-text">{activeStyle.label}</span>
-          <a href="/app/brand-style" className="text-xs text-krea-accent underline underline-offset-2">Edit</a>
+          <span className="font-medium text-krea-text">{activeBackground.label} · {activeStyle.label}</span>
+          <Link to="/app/brand-style" className="text-xs text-krea-accent underline underline-offset-2">Edit</Link>
         </div>
 
         <button
@@ -658,16 +810,30 @@ export default function DressModel() {
               <Loader2 className="w-4 h-4 animate-spin" />
               Starting…
             </span>
-          ) : `Generate${pendingCount > 1 ? ` ${pendingCount} SKUs` : ''}`}
+          ) : errorCount > 0 && pendingCount === errorCount
+            ? `Retry${errorCount > 1 ? ` ${errorCount} failed` : ''}`
+            : `Generate${pendingCount > 1 ? ` ${pendingCount} SKUs` : ''}`}
         </button>
       </div>
 
       {/* ── Active results ── */}
       {items.some(i => i.results.length > 0 || i.cleanPreview) && (
-        <div className="px-6 pb-10 space-y-8">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-krea-muted">
-            Output{doneCount > 0 ? ` — ${doneCount} SKU${doneCount > 1 ? 's' : ''} done` : ''}
-          </p>
+        <div className="space-y-8">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-krea-muted">
+              Output{doneCount > 0 ? ` — ${doneCount} SKU${doneCount > 1 ? 's' : ''} done` : ''}
+            </p>
+            {doneCount > 1 && (
+              <button
+                type="button"
+                onClick={() => downloadAllAsZip(items)}
+                className="flex items-center gap-1.5 text-xs text-krea-accent hover:text-krea-text transition-colors"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Download all
+              </button>
+            )}
+          </div>
 
           {items.filter(i => i.results.length > 0 || i.cleanPreview).map(item => (
             <div key={item.id} className="space-y-2">
@@ -728,6 +894,108 @@ export default function DressModel() {
         </div>
       )}
 
+      </div>{/* end left column */}
+
+      {/* ── Right column ── */}
+      <div className="flex-1 min-w-0 sticky top-6 self-start max-h-[calc(100vh-48px)] overflow-y-auto space-y-6">
+
+      {/* ── Model picker ── */}
+      <section className="space-y-6">
+
+        {/* Your models — synchronous from loader, renders immediately */}
+        {customModels.length > 0 && (
+          <div className="space-y-3">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-krea-muted">Your models</p>
+            <div className="grid grid-cols-4 gap-2">
+              {(customModels as PresetModelEntry[]).map(model => {
+                const isSelected = selectedModelId === model.id;
+                return (
+                  <div
+                    key={model.id}
+                    ref={isSelected ? selectedCardRef : null}
+                    className={`group rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
+                      isSelected
+                        ? 'border-krea-accent shadow-sm'
+                        : 'border-transparent hover:border-krea-border'
+                    }`}
+                    onClick={() => setPreviewModel(model)}
+                  >
+                    <div className="aspect-[2/3] overflow-hidden bg-white relative">
+                      <img
+                        src={model.imageUrl}
+                        alt={model.name}
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        referrerPolicy="no-referrer"
+                      />
+                      {isSelected && (
+                        <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-krea-accent flex items-center justify-center">
+                          <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 12 12">
+                            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                    <div className="py-2 px-2 bg-white">
+                      <p className="text-sm font-medium text-krea-text truncate">{model.name}</p>
+                      <p className="text-xs text-krea-muted truncate">{model.ethnicity.split(' /')[0]}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Preset models — async from JSON fetch */}
+        <div className="space-y-3">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-krea-muted">Preset models</p>
+          {presetModels.length === 0 ? (
+            <p className="text-xs text-krea-muted">Loading models…</p>
+          ) : (
+            <div className="grid grid-cols-4 gap-2">
+              {presetModels.map(model => {
+                const isSelected = selectedModelId === model.id;
+                return (
+                  <div
+                    key={model.id}
+                    ref={isSelected ? selectedCardRef : null}
+                    className={`group rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
+                      isSelected
+                        ? 'border-krea-accent shadow-sm'
+                        : 'border-transparent hover:border-krea-border'
+                    }`}
+                    onClick={() => setPreviewModel(model)}
+                  >
+                    <div className="aspect-[2/3] overflow-hidden bg-white relative">
+                      <img
+                        src={model.imageUrl}
+                        alt={model.name}
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        referrerPolicy="no-referrer"
+                      />
+                      {isSelected && (
+                        <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-krea-accent flex items-center justify-center">
+                          <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 12 12">
+                            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                    <div className="py-2 px-2 bg-white">
+                      <p className="text-sm font-medium text-krea-text truncate">{model.name}</p>
+                      <p className="text-xs text-krea-muted truncate">{model.ethnicity.split(' /')[0]}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+      </section>
+
+      </div>{/* end right column */}
+
       {/* ── Model preview overlay ── */}
       {previewModel && (
         <div
@@ -738,6 +1006,13 @@ export default function DressModel() {
             className="relative flex gap-8 items-end max-h-[90vh]"
             onClick={e => e.stopPropagation()}
           >
+            <button
+              type="button"
+              onClick={() => setPreviewModel(null)}
+              className="absolute -top-4 -right-4 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors z-10"
+            >
+              <X className="w-4 h-4 text-white" />
+            </button>
             <img
               src={previewModel.imageUrl}
               alt={previewModel.name}

@@ -63,19 +63,28 @@ export async function extractGarmentSpec(
 ): Promise<GarmentSpec> {
   const ai = new GoogleGenAI({ apiKey });
   const mime = mimeType === 'image/jpeg' ? 'image/jpeg' : 'image/png';
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.0-flash',
-    contents: {
-      parts: [
-        { inlineData: { data: flatLayBase64, mimeType: mime } },
-        { text: EXTRACTION_PROMPT },
-      ],
-    },
-    config: {
-      temperature: 0.2,
-      responseMimeType: 'application/json',
-    },
-  });
+  let response: Awaited<ReturnType<typeof ai.models.generateContent>>;
+  try {
+    response = await ai.models.generateContent({
+      model: 'gemini-2.0-flash',
+      contents: {
+        parts: [
+          { inlineData: { data: flatLayBase64, mimeType: mime } },
+          { text: EXTRACTION_PROMPT },
+        ],
+      },
+      config: {
+        temperature: 0.2,
+        responseMimeType: 'application/json',
+      },
+    });
+  } catch (e) {
+    const msg = (e as Error).message ?? '';
+    if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota')) {
+      throw new Error('AI rate limit reached. Please wait a moment and try again.');
+    }
+    throw new Error('Failed to analyse garment. Please try again.');
+  }
 
   const text = (response.text ?? '').trim();
   const spec = parseSpecFromText(text);
