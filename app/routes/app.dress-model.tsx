@@ -1,28 +1,25 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from 'react-router';
-import { useLoaderData, useRouteError, useRevalidator, Link } from 'react-router';
+import { useLoaderData, useRouteError, Link } from 'react-router';
 import { boundary } from '@shopify/shopify-app-react-router/server';
+import { useAppBridge } from '@shopify/app-bridge-react';
 import { useAuthenticatedFetch } from '../contexts/AuthenticatedFetchContext';
 import { X, Download, Loader2, Plus, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
 import { zipSync } from 'fflate';
 import type { PresetModelEntry } from '../lib/types';
-import { cleanFlatLay } from '../lib/flatLayCleanup';
-import { extractGarmentSpec } from '../lib/garmentSpec';
 import { PDP_STYLE_PRESETS, STYLING_DIRECTION_PRESETS } from '../lib/pdpPresets';
 import { authenticate } from '../shopify.server';
 import prisma, { ensureShop } from '../db.server';
-import { uploadImageToBlob } from '../blob.server';
-import { tasks } from '../trigger.server';
 import {
   getPlanForShop,
   getMonthlyUsage,
-  reserveGenerations,
   PLAN_LIMITS,
   PLAN_ANGLES,
 } from '../lib/billing.server';
+import { handleTriggerGeneration } from '../lib/triggerGeneration.server';
 
-// Vercel function timeout — action runs cleanFlatLay + extractGarmentSpec (~15s per item)
-export const config = { maxDuration: 60 };
+// Short timeout — action only creates outfit, uploads raw images, enqueues job
+export const config = { maxDuration: 30 };
 
 // ── Loader ────────────────────────────────────────────────────────────────────
 
@@ -65,138 +62,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   // ── trigger_generation ───────────────────────────────────────────────────────
   if (intent === 'trigger_generation') {
-    const skuName = (body.skuName as string) || 'Untitled';
-    const modelId = body.modelId as string;
-    const modelImageUrl = body.modelImageUrl as string;
-    const modelHeight = body.modelHeight as string | undefined;
-    const styleId = (body.styleId as string) ?? 'white-studio';
-    const stylingDirectionId = (body.stylingDirectionId as string) ?? 'minimal';
-    const frontB64 = body.frontB64 as string;
-    const frontMime = (body.frontMime as string) ?? 'image/png';
-    const backB64 = body.backB64 as string | null;
-    const backMime = body.backMime as string | null;
-
-    // ── Billing gate — reserve 1 credit atomically before any work ──────────────
-    let plan: string;
-    try {
-      plan = await reserveGenerations(shopId, 1);
-    } catch (e) {
-      const msg = (e as Error).message;
-      if (msg === 'insufficient_credits') {
-        const [used, limitPlan] = await Promise.all([
-          getMonthlyUsage(shopId),
-          getPlanForShop(shopId),
-        ]);
-        return Response.json(
-          { error: 'limit_reached', used, limit: PLAN_LIMITS[limitPlan] ?? PLAN_LIMITS.free, plan: limitPlan },
-          { status: 402 },
-        );
-      }
-      // Serialization conflict or unexpected DB error — ask client to retry
-      return Response.json({ error: 'try_again' }, { status: 503 });
-    }
-
-    // Validate model image origin (prevent SSRF)
-    try {
-      const u = new URL(modelImageUrl);
-      if (
-        !u.hostname.endsWith('vercel-storage.com') &&
-        !u.hostname.endsWith('.vercel.app') &&
-        !u.hostname.endsWith('.blob.vercel-storage.com')
-      ) {
-        return Response.json({ error: 'Invalid model image URL' }, { status: 400 });
-      }
-    } catch {
-      return Response.json({ error: 'Invalid model image URL' }, { status: 400 });
-    }
-
-    await ensureShop(shopId);
-
-    // Resolve allowed poses: plan ceiling ∩ brand preference
-    // If brand has never configured poses (angleIds null/empty), treat as "all plan-allowed poses"
-    const brandStyleRecord = await prisma.brandStyle.findUnique({
-      where: { shopId },
-      select: { angleIds: true },
+    return handleTriggerGeneration(shopId, {
+      skuName: (body.skuName as string) || 'Untitled',
+      modelId: body.modelId as string,
+      modelImageUrl: body.modelImageUrl as string,
+      modelHeight: body.modelHeight as string | undefined,
+      modelGender: body.modelGender as string | undefined,
+      styleId: (body.styleId as string) ?? 'white-studio',
+      stylingDirectionId: (body.stylingDirectionId as string) ?? 'minimal',
+      frontB64: body.frontB64 as string,
+      frontMime: (body.frontMime as string) ?? 'image/png',
+      backB64: body.backB64 as string | null,
+      backMime: body.backMime as string | null,
     });
-    const effectiveAngleIds = brandStyleRecord?.angleIds?.length
-      ? brandStyleRecord.angleIds
-      : PLAN_ANGLES[plan] ?? PLAN_ANGLES.free;
-    const allowedPoses = (PLAN_ANGLES[plan] ?? PLAN_ANGLES.free).filter(p =>
-      effectiveAngleIds.includes(p),
-    );
-
-    const apiKey = process.env.GEMINI_API_KEY!;
-
-    // Phase 1: Clean flat lay(s) server-side — no more client key exposure
-    let cleanFlatLayB64: string;
-    try {
-      cleanFlatLayB64 = await cleanFlatLay(frontB64, frontMime, apiKey);
-    } catch (e) {
-      return Response.json({ error: (e as Error).message }, { status: 422 });
-    }
-    const cleanBackFlatLayB64 =
-      backB64 && backMime
-        ? await cleanFlatLay(backB64, backMime, apiKey).catch(() => null)
-        : null;
-
-    // Phase 2: Extract garment spec
-    let garmentSpec: Awaited<ReturnType<typeof extractGarmentSpec>>;
-    try {
-      garmentSpec = await extractGarmentSpec(cleanFlatLayB64, 'image/png', apiKey);
-    } catch (e) {
-      return Response.json({ error: (e as Error).message }, { status: 422 });
-    }
-
-    // Phase 3: Create outfit record (empty URL placeholder to get the DB-assigned ID)
-    const outfit = await prisma.outfit.create({
-      data: {
-        shopId,
-        name: skuName,
-        frontFlatLayUrl: '',
-        modelId,
-        garmentSpec: JSON.parse(JSON.stringify(garmentSpec)),
-        status: 'pending',
-      },
-    });
-
-    // Phase 4: Upload flat lay(s) to Blob (uses outfit.id in the path)
-    const cleanFlatLayUrl = await uploadImageToBlob(
-      Buffer.from(cleanFlatLayB64, 'base64'),
-      `outfits/${shopId}/${outfit.id}/flat-lay.png`,
-    );
-
-    let cleanBackFlatLayUrl: string | undefined;
-    if (cleanBackFlatLayB64) {
-      cleanBackFlatLayUrl = await uploadImageToBlob(
-        Buffer.from(cleanBackFlatLayB64, 'base64'),
-        `outfits/${shopId}/${outfit.id}/flat-lay-back.png`,
-      );
-    }
-
-    // Phase 5: Trigger background job
-    const handle = await tasks.trigger('generate-outfit', {
-      outfitId: outfit.id,
-      shopId,
-      modelImageUrl,
-      modelHeight,
-      styleId,
-      stylingDirectionId,
-      allowedPoses,
-      cleanBackFlatLayUrl: cleanBackFlatLayUrl ?? undefined,
-    });
-
-    // Phase 6: Back-fill URLs + jobId in one update
-    await prisma.outfit.update({
-      where: { id: outfit.id },
-      data: {
-        frontFlatLayUrl: cleanFlatLayUrl,
-        cleanFlatLayUrl,
-        cleanBackFlatLayUrl: cleanBackFlatLayUrl ?? null,
-        jobId: handle.id,
-      },
-    });
-
-    return Response.json({ outfitId: outfit.id, cleanFlatLayUrl, shopId });
   }
 
   // ── poll_status ──────────────────────────────────────────────────────────────
@@ -334,6 +212,7 @@ async function downloadAllAsZip(items: BatchItem[]) {
 
 type ItemStatus =
   | 'pending'
+  | 'creating'   // POST in flight (waiting for outfitId)
   | 'processing'
   | 'generating_front'
   | 'generating_tq'
@@ -370,10 +249,11 @@ const MAX_BATCH = 10;
 
 const STATUS_LABEL: Record<ItemStatus, string> = {
   pending: 'Pending',
+  creating: 'Creating outfit…',
   processing: 'Starting…',
-  generating_front: '1/3',
-  generating_tq: '2/3',
-  generating_back: '3/3',
+  generating_front: 'Generating front',
+  generating_tq: 'Generating three-quarter',
+  generating_back: 'Generating back',
   submitted: 'Submitted',
   done: 'Done',
   error: 'Error',
@@ -400,6 +280,7 @@ function ErrorMsg({ msg }: { msg: string }) {
 }
 
 const ACTIVE_STATUSES: ItemStatus[] = [
+  'creating',
   'processing',
   'generating_front',
   'generating_tq',
@@ -410,7 +291,7 @@ const ACTIVE_STATUSES: ItemStatus[] = [
 
 export default function DressModel() {
   const { styleIds, stylingDirectionId, customModels } = useLoaderData<typeof loader>();
-  const { revalidate } = useRevalidator();
+  const shopify = useAppBridge();
   const authenticatedFetch = useAuthenticatedFetch();
 
   const [presetModels, setPresetModels] = useState<PresetModelEntry[]>([]);
@@ -525,9 +406,10 @@ export default function DressModel() {
             // Reset counter on any successful response
             pollFailuresRef.current[item.id] = 0;
 
-            const { status, errorMessage, images } = (await res.json()) as {
+            const { status, errorMessage, cleanFlatLayUrl, images } = (await res.json()) as {
               status: string;
               errorMessage?: string | null;
+              cleanFlatLayUrl?: string | null;
               images: Array<{ id: string; pose: string; imageUrl: string }>;
             };
 
@@ -537,18 +419,24 @@ export default function DressModel() {
               url: img.imageUrl,
             }));
 
+            const patch: Partial<BatchItem> = { results };
+            if (cleanFlatLayUrl) patch.cleanPreview = cleanFlatLayUrl;
+
             if (status === 'completed') {
-              updateItem(item.id, { status: 'done', results, error: null });
-              revalidate();
+              updateItem(item.id, { ...patch, status: 'done', error: null });
+              // Do not call revalidate() here: the loader uses authenticate.admin(), and after a
+              // 2–3 min generation the session can be expired, which would replace the page with
+              // an error boundary while the job actually succeeded. We already have results from
+              // the poll; usage count etc. will refresh on next navigation.
             } else if (status === 'failed') {
-              updateItem(item.id, { status: 'error', error: errorMessage ?? 'Generation failed. Please try again.' });
+              updateItem(item.id, { ...patch, status: 'error', error: errorMessage ?? 'Generation failed. Please try again.' });
             } else {
               const uiStatus: ItemStatus =
                 status === 'generating_front' ? 'generating_front'
                 : status === 'generating_tq' ? 'generating_tq'
                 : status === 'generating_back' ? 'generating_back'
                 : 'processing';
-              updateItem(item.id, { status: uiStatus, results });
+              updateItem(item.id, { ...patch, status: uiStatus });
             }
           } catch {
             const failures = (pollFailuresRef.current[item.id] ?? 0) + 1;
@@ -582,7 +470,7 @@ export default function DressModel() {
     setIsRunning(true);
 
     // Fire all trigger_generation requests in parallel — each POSTs the raw flat lay,
-    // runs cleanFlatLay + extractGarmentSpec server-side (~10–15s), then enqueues the job.
+    // uploads raw to Blob, enqueues the job; job runs cleanFlatLay + extractGarmentSpec.
     await Promise.all(
       pending.map(async item => {
         // If this item already has a savedOutfitId (e.g. session expired during polling but
@@ -594,7 +482,7 @@ export default function DressModel() {
         }
 
         updateItem(item.id, {
-          status: 'processing',
+          status: 'creating',
           error: null,
           results: [],
           cleanPreview: null,
@@ -612,23 +500,34 @@ export default function DressModel() {
             backMime = back.mimeType;
           }
 
-          const res = await authenticatedFetch('/app/dress-model', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              intent: 'trigger_generation',
-              skuName: item.skuName,
-              modelId: selectedModel.id,
-              modelImageUrl: selectedModel.imageUrl,
-              modelHeight: selectedModel.height,
-              styleId: styleIds[0] ?? 'white-studio',
-              stylingDirectionId,
-              frontB64,
-              frontMime,
-              backB64,
-              backMime,
-            }),
+          // POST to /api/trigger-generation so we always get JSON (401 on auth failure, not HTML).
+          const body = JSON.stringify({
+            skuName: item.skuName,
+            modelId: selectedModel.id,
+            modelImageUrl: selectedModel.imageUrl,
+            modelHeight: selectedModel.height,
+            modelGender: selectedModel.gender,
+            styleId: styleIds[0] ?? 'white-studio',
+            stylingDirectionId,
+            frontB64,
+            frontMime,
+            backB64,
+            backMime,
           });
+
+          const token = await shopify.idToken();
+          const res = await fetch('/api/trigger-generation', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body,
+          });
+
+          // #region agent log
+          fetch('http://127.0.0.1:7384/ingest/922c043d-8201-4442-8506-2ee8f8772d35',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f32e37'},body:JSON.stringify({sessionId:'f32e37',runId:'trigger_post',hypothesisId:'post_fix',location:'app.dress-model.tsx:trigger',message:'API trigger response',data:{status:res.status,contentType:(res.headers.get('Content-Type')??'').slice(0,80)},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
 
           if (!res.ok) {
             if (res.status === 401 || res.status === 403) {
@@ -637,32 +536,39 @@ export default function DressModel() {
             if (res.status === 402) {
               throw new Error(UPGRADE_MSG);
             }
-            const json = await res.json().catch(() => null) as { error?: string } | null;
-            throw new Error(json?.error ?? `Something went wrong (${res.status}). Please try again.`);
+            const text = await res.text();
+            let errMsg: string;
+            try {
+              const json = JSON.parse(text) as { error?: string } | null;
+              errMsg = json?.error ?? `Something went wrong (${res.status}). Please try again.`;
+            } catch {
+              errMsg = text?.slice(0, 200) || `Something went wrong (${res.status}). Please try again.`;
+            }
+            throw new Error(errMsg);
           }
 
-          // Detect auth redirect: session expired causes a 302 → 200 HTML response
-          const contentType = res.headers.get('Content-Type') ?? '';
-          if (!contentType.includes('application/json')) {
-            throw new Error('Session expired — please refresh the page.');
-          }
-
-          const { outfitId, cleanFlatLayUrl, shopId: savedShopId } = (await res.json()) as {
+          const { outfitId, shopId: savedShopId } = (await res.json()) as {
             outfitId: string;
-            cleanFlatLayUrl: string;
             shopId: string;
           };
 
+          // #region agent log
+          fetch('http://127.0.0.1:7384/ingest/922c043d-8201-4442-8506-2ee8f8772d35',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f32e37'},body:JSON.stringify({sessionId:'f32e37',runId:'trigger_post',hypothesisId:'post_fix_success',location:'app.dress-model.tsx:success',message:'Trigger succeeded',data:{outfitId},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
           updateItem(item.id, {
             status: 'processing',
             savedOutfitId: outfitId,
             savedShopId,
-            cleanPreview: cleanFlatLayUrl,
+            cleanPreview: null, // job will backfill; polling may return cleanFlatLayUrl once ready
           });
         } catch (err) {
+          const errMsg = (err as Error).message ?? 'Failed to start generation';
+          // #region agent log
+          fetch('http://127.0.0.1:7384/ingest/922c043d-8201-4442-8506-2ee8f8772d35',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f32e37'},body:JSON.stringify({sessionId:'f32e37',runId:'trigger_post',hypothesisId:'catch',location:'app.dress-model.tsx:catch',message:'handleGenerate catch',data:{errorMessage:errMsg.slice(0,100)},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
           updateItem(item.id, {
             status: 'error',
-            error: (err as Error).message ?? 'Failed to start generation',
+            error: errMsg,
           });
         }
       }),
@@ -678,6 +584,11 @@ export default function DressModel() {
   const errorCount = items.filter(i => i.status === 'error').length;
   const canGenerate = pendingCount > 0 && !!selectedModelId && !isRunning;
   const doneCount = items.filter(i => i.status === 'done').length;
+  // When any item is in progress, show that phase on the button
+  const activeItem = items.find(i => (ACTIVE_STATUSES as string[]).includes(i.status));
+  const buttonStateLabel = activeItem
+    ? (STATUS_LABEL[activeItem.status as ItemStatus] ?? 'Generating…')
+    : null;
   const activeBackground =
     PDP_STYLE_PRESETS.find(p => p.id === styleIds[0]) ?? PDP_STYLE_PRESETS[0];
   const activeStyle =
@@ -860,11 +771,33 @@ export default function DressModel() {
               <Loader2 className="w-4 h-4 animate-spin" />
               Starting…
             </span>
-          ) : errorCount > 0 && pendingCount === errorCount
-            ? `Retry${errorCount > 1 ? ` ${errorCount} failed` : ''}`
-            : `Generate${pendingCount > 1 ? ` ${pendingCount} SKUs` : ''}`}
+          ) : buttonStateLabel ? (
+            <span className="flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              {buttonStateLabel}
+            </span>
+          ) : errorCount > 0 && pendingCount === errorCount ? (
+            `Retry${errorCount > 1 ? ` ${errorCount} failed` : ''}`
+          ) : (
+            `Generate${pendingCount > 1 ? ` ${pendingCount} SKUs` : ''}`
+          )}
         </button>
       </div>
+
+      {/* ── Output empty state: previous generations live in Outfits ── */}
+      {!items.some(i => i.results.length > 0 || i.cleanPreview) && (
+        <div className="rounded-xl border border-krea-border bg-krea-bg/50 p-4 text-center">
+          <p className="text-sm text-krea-muted">
+            Output from this page is only shown until you leave or reload. Your previous generations are saved in Outfits.
+          </p>
+          <Link
+            to="/app/outfits"
+            className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-krea-accent hover:text-krea-text underline underline-offset-2"
+          >
+            View Outfits →
+          </Link>
+        </div>
+      )}
 
       {/* ── Active results ── */}
       {items.some(i => i.results.length > 0 || i.cleanPreview) && (
@@ -895,16 +828,7 @@ export default function DressModel() {
                     <div className="aspect-[2/3] rounded-lg overflow-hidden border border-krea-border bg-white">
                       <img src={item.cleanPreview} alt="Clean flat lay" className="w-full h-full object-contain" />
                     </div>
-                    <div className="flex items-center justify-between">
-                      <p className="text-[10px] text-krea-muted">Flat lay</p>
-                      <a
-                        href={item.cleanPreview}
-                        download={`${item.skuName || 'sku'}-flat-lay.png`}
-                        className="p-1 rounded hover:bg-krea-border/40"
-                      >
-                        <Download className="w-3.5 h-3.5 text-krea-muted" />
-                      </a>
-                    </div>
+                    <p className="text-[10px] text-krea-muted">Flat lay</p>
                   </div>
                 )}
 
@@ -913,28 +837,31 @@ export default function DressModel() {
                     <div className="aspect-[2/3] rounded-lg overflow-hidden border border-krea-border bg-white">
                       <img src={shot.url} alt={shot.label} className="w-full h-full object-cover" />
                     </div>
-                    <div className="flex items-center justify-between">
-                      <p className="text-[10px] text-krea-muted">{shot.label}</p>
-                      <a
-                        href={shot.url}
-                        download={`${item.skuName || 'sku'}-${shot.angleId}.png`}
-                        className="p-1 rounded hover:bg-krea-border/40"
-                      >
-                        <Download className="w-3.5 h-3.5 text-krea-muted" />
-                      </a>
-                    </div>
+                    <p className="text-[10px] text-krea-muted">{shot.label}</p>
                   </div>
                 ))}
 
                 {(ACTIVE_STATUSES as string[]).includes(item.status) &&
-                  Array.from({ length: 3 - item.results.length }).map((_, i) => (
-                    <div key={`skel-${i}`} className="space-y-1.5">
-                      <div className="aspect-[2/3] rounded-lg bg-krea-border/30 animate-pulse" />
-                      <p className="text-[10px] text-krea-muted/40">
-                        {['Front', 'Three-quarter', 'Back'][item.results.length + i]}
-                      </p>
-                    </div>
-                  ))
+                  Array.from({ length: 3 - item.results.length }).map((_, i) => {
+                    const slotIndex = item.results.length + i;
+                    const poseLabels = ['Front', 'Three-quarter', 'Back'];
+                    const isCurrentPhase =
+                      (item.status === 'generating_front' && slotIndex === 0) ||
+                      (item.status === 'generating_tq' && slotIndex === 1) ||
+                      (item.status === 'generating_back' && slotIndex === 2);
+                    return (
+                      <div key={`skel-${i}`} className="space-y-1.5">
+                        <div className="aspect-[2/3] rounded-lg bg-krea-border/30 animate-pulse flex items-center justify-center">
+                          {isCurrentPhase && (
+                            <Loader2 className="w-8 h-8 text-krea-muted/50 animate-spin" />
+                          )}
+                        </div>
+                        <p className={`text-[10px] ${isCurrentPhase ? 'text-krea-accent' : 'text-krea-muted/40'}`}>
+                          {isCurrentPhase ? `Generating ${poseLabels[slotIndex].toLowerCase()}…` : poseLabels[slotIndex]}
+                        </p>
+                      </div>
+                    );
+                  })
                 }
               </div>
 
@@ -943,6 +870,17 @@ export default function DressModel() {
                 <p className="text-xs text-krea-muted">
                   Generation in progress —{' '}
                   <Link to="/app/outfits" className="underline font-medium text-krea-text">view result in Outfits</Link>
+                </p>
+              )}
+              {item.status === 'done' && (
+                <p className="text-xs">
+                  <Link
+                    to="/app/outfits"
+                    className="inline-flex items-center gap-1.5 font-medium text-krea-accent hover:text-krea-text underline underline-offset-2"
+                  >
+                    View in Outfits →
+                  </Link>
+                  <span className="text-krea-muted ml-1">— full view, download & regenerate</span>
                 </p>
               )}
             </div>
@@ -1142,6 +1080,7 @@ export default function DressModel() {
           </div>
         </div>
       )}
+
     </div>
   );
 }

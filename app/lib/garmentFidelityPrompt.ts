@@ -1,4 +1,4 @@
-import type { PdpStylePreset, AnglePreset } from './types';
+import type { PdpStylePreset, AnglePreset, StylingDirectionPreset } from './types';
 import type { GarmentSpec } from './garmentSpec';
 
 // ── Styling Resolver ──────────────────────────────────────────────────────────
@@ -214,8 +214,8 @@ function lengthAndLightingBlock(spec: GarmentSpec, hasBackFlatLay: boolean, pose
  * Build a short structured prompt from garment spec for one pose.
  * Used in multi-turn chat: turn 1 = front (with images), turn 2 = three-quarter, turn 3 = back.
  * @param hasBackFlatLay when true and pose is back, instructs to use back flat lay only for design, not length
- * @param stylingDirection optional resolved styling direction — frontSnippet replaces the neutral pose line on
- *   turn 1; energyCue is appended as a short cue on turns 2/3 (kept terse to preserve multi-turn chat context)
+ * @param stylingDirection optional full preset — front/energy snippets resolved by modelGender (Male uses frontSnippetMale/energyCueMale when present)
+ * @param modelGender when 'Male', uses frontSnippetMale/energyCueMale when present; else uses frontSnippet/energyCue
  */
 export function buildPromptFromSpec(
   spec: GarmentSpec,
@@ -224,15 +224,26 @@ export function buildPromptFromSpec(
   hasBackFlatLay = false,
   hasLengthAnchor = false,
   modelHeight?: string,
-  stylingDirection?: { frontSnippet: string; energyCue: string },
+  stylingDirection?: StylingDirectionPreset,
+  modelGender?: string,
 ): string {
+  const preset = stylingDirection;
+  const effectiveFrontSnippet =
+    modelGender === 'Male' && preset?.frontSnippetMale
+      ? preset.frontSnippetMale
+      : preset?.frontSnippet;
+  const effectiveEnergyCue =
+    modelGender === 'Male' && preset?.energyCueMale
+      ? preset.energyCueMale
+      : preset?.energyCue;
+
   const colors = spec.primary_colors.length ? spec.primary_colors.join(' ') : 'neutral';
   const heightNote = modelHeight ? ` The model is ${modelHeight} tall.` : '';
   const base = `Photo of the person in the reference image wearing a ${colors} ${spec.fit}-fit ${spec.silhouette} ${spec.garment_type}, ${spec.sleeve_length} sleeves, hem ${spec.hem_length}${spec.notable_details ? `, ${spec.notable_details}` : ''}.${heightNote}`;
   const tail = lengthAndLightingBlock(spec, hasBackFlatLay, pose);
 
   if (pose === 'front') {
-    const poseInstruction = stylingDirection?.frontSnippet ?? 'Standing facing camera, neutral pose, arms relaxed at sides.';
+    const poseInstruction = effectiveFrontSnippet ?? 'Standing facing camera, neutral pose, arms relaxed at sides.';
     const styling = buildStylingBlock(resolveStyling(spec));
     return `${base} ${poseInstruction} Full body, ${styleSnippet}. ${FRAMING_BLOCK} ${tail}\n\n${styling}`;
   }
@@ -251,8 +262,7 @@ export function buildPromptFromSpec(
       `3) A front-view result of this model already wearing this garment — use STRICTLY as a length and fit reference. The garment hem MUST end at the EXACT same point on the legs as shown in image 3. Match the garment's tightness/looseness of fit. Do NOT copy the pose or angle from image 3.\n\n`;
   }
 
-  // Short energy cue for turns 2/3 — kept terse so multi-turn chat context isn't confused by a full styling block
-  const energyCue = stylingDirection?.energyCue ? ` ${stylingDirection.energyCue}` : '';
+  const energyCue = effectiveEnergyCue ? ` ${effectiveEnergyCue}` : '';
   const footwearCue = ` The model is wearing ${resolveFootwear(spec)}.`;
 
   if (pose === 'three-quarter') {

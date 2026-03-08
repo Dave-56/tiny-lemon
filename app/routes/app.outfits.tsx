@@ -5,13 +5,15 @@ import { useLoaderData, useRouteError, useRevalidator, Link } from 'react-router
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from 'react-router';
 import { boundary } from '@shopify/shopify-app-react-router/server';
 import {
-  Download, MoreHorizontal, ZoomIn, X,
-  ChevronLeft, ChevronRight, Image as ImageIcon,
+  Download, MoreHorizontal, ZoomIn, X, Trash2, Loader2,
+  ChevronLeft, ChevronRight, Image as ImageIcon, RefreshCw,
 } from 'lucide-react';
 import { zipSync } from 'fflate';
 import { useAuthenticatedFetch } from '../contexts/AuthenticatedFetchContext';
 import { authenticate } from '../shopify.server';
 import prisma from '../db.server';
+import { STYLING_DIRECTION_PRESETS } from '../lib/pdpPresets';
+import { handleRegenerateOutfit } from '../lib/triggerGeneration.server';
 
 // ── Loader ─────────────────────────────────────────────────────────────────────
 
@@ -44,7 +46,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     modelNameMap[m.id] = m.name;
   }
 
-  return { outfits, modelNameMap };
+  const stylingDirectionLabelMap: Record<string, string> = Object.fromEntries(
+    STYLING_DIRECTION_PRESETS.map((p) => [p.id, p.label]),
+  );
+
+  return { outfits, modelNameMap, stylingDirectionLabelMap };
 };
 
 // ── Action ─────────────────────────────────────────────────────────────────────
@@ -71,6 +77,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (!outfit) return Response.json({ error: 'Not found' }, { status: 404 });
     await prisma.outfit.update({ where: { id: outfitId }, data: { name } });
     return Response.json({ ok: true });
+  }
+
+  if (body.intent === 'delete_outfits') {
+    const raw = body.outfitIds as unknown;
+    const ids = Array.isArray(raw)
+      ? (raw as string[]).slice(0, 100).filter((id) => typeof id === 'string')
+      : [];
+    if (ids.length === 0) return Response.json({ error: 'No outfits to delete' }, { status: 400 });
+    const { count } = await prisma.outfit.deleteMany({
+      where: { id: { in: ids }, shopId },
+    });
+    return Response.json({ ok: true, deleted: count });
+  }
+
+  if (body.intent === 'regenerate_outfit') {
+    const outfitId = body.outfitId as string;
+    const userDirection = (body.userDirection as string) || undefined;
+    return handleRegenerateOutfit(shopId, outfitId, userDirection);
   }
 
   return Response.json({ error: 'Unknown intent' }, { status: 400 });
@@ -164,6 +188,115 @@ function ImageTile({
         >
           <Download className="w-3.5 h-3.5 text-krea-muted" />
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Regenerate modal ───────────────────────────────────────────────────────────
+
+const CUSTOM_DIRECTION_MAX = 300;
+
+function RegenerateModal({
+  outfitName,
+  onClose,
+  onSubmit,
+}: {
+  outfitName: string;
+  onClose: () => void;
+  onSubmit: (userDirection?: string) => Promise<{ ok: boolean; error?: string }>;
+}) {
+  const [userDirection, setUserDirection] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const firstInputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    firstInputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  async function handleSubmit() {
+    setError(null);
+    setSubmitting(true);
+    const result = await onSubmit(userDirection.trim() || undefined);
+    setSubmitting(false);
+    if (result.ok) {
+      onClose();
+    } else {
+      setError(result.error ?? 'Something went wrong. Try again.');
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-lg font-semibold text-krea-text">Regenerate outfit</h3>
+        <p className="text-sm text-krea-muted">
+          Run generation again for <span className="font-medium text-krea-text">{outfitName}</span>.
+        </p>
+        <div>
+          <label htmlFor="regenerate-direction" className="block text-xs font-medium text-krea-muted mb-1">
+            Add instructions (optional)
+          </label>
+          <textarea
+            ref={firstInputRef}
+            id="regenerate-direction"
+            value={userDirection}
+            onChange={(e) => setUserDirection(e.target.value.slice(0, CUSTOM_DIRECTION_MAX))}
+            placeholder="e.g. Warmer lighting, less shadow"
+            maxLength={CUSTOM_DIRECTION_MAX}
+            rows={3}
+            className="w-full text-sm border border-krea-border rounded-lg px-3 py-2 text-krea-text placeholder:text-krea-muted/60 focus:outline-none focus:ring-2 focus:ring-krea-accent/40"
+          />
+          <p className="text-[10px] text-krea-muted mt-1">
+            {userDirection.length}/{CUSTOM_DIRECTION_MAX}. Focus on lighting, background, or pose style for best results.
+          </p>
+        </div>
+        <p className="text-xs text-krea-muted">
+          This uses 1 generation from your plan.
+        </p>
+        {error && (
+          <p className="text-xs text-red-500">{error}</p>
+        )}
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="px-4 py-2 text-sm text-krea-muted hover:text-krea-text border border-krea-border rounded-lg transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="px-4 py-2 text-sm font-medium text-white bg-krea-text hover:bg-krea-text/90 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+          >
+            {submitting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Regenerating…
+              </>
+            ) : (
+              'Regenerate'
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -292,25 +425,48 @@ function Lightbox({
 
 // ── OutfitCard ─────────────────────────────────────────────────────────────────
 
+const OUTFIT_STATUS = {
+  pending: 'pending',
+  processing: 'processing',
+  generating_front: 'generating_front',
+  generating_tq: 'generating_tq',
+  generating_back: 'generating_back',
+  completed: 'completed',
+  failed: 'failed',
+} as const;
+
 function OutfitCard({
   outfit,
   modelName,
+  stylingDirectionLabel,
   isDeleting,
+  selected,
   onDelete,
   onRename,
+  onToggleSelect,
   onLightbox,
+  onRegenerate,
 }: {
   outfit: OutfitWithImages;
   modelName: string | undefined;
+  stylingDirectionLabel: string;
   isDeleting: boolean;
+  selected: boolean;
   onDelete: (id: string) => void;
-  onRename: (id: string, name: string) => Promise<void>;
+  onRename: (id: string, name: string) => Promise<{ ok: boolean; error?: string }>;
+  onToggleSelect: (id: string) => void;
   onLightbox: (outfitId: string, index: number) => void;
+  onRegenerate?: (outfitId: string) => void;
 }) {
+  const status = (outfit as { status?: string }).status ?? 'completed';
+  const isInProgress = status !== OUTFIT_STATUS.completed && status !== OUTFIT_STATUS.failed;
+  const canRegenerate = (status === OUTFIT_STATUS.completed || status === OUTFIT_STATUS.failed) && onRegenerate;
   const [menuOpen, setMenuOpen]         = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [renaming, setRenaming]         = useState(false);
   const [renameValue, setRenameValue]   = useState(outfit.name);
+  const [renameSaving, setRenameSaving] = useState(false);
+  const [renameError, setRenameError]   = useState<string | null>(null);
   const [downloading, setDownloading]   = useState(false);
   const menuRef   = useRef<HTMLDivElement>(null);
   const renameRef = useRef<HTMLInputElement>(null);
@@ -352,15 +508,33 @@ function OutfitCard({
 
   function startRename() {
     setRenameValue(outfit.name);
+    setRenameError(null);
     setRenaming(true);
     setMenuOpen(false);
   }
 
+  function cancelRename() {
+    setRenaming(false);
+    setRenameValue(outfit.name);
+    setRenameError(null);
+  }
+
   async function commitRename() {
     const trimmed = renameValue.trim();
-    setRenaming(false);
-    if (trimmed && trimmed !== outfit.name) {
-      await onRename(outfit.id, trimmed);
+    if (!trimmed || trimmed === outfit.name) {
+      cancelRename();
+      return;
+    }
+    if (renameSaving) return;
+    setRenameSaving(true);
+    setRenameError(null);
+    const result = await onRename(outfit.id, trimmed);
+    setRenameSaving(false);
+    if (result.ok) {
+      setRenaming(false);
+      setRenameError(null);
+    } else {
+      setRenameError(result.error ?? 'Couldn’t rename outfit');
     }
   }
 
@@ -384,43 +558,88 @@ function OutfitCard({
         isDeleting ? 'opacity-40 pointer-events-none' : ''
       }`}
     >
-      {/* Card header */}
-      <div className="flex items-start justify-between px-4 pt-4 pb-3">
-        <div className="flex-1 min-w-0 mr-3">
+      {/* Card header — single row: checkbox | title · date · tag | actions */}
+      <div className="flex items-center gap-3 px-4 pt-4 pb-3">
+        <label className="shrink-0 cursor-pointer" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onToggleSelect(outfit.id)}
+            className="rounded border-krea-border text-krea-text focus:ring-krea-text"
+          />
+        </label>
+        <div className="flex-1 min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1.5">
           {renaming ? (
-            <input
-              ref={renameRef}
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              onBlur={commitRename}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') commitRename();
-                if (e.key === 'Escape') setRenaming(false);
-              }}
-              className="w-full text-sm font-medium text-krea-text bg-transparent border-b border-krea-border focus:outline-none focus:border-krea-text"
-            />
-          ) : (
-            <p className="text-sm font-medium text-krea-text truncate">
-              {outfit.name || 'Untitled'}
-              {modelName && (
-                <span className="font-normal text-krea-muted"> by {modelName}</span>
+            <>
+              <input
+                ref={renameRef}
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onBlur={commitRename}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') commitRename();
+                  if (e.key === 'Escape') cancelRename();
+                }}
+                className="min-w-[8rem] flex-1 text-sm font-medium text-krea-text bg-transparent border-b border-krea-border focus:outline-none focus:border-krea-text"
+              />
+              {renameError && (
+                <span className="w-full text-xs text-red-600">{renameError}</span>
               )}
-            </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={commitRename}
+                  disabled={
+                    renameSaving ||
+                    !renameValue.trim() ||
+                    renameValue.trim() === outfit.name
+                  }
+                  className="text-xs text-white bg-krea-text hover:bg-krea-text/90 rounded px-2 py-1 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                >
+                  {renameSaving ? 'Saving…' : 'Save'}
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelRename}
+                  disabled={renameSaving}
+                  className="text-xs text-krea-muted hover:text-krea-text px-2 py-1 transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <span className="text-sm font-medium text-krea-text truncate">
+                {outfit.name || 'Untitled'}
+                {modelName && (
+                  <span className="font-normal text-krea-muted"> by {modelName}</span>
+                )}
+              </span>
+              <span className="text-krea-border shrink-0" aria-hidden>·</span>
+              <span
+                className="text-[11px] font-medium text-krea-muted bg-krea-border/40 rounded-md px-2 py-0.5 shrink-0"
+                title="Styling direction used for this outfit"
+              >
+                {stylingDirectionLabel}
+              </span>
+              <span className="text-krea-border shrink-0" aria-hidden>·</span>
+              <span className="text-xs text-krea-muted shrink-0">
+                {new Date(outfit.createdAt).toLocaleDateString(undefined, {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                })}
+              </span>
+            </>
           )}
-          <p className="text-xs text-krea-muted mt-0.5">
-            {new Date(outfit.createdAt).toLocaleDateString(undefined, {
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric',
-            })}
-          </p>
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
           <button
             type="button"
             onClick={handleDownloadAll}
-            disabled={downloading}
+            disabled={downloading || isInProgress}
             className="flex items-center gap-1.5 text-[11px] text-krea-muted border border-krea-border rounded-md px-2.5 py-1 hover:bg-krea-border/40 transition-colors disabled:opacity-50"
           >
             <Download className="w-3 h-3" />
@@ -439,6 +658,19 @@ function OutfitCard({
 
             {menuOpen && (
               <div className="absolute right-0 top-full mt-1 w-40 rounded-lg border border-krea-border bg-white shadow-md z-20 py-1">
+                {canRegenerate && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => { setMenuOpen(false); onRegenerate?.(outfit.id); }}
+                      className="w-full text-left px-3 py-2 text-xs text-krea-text hover:bg-krea-border/30 transition-colors flex items-center gap-2"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      {status === OUTFIT_STATUS.failed ? 'Try again' : 'Regenerate'}
+                    </button>
+                    <div className="h-px bg-krea-border my-1" />
+                  </>
+                )}
                 <button
                   type="button"
                   onClick={startRename}
@@ -483,9 +715,19 @@ function OutfitCard({
         </div>
       )}
 
+      {/* In-progress banner */}
+      {isInProgress && (
+        <div className="mx-4 mb-2 flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2">
+          <Loader2 className="w-4 h-4 text-amber-600 animate-spin shrink-0" />
+          <span className="text-xs text-amber-800">
+            {status === 'pending' || status === 'processing' ? 'Regenerating…' : 'Generating…'}
+          </span>
+        </div>
+      )}
+
       {/* Image grid: front model shot hero (2fr) → tq → back → flat lay */}
       <div
-        className="px-4 pb-4 grid gap-3"
+        className={`px-4 pb-4 grid gap-3 relative ${isInProgress ? 'pointer-events-none opacity-90' : ''}`}
         style={{
           gridTemplateColumns: gridTemplate,
           maxWidth: cardShots.length < 4 ? `${cardShots.length * 215}px` : undefined,
@@ -496,10 +738,15 @@ function OutfitCard({
             key={shot.key}
             url={shot.url}
             label={shot.label}
-            onLightbox={() => onLightbox(outfit.id, i)}
+            onLightbox={isInProgress ? () => {} : () => onLightbox(outfit.id, i)}
           />
         ))}
       </div>
+      {status === OUTFIT_STATUS.failed && (outfit as { errorMessage?: string | null }).errorMessage && (
+        <p className="px-4 pb-3 text-xs text-red-500">
+          {(outfit as { errorMessage: string }).errorMessage}
+        </p>
+      )}
     </div>
   );
 }
@@ -507,14 +754,40 @@ function OutfitCard({
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function Outfits() {
-  const { outfits, modelNameMap } = useLoaderData<typeof loader>();
+  const { outfits, modelNameMap, stylingDirectionLabelMap } = useLoaderData<typeof loader>();
   const { revalidate } = useRevalidator();
   const authenticatedFetch = useAuthenticatedFetch();
 
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [lightbox, setLightbox]       = useState<{ outfitId: string; index: number } | null>(null);
+  const [regenerateModal, setRegenerateModal] = useState<{ outfitId: string; outfitName: string } | null>(null);
 
   const closeLightbox = useCallback(() => setLightbox(null), []);
+
+  // Poll when any outfit is in progress (pending or generating_*)
+  const hasInProgress = outfits.some(
+    (o) => {
+      const s = (o as { status?: string }).status;
+      return s && s !== 'completed' && s !== 'failed';
+    },
+  );
+  useEffect(() => {
+    if (!hasInProgress) return;
+    const interval = setInterval(() => revalidate(), 5000);
+    return () => clearInterval(interval);
+  }, [hasInProgress, revalidate]);
+
+  function toggleSelect(id: string) {
+    setSelectedIds((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   async function deleteOutfit(outfitId: string) {
     setDeletingIds((s) => new Set(s).add(outfitId));
@@ -530,12 +803,58 @@ export default function Outfits() {
     revalidate();
   }
 
-  async function renameOutfit(outfitId: string, name: string) {
-    await authenticatedFetch('/app/outfits', {
+  async function renameOutfit(
+    outfitId: string,
+    name: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    const res = await authenticatedFetch('/app/outfits', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ intent: 'rename_outfit', outfitId, name }),
     });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({})) as { error?: string };
+      return { ok: false, error: data.error ?? 'Couldn’t rename outfit' };
+    }
+    revalidate();
+    return { ok: true };
+  }
+
+  async function submitRegenerate(userDirection?: string): Promise<{ ok: boolean; error?: string }> {
+    if (!regenerateModal) return { ok: false, error: 'No outfit selected' };
+    const res = await authenticatedFetch('/app/outfits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        intent: 'regenerate_outfit',
+        outfitId: regenerateModal.outfitId,
+        userDirection: userDirection || undefined,
+      }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { error?: string; used?: number; limit?: number; plan?: string };
+    if (!res.ok) {
+      if (res.status === 402 && data.error === 'limit_reached') {
+        return { ok: false, error: "You've used all your generations this month. Upgrade to continue." };
+      }
+      return { ok: false, error: data.error ?? 'Could not regenerate. Try again.' };
+    }
+    revalidate();
+    return { ok: true };
+  }
+
+  async function deleteSelectedOutfits() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setConfirmBulkDelete(false);
+    setBulkDeleting(true);
+    const res = await authenticatedFetch('/app/outfits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ intent: 'delete_outfits', outfitIds: ids }),
+    });
+    setBulkDeleting(false);
+    if (!res.ok) return;
+    setSelectedIds(new Set());
     revalidate();
   }
 
@@ -568,15 +887,67 @@ export default function Outfits() {
           </div>
         ) : (
           <div className="space-y-4">
+            {selectedIds.size > 0 && (
+              <div className="flex flex-wrap items-center gap-3 rounded-lg border border-krea-border bg-white px-4 py-3">
+                <span className="text-sm text-krea-text">
+                  {selectedIds.size} selected
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedIds(new Set())}
+                  className="text-xs text-krea-muted hover:text-krea-text transition-colors"
+                >
+                  Clear selection
+                </button>
+                {!confirmBulkDelete ? (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmBulkDelete(true)}
+                    className="flex items-center gap-1.5 text-xs text-red-600 hover:text-red-700 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete selected
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-red-600">
+                      Delete {selectedIds.size} outfits? This can&apos;t be undone.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmBulkDelete(false)}
+                      className="text-xs text-krea-muted hover:text-krea-text px-2 py-0.5"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={deleteSelectedOutfits}
+                      disabled={bulkDeleting}
+                      className="text-xs text-white bg-red-500 hover:bg-red-600 rounded px-2 py-0.5 transition-colors disabled:opacity-50"
+                    >
+                      {bulkDeleting ? 'Deleting…' : 'Delete'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
             {outfits.map((outfit) => (
               <OutfitCard
                 key={outfit.id}
                 outfit={outfit}
                 modelName={modelNameMap[outfit.modelId] ?? undefined}
+                stylingDirectionLabel={
+                  stylingDirectionLabelMap[(outfit as { stylingDirectionId?: string }).stylingDirectionId ?? 'minimal'] ??
+                  'Minimal Clarity'
+                }
                 isDeleting={deletingIds.has(outfit.id)}
+                selected={selectedIds.has(outfit.id)}
                 onDelete={deleteOutfit}
                 onRename={renameOutfit}
+                onToggleSelect={toggleSelect}
                 onLightbox={(id, idx) => setLightbox({ outfitId: id, index: idx })}
+                onRegenerate={() => setRegenerateModal({ outfitId: outfit.id, outfitName: outfit.name || 'Untitled' })}
               />
             ))}
           </div>
@@ -588,6 +959,14 @@ export default function Outfits() {
           outfit={lightboxOutfit}
           initialIndex={lightbox.index}
           onClose={closeLightbox}
+        />
+      )}
+
+      {regenerateModal && (
+        <RegenerateModal
+          outfitName={regenerateModal.outfitName}
+          onClose={() => setRegenerateModal(null)}
+          onSubmit={(userDirection) => submitRegenerate(userDirection)}
         />
       )}
     </div>

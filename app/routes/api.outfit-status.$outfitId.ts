@@ -19,6 +19,7 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     select: {
       status: true,
       errorMessage: true,
+      cleanFlatLayUrl: true,
       images: { select: { id: true, pose: true, imageUrl: true } },
     },
   });
@@ -28,6 +29,7 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   return Response.json({
     status: outfit.status,
     errorMessage: outfit.errorMessage ?? null,
+    cleanFlatLayUrl: outfit.cleanFlatLayUrl ?? null,
     images: outfit.images,
   });
 };

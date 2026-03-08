@@ -54,6 +54,8 @@ export const STYLING_DIRECTION_PRESETS: StylingDirectionPreset[] = [
     description: 'The industry-standard PDP neutral. Contrapposto stance, still and composed. Works for any garment. Brands like COS, Uniqlo, Arket.',
     frontSnippet: 'Standing in a relaxed contrapposto stance, weight shifted onto the right leg with hip slightly raised on that side, left foot stepped forward and turned slightly outward, left knee softly bent. Right arm falls naturally at the side, hand relaxed at the hip. Left hand lightly rests at the waist. Shoulders level, chin slightly down, direct gaze into camera, neutral closed-mouth expression, still and composed.',
     energyCue: 'Same contrapposto stance, same composed neutral energy.',
+    frontSnippetMale: 'Standing facing camera, weight slightly on one leg, arms relaxed at sides. Shoulders level, direct gaze into camera, neutral closed-mouth expression, still and composed.',
+    energyCueMale: 'Same composed neutral energy, arms relaxed at sides.',
   },
   {
     id: 'accessible',
@@ -61,6 +63,8 @@ export const STYLING_DIRECTION_PRESETS: StylingDirectionPreset[] = [
     description: 'Approachable, friendly, non-intimidating. Slight smile, natural weight shift. Brands like H&M, ASOS, Next.',
     frontSnippet: 'Standing in a relaxed contrapposto stance, weight shifted onto the right leg, left foot stepped forward, slight weight shift to one hip. Right arm at side, left hand lightly at hip. Direct gaze into camera, genuine soft smile with slightly parted lips, warm and approachable energy, natural and unpretentious.',
     energyCue: 'Same warm approachable energy, soft smile.',
+    frontSnippetMale: 'Standing facing camera, weight slightly on one leg, arms relaxed at sides. Direct gaze into camera, genuine soft smile, warm and approachable energy, natural and unpretentious.',
+    energyCueMale: 'Same warm approachable energy, soft smile.',
   },
   {
     id: 'editorial',
@@ -68,6 +72,8 @@ export const STYLING_DIRECTION_PRESETS: StylingDirectionPreset[] = [
     description: 'Effortless cool, movement-implied, slightly unposed. Gaze slightly off-lens. Brands like Zara, Mango, Reformation.',
     frontSnippet: 'Slightly asymmetric stance with pronounced hip shift, torso angled 15 degrees away from camera, face turning back toward lens, one hand loosely adjusting the neckline or at the waist, gaze 5 degrees off-lens to the left, editorial fashion energy, effortlessly cool and slightly unposed, neutral-to-serious expression.',
     energyCue: 'Same editorial energy, slightly off-axis posture.',
+    frontSnippetMale: 'Slightly asymmetric stance, torso angled 15 degrees away from camera, face turning back toward lens. Arms relaxed at sides or one hand in pocket. Gaze slightly off-lens, editorial fashion energy, effortlessly cool, neutral-to-serious expression.',
+    energyCueMale: 'Same editorial energy, slightly off-axis posture.',
   },
   {
     id: 'premium',
@@ -75,6 +81,8 @@ export const STYLING_DIRECTION_PRESETS: StylingDirectionPreset[] = [
     description: 'Quiet confidence, elevated bearing, nothing to prove. Neutral expression, gaze slightly off-lens. Brands like Sandro, Reiss, Ted Baker.',
     frontSnippet: 'Upright elongated stance with controlled contrapposto, one arm dropped at side with deliberately relaxed hand, fingers slightly extended and separated, gaze slightly off-lens to the left with composed bearing, neutral closed-mouth expression, premium fashion editorial energy, quiet confidence and stillness.',
     energyCue: 'Same premium poise, controlled stillness.',
+    frontSnippetMale: 'Upright elongated stance, weight slightly on one leg, arms relaxed at sides. Gaze slightly off-lens with composed bearing, neutral closed-mouth expression, premium fashion editorial energy, quiet confidence and stillness.',
+    energyCueMale: 'Same premium poise, controlled stillness.',
   },
   {
     id: 'street',

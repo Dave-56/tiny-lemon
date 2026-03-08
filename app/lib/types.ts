@@ -28,6 +28,16 @@ export interface ModelAttributes {
   ageRange: string;
 }
 
+/** Canonical model gender values. Use for snippet resolution; keep in sync with model builder / preset data. */
+export const MODEL_GENDER = ['Female', 'Male', 'Non-binary'] as const;
+export type ModelGender = (typeof MODEL_GENDER)[number];
+
+/** Returns the value if it's a known model gender, else undefined (treat as default snippet). */
+export function normalizeModelGender(value: string | undefined): ModelGender | undefined {
+  if (value == null) return undefined;
+  return MODEL_GENDER.includes(value as ModelGender) ? (value as ModelGender) : undefined;
+}
+
 export interface StylingDirectionPreset {
   id: string;
   label: string;
@@ -36,6 +46,10 @@ export interface StylingDirectionPreset {
   frontSnippet: string;
   /** Short energy cue appended to 3/4 and back prompts — kept terse to avoid confusing multi-turn chat context. */
   energyCue: string;
+  /** When modelGender is 'Male', use this for front pose if present; else use frontSnippet. */
+  frontSnippetMale?: string;
+  /** When modelGender is 'Male', use this for 3/4 and back if present; else use energyCue. */
+  energyCueMale?: string;
 }
 
 export interface PdpStylePreset {

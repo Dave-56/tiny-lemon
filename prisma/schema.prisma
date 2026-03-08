@@ -74,19 +74,20 @@ model Model {
 }
 
 model Outfit {
-  id              String   @id @default(cuid())
-  shopId          String
-  name            String
+  id                   String   @id @default(cuid())
+  shopId               String
+  name                 String
   frontFlatLayUrl      String
   backFlatLayUrl       String?
   cleanFlatLayUrl      String?  // cleaned studio flat lay (Gemini post-process) — input to all generation
   cleanBackFlatLayUrl  String?  // cleaned back flat lay
   garmentSpec          Json?
-  modelId         String   // preset model ID or batchId of user-generated model
-  status          String   @default("pending") // pending | processing | completed | failed
-  jobId           String?  // Trigger.dev runId
-  errorMessage    String?  // failure reason, set on task failure
-  createdAt       DateTime @default(now())
+  modelId              String   // preset model ID or batchId of user-generated model
+  stylingDirectionId   String   @default("minimal") // preset id from STYLING_DIRECTION_PRESETS (pose/energy)
+  status               String   @default("pending") // pending | processing | completed | failed
+  jobId                String?  // Trigger.dev runId
+  errorMessage         String?  // failure reason, set on task failure
+  createdAt            DateTime @default(now())
 
   shop   Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
   images GeneratedImage[]
