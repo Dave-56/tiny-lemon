@@ -17,6 +17,7 @@ interface GenerateOutfitPayload {
   styleId: string;
   stylingDirectionId: string;
   allowedPoses: string[];
+  cleanBackFlatLayUrl?: string;
 }
 
 // ── Task ──────────────────────────────────────────────────────────────────────
@@ -38,7 +39,7 @@ export const generateOutfitTask = task({
   },
 
   run: async (payload: GenerateOutfitPayload) => {
-    const { outfitId, shopId, modelImageUrl, modelHeight, styleId, stylingDirectionId, allowedPoses } = payload;
+    const { outfitId, shopId, modelImageUrl, modelHeight, styleId, stylingDirectionId, allowedPoses, cleanBackFlatLayUrl } = payload;
     // Fallback: if payload is missing allowedPoses (old client), default to front only
     const poses = allowedPoses?.length ? allowedPoses : ['front'];
 
@@ -51,7 +52,7 @@ export const generateOutfitTask = task({
     // ── 1. Fetch outfit data ──────────────────────────────────────────────────
     const outfit = await prisma.outfit.findFirstOrThrow({
       where: { id: outfitId, shopId },
-      select: { cleanFlatLayUrl: true, cleanBackFlatLayUrl: true, garmentSpec: true, name: true },
+      select: { cleanFlatLayUrl: true, garmentSpec: true, name: true },
     });
 
     const garmentSpec = outfit.garmentSpec as GarmentSpec | null;
@@ -60,8 +61,8 @@ export const generateOutfitTask = task({
 
     // ── 2. Download flat lay(s) ───────────────────────────────────────────────
     const cleanFlatLayB64 = await fetchAsBase64(outfit.cleanFlatLayUrl);
-    const cleanBackFlatLayB64 = outfit.cleanBackFlatLayUrl
-      ? await fetchAsBase64(outfit.cleanBackFlatLayUrl).catch(() => null)
+    const cleanBackFlatLayB64 = cleanBackFlatLayUrl
+      ? await fetchAsBase64(cleanBackFlatLayUrl).catch(() => null)
       : null;
 
     // ── 3. Download + normalize model reference ───────────────────────────────
