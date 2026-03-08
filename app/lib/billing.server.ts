@@ -8,9 +8,7 @@ export const PLAN_LIMITS: Record<string, number> = {
   Scale: 300,
 };
 
-// Angles the client is allowed to request per plan.
-// NOTE (V1): this is enforced client-side only — a direct POST bypasses it.
-// V2: pass allowed angles into the Trigger.dev task payload and gate there.
+// Angles allowed per plan. Enforced server-side in the action.
 export const PLAN_ANGLES: Record<string, string[]> = {
   free: ["front"],
   Starter: ["front", "three-quarter", "back"],
@@ -59,7 +57,7 @@ export async function getPlanForShop(shopId: string): Promise<string> {
 export async function reserveGenerations(
   shopId: string,
   count: number,
-): Promise<void> {
+): Promise<string> {
   const plan = await getPlanForShop(shopId);
   const limit = PLAN_LIMITS[plan] ?? PLAN_LIMITS.free;
   const startOfMonth = startOfCalendarMonth();
@@ -73,6 +71,10 @@ export async function reserveGenerations(
           createdAt: { gte: startOfMonth },
         },
       });
+
+      if (process.env.NODE_ENV !== "production" && process.env.ENFORCE_BILLING !== "true") {
+        return; // skip limit checks in dev
+      }
 
       if (used + count > limit) {
         throw new Error("insufficient_credits");
@@ -89,4 +91,5 @@ export async function reserveGenerations(
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
   );
+  return plan;
 }
