@@ -184,6 +184,15 @@
   margin: 0 0 0.75rem;
 }
 
+.sliderGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  max-width: 72rem;
+  margin: 0 auto;
+  align-items: start;
+}
+
 /* ----- How it works ----- */
 .howItWorks {
   max-width: 36rem;
@@ -401,6 +410,11 @@
 
   .sliderSection {
     padding: 0 1.25rem 3rem;
+  }
+
+  .sliderGrid {
+    grid-template-columns: 1fr;
+    gap: 2.5rem;
   }
 
   .howItWorks {

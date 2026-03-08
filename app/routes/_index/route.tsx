@@ -6,10 +6,11 @@ import { BeforeAfterSlider } from "../../components/BeforeAfterSlider";
 
 import styles from "./styles.module.css";
 
-const LANDING_BEFORE_IMAGE =
-  "https://placehold.co/800x600/f5f5f5/999?text=Flat+lay";
-const LANDING_AFTER_IMAGE =
-  "https://placehold.co/800x600/eee/555?text=Studio+shot";
+const LANDING_1 = { before: "/landing-before.png", after: "/landing-after.png" };
+const LANDING_2 = {
+  before: "/landing-before-1.png",
+  after: "/landing-after-1.png",
+};
 
 export const meta: MetaFunction = () => {
   const title = "Tiny Lemon — Studio shots from flat-lays in 60 seconds";
@@ -86,12 +87,20 @@ export default function LandingPage() {
 
         <section className={styles.sliderSection}>
           <p className={styles.sliderHint}>Drag to compare</p>
-          <BeforeAfterSlider
-            beforeImage={LANDING_BEFORE_IMAGE}
-            afterImage={LANDING_AFTER_IMAGE}
-            beforeLabel="Flat lay"
-            afterLabel="Studio shot"
-          />
+          <div className={styles.sliderGrid}>
+            <BeforeAfterSlider
+              beforeImage={LANDING_1.before}
+              afterImage={LANDING_1.after}
+              beforeLabel="Flat lay"
+              afterLabel="Studio shot"
+            />
+            <BeforeAfterSlider
+              beforeImage={LANDING_2.before}
+              afterImage={LANDING_2.after}
+              beforeLabel="Flat lay"
+              afterLabel="Studio shot"
+            />
+          </div>
         </section>
 
         <section id="how-it-works" className={styles.howItWorks}>
