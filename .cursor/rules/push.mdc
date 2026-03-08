@@ -1,0 +1,18 @@
+---
+description: When user says /push or "push to github", run git status then stage, commit, and push
+alwaysApply: true
+---
+
+# Push to GitHub (/push)
+
+When the user says **/push** or asks to **push to GitHub** (or "push to github"):
+
+1. Run `git status` and show the output.
+2. Stage all changes: `git add -A`.
+3. If there are staged changes:
+   - If the user already gave a commit message, use it.
+   - Otherwise use a short, descriptive message (e.g. from changed files or "Update landing and push").
+4. Run `git commit -m "<message>"`.
+5. Run `git push` (current branch to origin).
+
+Request **git_write** for commit and **network** for push. If the user wants to exclude certain paths (e.g. `.cursor/`), ask or use `git add` with specific paths instead of `-A`.

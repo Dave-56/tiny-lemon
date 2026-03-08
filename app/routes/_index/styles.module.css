@@ -6,6 +6,7 @@
   flex-direction: column;
   background: var(--krea-bg, #fafafa);
   color: var(--krea-text, #111);
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
 }
 
 /* ----- Header ----- */
@@ -112,6 +113,7 @@
   line-height: 1.15;
   letter-spacing: -0.03em;
   margin: 0 0 1.25rem;
+  font-family: "Space Grotesk", sans-serif;
 }
 
 .heroSubhead {
@@ -140,6 +142,93 @@
 
 .heroCta:hover {
   opacity: 0.9;
+}
+
+.heroCtas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.heroCtaSecondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--krea-text, #111);
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--krea-border, rgba(0, 0, 0, 0.12));
+  background: transparent;
+  text-decoration: none;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.heroCtaSecondary:hover {
+  background: var(--krea-btn-sec-bg, rgba(0, 0, 0, 0.04));
+  border-color: var(--krea-muted, rgba(0, 0, 0, 0.2));
+}
+
+/* ----- Before/after slider ----- */
+.sliderSection {
+  padding: 0 2rem 4rem;
+  text-align: center;
+}
+
+.sliderHint {
+  font-size: 0.8125rem;
+  color: var(--krea-muted, #666);
+  margin: 0 0 0.75rem;
+}
+
+/* ----- How it works ----- */
+.howItWorks {
+  max-width: 36rem;
+  margin: 0 auto;
+  padding: 0 2rem 4rem;
+}
+
+.howItWorksTitle {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0 0 1.5rem;
+  text-align: center;
+  font-family: "Space Grotesk", sans-serif;
+}
+
+.howItWorksList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.howItWorksItem {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 1rem;
+  color: var(--krea-text, #111);
+}
+
+.howItWorksStep {
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: var(--krea-accent, #111);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* ----- Features ----- */
@@ -304,6 +393,18 @@
 
   .hero {
     padding: 3rem 1.25rem 4rem;
+  }
+
+  .heroCtas {
+    flex-direction: column;
+  }
+
+  .sliderSection {
+    padding: 0 1.25rem 3rem;
+  }
+
+  .howItWorks {
+    padding: 0 1.25rem 3rem;
   }
 
   .featureCard {
