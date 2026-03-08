@@ -3,6 +3,7 @@ import { Link, Outlet, useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 
+import { AuthenticatedFetchProvider } from "../contexts/AuthenticatedFetchContext";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { getMonthlyUsage, PLAN_LIMITS } from "../lib/billing.server";
@@ -27,6 +28,7 @@ export default function App() {
 
   return (
     <AppProvider embedded apiKey={apiKey}>
+      <AuthenticatedFetchProvider>
       <s-app-nav>
         <s-link href="/app/dress-model">Dress model</s-link>
         <s-link href="/app/outfits">Outfits</s-link>
@@ -46,6 +48,7 @@ export default function App() {
       </div>
 
       <Outlet />
+      </AuthenticatedFetchProvider>
     </AppProvider>
   );
 }

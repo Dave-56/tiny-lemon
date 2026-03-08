@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from 'react-router';
-import { useFetcher, useLoaderData, useRouteError } from 'react-router';
+import { useLoaderData, useRouteError } from 'react-router';
 import { boundary } from '@shopify/shopify-app-react-router/server';
 import { Loader2 } from 'lucide-react';
+import { useAuthenticatedFetch } from '../contexts/AuthenticatedFetchContext';
 import { authenticate } from '../shopify.server';
 import { BILLING_PLANS } from '../lib/plans';
 import prisma from '../db.server';
@@ -106,10 +108,31 @@ const PLANS = [
 
 export default function Billing() {
   const { plan, used, limit } = useLoaderData<typeof loader>();
-  const fetcher = useFetcher();
+  const authenticatedFetch = useAuthenticatedFetch();
+  const [isSubscribing, setIsSubscribing] = useState(false);
+  const [submittingPlan, setSubmittingPlan] = useState<string | undefined>();
 
-  const isSubscribing = fetcher.state !== 'idle';
-  const submittingPlan = fetcher.formData?.get('plan') as string | undefined;
+  async function handlePlanSubmit(planId: keyof typeof BILLING_PLANS) {
+    if (!Object.values(BILLING_PLANS).includes(planId)) return;
+    setIsSubscribing(true);
+    setSubmittingPlan(planId);
+    try {
+      const formData = new FormData();
+      formData.set('plan', planId);
+      const res = await authenticatedFetch('/app/billing', {
+        method: 'POST',
+        body: formData,
+        redirect: 'manual',
+      });
+      if (res.status >= 300 && res.status < 400) {
+        const location = res.headers.get('Location');
+        if (location) window.location.href = location;
+      }
+    } finally {
+      setIsSubscribing(false);
+      setSubmittingPlan(undefined);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-krea-bg p-6">
@@ -175,20 +198,18 @@ export default function Billing() {
                       <span className="text-xs font-medium text-krea-accent">Current plan</span>
                     </div>
                   ) : p.cta ? (
-                    <fetcher.Form method="post">
-                      <input type="hidden" name="plan" value={p.id} />
-                      <button
-                        type="submit"
-                        disabled={isSubscribing}
-                        className="w-full h-8 rounded-md bg-krea-accent text-white text-xs font-medium flex items-center justify-center gap-2 hover:opacity-90 active:scale-95 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-                      >
-                        {isSubmitting ? (
-                          <><Loader2 className="w-3 h-3 animate-spin" />Redirecting…</>
-                        ) : (
-                          p.cta
-                        )}
-                      </button>
-                    </fetcher.Form>
+                    <button
+                      type="button"
+                      disabled={isSubscribing}
+                      onClick={() => handlePlanSubmit(p.id)}
+                      className="w-full h-8 rounded-md bg-krea-accent text-white text-xs font-medium flex items-center justify-center gap-2 hover:opacity-90 active:scale-95 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {isSubscribing && submittingPlan === p.id ? (
+                        <><Loader2 className="w-3 h-3 animate-spin" />Redirecting…</>
+                      ) : (
+                        p.cta
+                      )}
+                    </button>
                   ) : null}
                 </div>
               );
