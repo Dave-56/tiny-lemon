@@ -13,7 +13,7 @@ const LANDING_2 = {
 };
 
 export const meta: MetaFunction = () => {
-  const title = "Tiny Lemon — Studio shots from flat-lays in 60 seconds";
+  const title = "Tiny Lemon: Studio shots from flat-lays in 60 seconds";
   const description =
     "Turn flat-lays into studio shots in 60 seconds. No photographer, no $15K shoot. Front, 3/4, and back angles for your Shopify fashion store.";
   return [
@@ -70,7 +70,7 @@ export default function LandingPage() {
           </h1>
           <p className={styles.heroSubhead}>
             Turn flat-lays into consistent, on-model photos. Same look every
-            time—built for your Shopify store. No photographer, no $15K
+            time, built for your Shopify store. No photographer, no $15K
             photoshoot.
           </p>
           {showForm && (
@@ -127,13 +127,13 @@ export default function LandingPage() {
               One consistent look across your catalog
             </h2>
             <p className={styles.featureDesc}>
-              Same model, same background—so every product fits the same brand
+              Same model, same background. Every product fits the same brand
               look. Garment-accurate output that’s ready for your store. No
               waiting weeks for a shoot.
             </p>
             <ul className={styles.featureList}>
               <li>Studio-quality angles in minutes, not weeks</li>
-              <li>Built for Shopify—generate and add to your products</li>
+              <li>Built for Shopify. Generate and add to your products</li>
               <li>No photographer, no model booking, no shoot day</li>
             </ul>
             {showForm && (
