@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from 'react-router';
 import { useLoaderData, useRouteError, useRevalidator, Link } from 'react-router';
 import { boundary } from '@shopify/shopify-app-react-router/server';
+import { useAuthenticatedFetch } from '../contexts/AuthenticatedFetchContext';
 import { X, Download, Loader2, Plus, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
 import { zipSync } from 'fflate';
 import type { PresetModelEntry } from '../lib/types';
@@ -76,17 +77,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const backMime = body.backMime as string | null;
 
     // ── Billing gate — reserve 1 credit atomically before any work ──────────────
+    let plan: string;
     try {
-      await reserveGenerations(shopId, 1);
+      plan = await reserveGenerations(shopId, 1);
     } catch (e) {
       const msg = (e as Error).message;
       if (msg === 'insufficient_credits') {
-        const [used, plan] = await Promise.all([
+        const [used, limitPlan] = await Promise.all([
           getMonthlyUsage(shopId),
           getPlanForShop(shopId),
         ]);
         return Response.json(
-          { error: 'limit_reached', used, limit: PLAN_LIMITS[plan] ?? PLAN_LIMITS.free, plan },
+          { error: 'limit_reached', used, limit: PLAN_LIMITS[limitPlan] ?? PLAN_LIMITS.free, plan: limitPlan },
           { status: 402 },
         );
       }
@@ -112,7 +114,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     // Resolve allowed poses: plan ceiling ∩ brand preference
     // If brand has never configured poses (angleIds null/empty), treat as "all plan-allowed poses"
-    const plan = await getPlanForShop(shopId);
     const brandStyleRecord = await prisma.brandStyle.findUnique({
       where: { shopId },
       select: { angleIds: true },
@@ -181,6 +182,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       styleId,
       stylingDirectionId,
       allowedPoses,
+      cleanBackFlatLayUrl: cleanBackFlatLayUrl ?? undefined,
     });
 
     // Phase 6: Back-fill URLs + jobId in one update
@@ -194,7 +196,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       },
     });
 
-    return Response.json({ outfitId: outfit.id, cleanFlatLayUrl });
+    return Response.json({ outfitId: outfit.id, cleanFlatLayUrl, shopId });
   }
 
   // ── poll_status ──────────────────────────────────────────────────────────────
@@ -337,7 +339,8 @@ type ItemStatus =
   | 'generating_tq'
   | 'generating_back'
   | 'done'
-  | 'error';
+  | 'error'
+  | 'submitted'; // job was triggered but polling was lost (e.g. session expired mid-poll)
 
 interface ResultShot {
   angleId: string;
@@ -359,6 +362,7 @@ interface BatchItem {
   results: ResultShot[];
   error: string | null;
   savedOutfitId: string | null;
+  savedShopId: string | null;
   quality: FlatLayQuality | null;
 }
 
@@ -370,6 +374,7 @@ const STATUS_LABEL: Record<ItemStatus, string> = {
   generating_front: '1/3',
   generating_tq: '2/3',
   generating_back: '3/3',
+  submitted: 'Submitted',
   done: 'Done',
   error: 'Error',
 };
@@ -379,6 +384,20 @@ const POSE_LABEL: Record<string, string> = {
   'three-quarter': 'Three-quarter',
   back: 'Back',
 };
+
+const UPGRADE_MSG = "You've used all your generations this month. Upgrade to continue.";
+
+function ErrorMsg({ msg }: { msg: string }) {
+  if (msg === UPGRADE_MSG) {
+    return (
+      <span>
+        You&apos;ve used all your generations this month.{' '}
+        <Link to="/app/billing" className="underline font-medium">Upgrade to continue</Link>.
+      </span>
+    );
+  }
+  return <>{msg}</>;
+}
 
 const ACTIVE_STATUSES: ItemStatus[] = [
   'processing',
@@ -392,9 +411,11 @@ const ACTIVE_STATUSES: ItemStatus[] = [
 export default function DressModel() {
   const { styleIds, stylingDirectionId, customModels } = useLoaderData<typeof loader>();
   const { revalidate } = useRevalidator();
+  const authenticatedFetch = useAuthenticatedFetch();
 
   const [presetModels, setPresetModels] = useState<PresetModelEntry[]>([]);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(customModels[0]?.id ?? null);
+  const [modelTab, setModelTab] = useState<'mine' | 'presets'>(customModels.length > 0 ? 'mine' : 'presets');
   const [previewModel, setPreviewModel] = useState<PresetModelEntry | null>(null);
   const [items, setItems] = useState<BatchItem[]>([]);
   const [isRunning, setIsRunning] = useState(false);
@@ -442,6 +463,7 @@ export default function DressModel() {
       results: [],
       error: null,
       savedOutfitId: null,
+      savedShopId: null,
       quality: null,
     }));
     setItems(prev => [...prev, ...newItems]);
@@ -488,16 +510,14 @@ export default function DressModel() {
       await Promise.all(
         active.map(async item => {
           try {
-            const res = await fetch('/app/dress-model', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ intent: 'poll_status', outfitId: item.savedOutfitId }),
-            });
+            // Use the public status endpoint — no Shopify auth required on every tick.
+            const shopParam = item.savedShopId ? `?shop=${encodeURIComponent(item.savedShopId)}` : '';
+            const res = await fetch(`/api/outfit-status/${item.savedOutfitId}${shopParam}`);
             if (!res.ok) {
               const failures = (pollFailuresRef.current[item.id] ?? 0) + 1;
               pollFailuresRef.current[item.id] = failures;
               if (failures >= 3) {
-                updateItem(item.id, { status: 'error', error: 'Server error while checking status. Please try again.' });
+                updateItem(item.id, { status: 'submitted', error: null });
               }
               return;
             }
@@ -534,7 +554,7 @@ export default function DressModel() {
             const failures = (pollFailuresRef.current[item.id] ?? 0) + 1;
             pollFailuresRef.current[item.id] = failures;
             if (failures >= 3) {
-              updateItem(item.id, { status: 'error', error: 'Connection lost. Please check your network and try again.' });
+              updateItem(item.id, { status: 'submitted', error: null });
             }
           }
         }),
@@ -565,12 +585,21 @@ export default function DressModel() {
     // runs cleanFlatLay + extractGarmentSpec server-side (~10–15s), then enqueues the job.
     await Promise.all(
       pending.map(async item => {
+        // If this item already has a savedOutfitId (e.g. session expired during polling but
+        // the background job may have continued), resume polling instead of re-generating.
+        if (item.savedOutfitId) {
+          pollFailuresRef.current[item.id] = 0;
+          updateItem(item.id, { status: 'processing', error: null });
+          return;
+        }
+
         updateItem(item.id, {
           status: 'processing',
           error: null,
           results: [],
           cleanPreview: null,
           savedOutfitId: null,
+          savedShopId: null,
         });
 
         try {
@@ -583,7 +612,7 @@ export default function DressModel() {
             backMime = back.mimeType;
           }
 
-          const res = await fetch('/app/dress-model', {
+          const res = await authenticatedFetch('/app/dress-model', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -602,18 +631,32 @@ export default function DressModel() {
           });
 
           if (!res.ok) {
-            const json = await res.json().catch(() => ({ error: 'Request failed' })) as { error?: string };
-            throw new Error(json.error ?? 'Failed to start generation');
+            if (res.status === 401 || res.status === 403) {
+              throw new Error('Session expired — please refresh the page.');
+            }
+            if (res.status === 402) {
+              throw new Error(UPGRADE_MSG);
+            }
+            const json = await res.json().catch(() => null) as { error?: string } | null;
+            throw new Error(json?.error ?? `Something went wrong (${res.status}). Please try again.`);
           }
 
-          const { outfitId, cleanFlatLayUrl } = (await res.json()) as {
+          // Detect auth redirect: session expired causes a 302 → 200 HTML response
+          const contentType = res.headers.get('Content-Type') ?? '';
+          if (!contentType.includes('application/json')) {
+            throw new Error('Session expired — please refresh the page.');
+          }
+
+          const { outfitId, cleanFlatLayUrl, shopId: savedShopId } = (await res.json()) as {
             outfitId: string;
             cleanFlatLayUrl: string;
+            shopId: string;
           };
 
           updateItem(item.id, {
             status: 'processing',
             savedOutfitId: outfitId,
+            savedShopId,
             cleanPreview: cleanFlatLayUrl,
           });
         } catch (err) {
@@ -751,6 +794,7 @@ export default function DressModel() {
                 <span className={`text-xs flex-shrink-0 ${
                   item.status === 'done' ? 'text-green-600'
                   : item.status === 'error' ? 'text-red-500'
+                  : item.status === 'submitted' ? 'text-amber-500'
                   : item.status === 'pending' ? 'text-krea-muted'
                   : 'text-krea-accent'
                 }`}>
@@ -782,7 +826,13 @@ export default function DressModel() {
               {item.status === 'error' && item.error && (
                 <p className="text-[10px] text-red-500 flex items-center gap-1 px-1">
                   <XCircle className="w-3 h-3 flex-shrink-0" />
-                  {item.error}
+                  <ErrorMsg msg={item.error} />
+                </p>
+              )}
+              {item.status === 'submitted' && (
+                <p className="text-[10px] text-krea-muted flex items-center gap-1 px-1">
+                  Generation in progress —{' '}
+                  <Link to="/app/outfits" className="underline font-medium text-krea-text">view result in Outfits</Link>
                 </p>
               )}
               </div>
@@ -888,7 +938,13 @@ export default function DressModel() {
                 }
               </div>
 
-              {item.error && <p className="text-xs text-red-500">{item.error}</p>}
+              {item.error && <p className="text-xs text-red-500"><ErrorMsg msg={item.error} /></p>}
+              {item.status === 'submitted' && (
+                <p className="text-xs text-krea-muted">
+                  Generation in progress —{' '}
+                  <Link to="/app/outfits" className="underline font-medium text-krea-text">view result in Outfits</Link>
+                </p>
+              )}
             </div>
           ))}
         </div>
@@ -900,12 +956,59 @@ export default function DressModel() {
       <div className="flex-1 min-w-0 sticky top-6 self-start max-h-[calc(100vh-48px)] overflow-y-auto space-y-6">
 
       {/* ── Model picker ── */}
-      <section className="space-y-6">
+      <section className="space-y-3">
 
-        {/* Your models — synchronous from loader, renders immediately */}
-        {customModels.length > 0 && (
-          <div className="space-y-3">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-krea-muted">Your models</p>
+        {/* Segment control */}
+        {(() => {
+          const selectedInMine = selectedModelId != null && (customModels as PresetModelEntry[]).some(m => m.id === selectedModelId);
+          const selectedInPresets = selectedModelId != null && presetModels.some(m => m.id === selectedModelId);
+          return (
+            <div className="flex gap-1 p-1 bg-black/5 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setModelTab('mine')}
+                className={`relative flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                  modelTab === 'mine'
+                    ? 'bg-white text-krea-text shadow-sm'
+                    : 'text-krea-muted hover:text-krea-text'
+                }`}
+              >
+                Mine
+                {selectedInMine && modelTab !== 'mine' && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-krea-accent" />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setModelTab('presets')}
+                className={`relative flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                  modelTab === 'presets'
+                    ? 'bg-white text-krea-text shadow-sm'
+                    : 'text-krea-muted hover:text-krea-text'
+                }`}
+              >
+                Presets
+                {selectedInPresets && modelTab !== 'presets' && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-krea-accent" />
+                )}
+              </button>
+            </div>
+          );
+        })()}
+
+        {/* Mine tab */}
+        {modelTab === 'mine' && (
+          customModels.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
+              <p className="text-sm text-krea-muted">No custom models yet.</p>
+              <Link
+                to="/app/model-builder"
+                className="text-xs font-medium text-krea-text underline underline-offset-2 hover:opacity-70 transition-opacity"
+              >
+                Create a model →
+              </Link>
+            </div>
+          ) : (
             <div className="grid grid-cols-4 gap-2">
               {(customModels as PresetModelEntry[]).map(model => {
                 const isSelected = selectedModelId === model.id;
@@ -943,14 +1046,13 @@ export default function DressModel() {
                 );
               })}
             </div>
-          </div>
+          )
         )}
 
-        {/* Preset models — async from JSON fetch */}
-        <div className="space-y-3">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-krea-muted">Preset models</p>
-          {presetModels.length === 0 ? (
-            <p className="text-xs text-krea-muted">Loading models…</p>
+        {/* Presets tab — async from JSON fetch */}
+        {modelTab === 'presets' && (
+          presetModels.length === 0 ? (
+            <p className="text-xs text-krea-muted py-4">Loading models…</p>
           ) : (
             <div className="grid grid-cols-4 gap-2">
               {presetModels.map(model => {
@@ -989,8 +1091,8 @@ export default function DressModel() {
                 );
               })}
             </div>
-          )}
-        </div>
+          )
+        )}
 
       </section>
 
@@ -1019,13 +1121,13 @@ export default function DressModel() {
               className="h-[85vh] w-auto object-contain rounded-xl shadow-2xl"
               referrerPolicy="no-referrer"
             />
-            <div className="pb-2 space-y-4 min-w-[180px]">
+            <div className="pb-2 space-y-4 min-w-[180px] bg-white rounded-xl p-4">
               <div className="space-y-1">
-                <p className="text-2xl font-semibold text-white">{previewModel.name}</p>
-                <p className="text-sm text-white/60">{previewModel.gender}</p>
-                <p className="text-sm text-white/60">{previewModel.ethnicity}</p>
-                <p className="text-sm text-white/60">{previewModel.bodyBuild}</p>
-                <p className="text-sm text-white/60">{previewModel.height}</p>
+                <p className="text-2xl font-semibold text-krea-text">{previewModel.name}</p>
+                <p className="text-sm text-krea-muted">{previewModel.gender}</p>
+                <p className="text-sm text-krea-muted">{previewModel.ethnicity}</p>
+                <p className="text-sm text-krea-muted">{previewModel.bodyBuild}</p>
+                <p className="text-sm text-krea-muted">{previewModel.height}</p>
               </div>
               <div className="flex flex-col gap-2">
                 <button
@@ -1034,13 +1136,6 @@ export default function DressModel() {
                   className="krea-button text-sm"
                 >
                   {selectedModelId === previewModel.id ? 'Selected ✓' : 'Select model'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPreviewModel(null)}
-                  className="krea-button-secondary text-sm"
-                >
-                  Close
                 </button>
               </div>
             </div>
