@@ -3,13 +3,14 @@
 .slider {
   position: relative;
   width: 100%;
-  max-width: 640px;
+  max-width: 480px;
   margin: 0 auto;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 3 / 4;
   border-radius: 0.75rem;
   overflow: hidden;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
   touch-action: none;
+  background: var(--krea-bg, #f5f5f5);
 }
 
 .before,
@@ -27,7 +28,7 @@
 .after img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
   vertical-align: middle;
 }
