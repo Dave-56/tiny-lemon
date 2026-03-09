@@ -73,178 +73,156 @@ export default function PricingPage() {
           <div className={styles.tiers}>
             {/* FREE */}
             <div className={styles.tierCard}>
-              <h2 className={styles.tierName}>Free</h2>
-              <p className={styles.tierPrice}>
+              <div className={styles.tierCardHeader}>
+                <h2 className={styles.tierName}>Free</h2>
+              </div>
+              <p className={styles.tierTagline}>
                 Try before you commit. No credit card.
               </p>
-              <h3 className={styles.tierHeading}>What&apos;s included</h3>
-              <ul className={styles.tierList}>
-                <li>3 outfit generations per month (non-rollover)</li>
-                <li>1 model save</li>
-                <li>Front hero angle only (no 3/4, no back)</li>
-                <li>White studio background only</li>
-                <li>Standard resolution (512px output)</li>
-                <li>Watermarked downloads</li>
-                <li>Community support only</li>
-              </ul>
-              <h3 className={styles.tierHeading}>What&apos;s locked</h3>
-              <ul className={`${styles.tierList} ${styles.locked}`}>
-                <li>Three-angle structural set (3/4 + back)</li>
-                <li>Detail close-ups</li>
-                <li>Flat lay</li>
-                <li>Lifestyle images</li>
-                <li>Multiple models</li>
-                <li>High-res output</li>
-              </ul>
-              <p className={styles.tierPitch}>
-                Prove the output quality. One generation = one SKU front shot.
-                Enough to see it works, not enough to run a catalog on.
+              <p className={styles.tierPriceAmount}>
+                $0<span className={styles.unit}>/mo</span>
               </p>
+              <Link to="/#login" className={styles.tierCta}>
+                Get Free →
+              </Link>
+              <ul className={styles.tierList}>
+                <li>3 outfit generations per month</li>
+                <li>1 model save</li>
+                <li>Front hero angle only</li>
+                <li>White studio background</li>
+                <li>Standard resolution (512px)</li>
+                <li>Watermarked downloads</li>
+              </ul>
+              <div className={styles.tierCardFooter}>
+                <a href="#compare-plans" className={styles.seeAllFeatures}>
+                  See all features →
+                </a>
+              </div>
             </div>
 
             {/* STARTER */}
             <div className={styles.tierCard}>
-              <h2 className={styles.tierName}>Starter</h2>
-              <p className={styles.tierPrice}>~$39/month</p>
-              <p className={styles.tierPrice}>
+              <div className={styles.tierCardHeader}>
+                <h2 className={styles.tierName}>Starter</h2>
+              </div>
+              <p className={styles.tierTagline}>
                 For brands launching their first collection or testing the
                 workflow.
               </p>
-              <h3 className={styles.tierHeading}>What&apos;s included</h3>
+              <p className={styles.tierPriceAmount}>
+                ~$39<span className={styles.unit}>/mo</span>
+              </p>
+              <Link to="/#login" className={styles.tierCta}>
+                Get Starter →
+              </Link>
               <ul className={styles.tierList}>
-                <li>30 outfit generations/month (~10 SKUs at 3 angles each)</li>
+                <li>30 outfit generations/month</li>
                 <li>3 model saves</li>
-                <li>
-                  Full 3-angle structural set: Front + Three-Quarter + Back
-                </li>
+                <li>Full 3-angle set (Front + 3/4 + Back)</li>
                 <li>White + Grey studio backgrounds</li>
-                <li>High-resolution output (1K, 2:3)</li>
+                <li>High-res output (1K, 2:3)</li>
                 <li>Unwatermarked downloads</li>
-                <li>1 active brand style profile</li>
               </ul>
-              <h3 className={styles.tierHeading}>What&apos;s locked</h3>
-              <ul className={`${styles.tierList} ${styles.locked}`}>
-                <li>Detail close-up generation</li>
-                <li>Flat lay output</li>
-                <li>Lifestyle imagery</li>
-                <li>Multiple brand profiles</li>
-              </ul>
-              <p className={styles.tierPitch}>
-                This is the minimum viable PDP set. Front + 3/4 + Back removes
-                the three core purchase doubts (silhouette, drape, rear fit).
-                Enough to launch a Shopify store and look like a real brand.
-              </p>
-              <p className={styles.tierNote}>
-                Unit economics: ~$1.30/outfit at full usage.
-              </p>
+              <div className={styles.tierCardFooter}>
+                <a href="#compare-plans" className={styles.seeAllFeatures}>
+                  See all features →
+                </a>
+              </div>
             </div>
 
             {/* GROWTH */}
             <div className={`${styles.tierCard} ${styles.featured}`}>
-              <h2 className={styles.tierName}>Growth</h2>
-              <p className={styles.tierPrice}>~$99/month</p>
-              <p className={styles.tierPrice}>
-                For brands actively running seasonal drops. The full structural
-                + quality set.
+              <div className={styles.tierCardHeader}>
+                <h2 className={styles.tierName}>Growth</h2>
+                <span className={styles.tierBadge}>Most popular</span>
+              </div>
+              <p className={styles.tierTagline}>
+                For brands running seasonal drops. Full structural + quality
+                set.
               </p>
-              <h3 className={styles.tierHeading}>What&apos;s included</h3>
+              <p className={styles.tierPriceAmount}>
+                ~$99<span className={styles.unit}>/mo</span>
+              </p>
+              <Link to="/#login" className={styles.tierCta}>
+                Get Growth →
+              </Link>
               <ul className={styles.tierList}>
-                <li>100 outfit generations/month (~20 SKUs at 5 images each)</li>
+                <li>100 outfit generations/month</li>
                 <li>10 model saves</li>
-                <li>
-                  Full 3-angle structural set: Front + Three-Quarter + Back
-                </li>
-                <li>
-                  <strong>Detail close-up generation</strong> (4th image)
-                </li>
-                <li>
-                  <strong>Flat lay output</strong> (5th image)
-                </li>
-                <li>White, Grey, and Off-white studio backgrounds</li>
-                <li>High-resolution output (1K, 2:3)</li>
-                <li>2 active brand style profiles</li>
+                <li>3-angle + Detail close-up + Flat lay</li>
+                <li>2 brand style profiles</li>
                 <li>Priority generation queue</li>
+                <li>High-res (1K, 2:3)</li>
               </ul>
-              <h3 className={styles.tierHeading}>What&apos;s locked</h3>
-              <ul className={`${styles.tierList} ${styles.locked}`}>
-                <li>Lifestyle imagery</li>
-                <li>Model diversity / multiple model looks per SKU</li>
-                <li>API access</li>
-              </ul>
-              <p className={styles.tierPitch}>
-                This is the 5-image set. Covers everything a Shopify PDP needs
-                to outperform a competitor using flat lays. Detail close-ups
-                remove quality doubt — the last trust gap before checkout.
-              </p>
-              <p className={styles.tierNote}>
-                Unit economics: ~$1.00/outfit at full usage.
-              </p>
+              <div className={styles.tierCardFooter}>
+                <a href="#compare-plans" className={styles.seeAllFeatures}>
+                  See all features →
+                </a>
+              </div>
             </div>
 
             {/* SCALE */}
             <div className={styles.tierCard}>
-              <h2 className={styles.tierName}>Scale</h2>
-              <p className={styles.tierPrice}>~$249/month</p>
-              <p className={styles.tierPrice}>
-                For brands running 50+ SKUs/season or managing multiple
-                collections.
+              <div className={styles.tierCardHeader}>
+                <h2 className={styles.tierName}>Scale</h2>
+              </div>
+              <p className={styles.tierTagline}>
+                For brands running 50+ SKUs/season or multiple collections.
               </p>
-              <h3 className={styles.tierHeading}>What&apos;s included</h3>
+              <p className={styles.tierPriceAmount}>
+                ~$249<span className={styles.unit}>/mo</span>
+              </p>
+              <Link to="/#login" className={styles.tierCta}>
+                Get Scale →
+              </Link>
               <ul className={styles.tierList}>
-                <li>
-                  300 outfit generations/month (~37 SKUs at full 8-image set)
-                </li>
+                <li>300 outfit generations/month</li>
                 <li>Unlimited model saves</li>
-                <li>Full 3-angle structural set + Detail + Flat lay</li>
-                <li>
-                  <strong>Lifestyle image generation</strong> (6th/7th image)
-                </li>
-                <li>All background options incl. custom background prompt</li>
-                <li>High-resolution output (1K, 2:3)</li>
-                <li>Unlimited brand style profiles</li>
-                <li>Rollover unused credits (up to 1 month)</li>
-                <li>Priority queue + early access to new features</li>
+                <li>Full set + Lifestyle imagery</li>
+                <li>Unlimited brand profiles</li>
+                <li>Credit rollover (up to 1 month)</li>
+                <li>Priority queue + early access</li>
               </ul>
-              <h3 className={styles.tierHeading}>What&apos;s locked</h3>
-              <ul className={`${styles.tierList} ${styles.locked}`}>
-                <li>API access (see Agency)</li>
-              </ul>
-              <p className={styles.tierPitch}>
-                The full 8-image set. Matches what the top 25 fashion brands
-                average per product. Lifestyle imagery is the retention and
-                brand-building layer.
-              </p>
-              <p className={styles.tierNote}>
-                Unit economics: ~$0.83/outfit at full usage.
-              </p>
+              <div className={styles.tierCardFooter}>
+                <a href="#compare-plans" className={styles.seeAllFeatures}>
+                  See all features →
+                </a>
+              </div>
             </div>
 
             {/* AGENCY */}
             <div className={styles.tierCard}>
-              <h2 className={styles.tierName}>Agency</h2>
-              <p className={styles.tierPrice}>Custom pricing</p>
-              <p className={styles.tierPrice}>
+              <div className={styles.tierCardHeader}>
+                <h2 className={styles.tierName}>Agency</h2>
+              </div>
+              <p className={styles.tierTagline}>
                 For studios, agencies, or brands managing multiple Shopify
                 stores.
               </p>
-              <h3 className={styles.tierHeading}>What&apos;s included</h3>
+              <p className={styles.tierPriceAmount}>Custom</p>
+              <Link to="/#login" className={styles.tierCta}>
+                Contact sales →
+              </Link>
               <ul className={styles.tierList}>
                 <li>Custom generation volume</li>
                 <li>All Scale features</li>
-                <li>API access for direct integration into studio workflows</li>
-                <li>Multiple workspace/client management</li>
-                <li>Dedicated account support</li>
-                <li>SLA for generation uptime</li>
-                <li>Custom model and brand style profile libraries</li>
+                <li>API access</li>
+                <li>Multi-workspace / client management</li>
+                <li>Dedicated support + SLA</li>
               </ul>
-              <p className={styles.tierPitch}>
-                White-label your workflow. Run TinyLemon as the engine inside
-                your client delivery.
-              </p>
+              <div className={styles.tierCardFooter}>
+                <a href="#compare-plans" className={styles.seeAllFeatures}>
+                  See all features →
+                </a>
+              </div>
             </div>
           </div>
 
-          <h2 className={styles.tableSectionTitle}>Compare plans</h2>
+          <div
+            id="compare-plans"
+            className={`${styles.compareSection} ${styles.compareAnchor}`}
+          >
+            <h2 className={styles.tableSectionTitle}>Compare plans</h2>
           <div className={styles.tableWrap}>
             <table className={styles.table}>
               <thead>
@@ -372,6 +350,7 @@ export default function PricingPage() {
                 </tr>
               </tbody>
             </table>
+          </div>
           </div>
 
           <div className={styles.savings}>

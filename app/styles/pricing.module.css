@@ -1,7 +1,7 @@
-/* Pricing page — matches landing page style */
+/* Pricing page — grid of cards, Krea-style */
 
 .section {
-  max-width: 56rem;
+  max-width: 72rem;
   margin: 0 auto;
   padding: 0 2rem 3rem;
 }
@@ -25,18 +25,34 @@
 }
 
 .tiers {
-  display: flex;
-  flex-direction: column;
-  gap: 2rem;
-  margin-bottom: 3rem;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 1.25rem;
+  margin-bottom: 2rem;
+}
+
+@media (max-width: 1200px) {
+  .tiers {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .tiers {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
 }
 
 .tierCard {
   background: var(--krea-card, #fff);
   border: 1px solid var(--krea-border, rgba(0, 0, 0, 0.08));
   border-radius: 1rem;
-  padding: 2rem 2.5rem;
+  padding: 1.5rem 1.25rem;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  min-height: 420px;
 }
 
 .tierCard.featured {
@@ -44,41 +60,92 @@
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
 }
 
-.tierName {
-  font-size: 1.25rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  margin: 0 0 0.25rem;
+.tierCardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
 }
 
-.tierPrice {
+.tierName {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.tierBadge {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: var(--krea-accent, #111);
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  white-space: nowrap;
+}
+
+.tierTagline {
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--krea-muted, #666);
+  margin: 0 0 1rem;
+}
+
+.tierPriceAmount {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--krea-text, #111);
+  margin: 0 0 1rem;
+  line-height: 1.2;
+}
+
+.tierPriceAmount .unit {
   font-size: 1rem;
   font-weight: 500;
   color: var(--krea-muted, #666);
-  margin: 0 0 1.25rem;
-  font-style: italic;
+}
+
+.tierCta {
+  display: inline-block;
+  width: 100%;
+  text-align: center;
+  padding: 0.75rem 1rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--krea-accent, #111);
+  border: none;
+  border-radius: 0.5rem;
+  text-decoration: none;
+  margin-bottom: 1rem;
+  transition: opacity 0.15s ease;
+}
+
+.tierCta:hover {
+  opacity: 0.9;
 }
 
 .tierHeading {
-  font-size: 0.8125rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   color: var(--krea-muted, #666);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  margin: 1rem 0 0.5rem;
-}
-
-.tierHeading:first-of-type {
-  margin-top: 0;
+  margin: 0 0 0.5rem;
 }
 
 .tierList {
   list-style: none;
   padding: 0;
-  margin: 0 0 0.75rem;
-  font-size: 0.9375rem;
-  line-height: 1.55;
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
   color: var(--krea-text, #111);
+  flex: 1;
 }
 
 .tierList li {
@@ -88,36 +155,56 @@
 }
 
 .tierList li::before {
-  content: "•";
+  content: "✓";
   position: absolute;
   left: 0;
   color: var(--krea-accent, #111);
+  font-weight: 700;
 }
 
 .tierList.locked li::before {
   content: "—";
   color: var(--krea-muted, #999);
+  font-weight: 400;
 }
 
-.tierPitch {
-  font-size: 0.9375rem;
-  line-height: 1.55;
-  color: var(--krea-muted, #555);
-  margin: 1rem 0 0;
-  padding-top: 1rem;
-  border-top: 1px solid var(--krea-border, rgba(0, 0, 0, 0.08));
+.tierCardFooter {
+  margin-top: auto;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--krea-border, rgba(0, 0, 0, 0.06));
 }
 
-.tierNote {
-  font-size: 0.875rem;
+.seeAllFeatures {
+  font-size: 0.8125rem;
   color: var(--krea-muted, #666);
-  margin: 0.75rem 0 0;
-  font-style: italic;
+  text-decoration: none;
+}
+
+.seeAllFeatures:hover {
+  color: var(--krea-text, #111);
+  text-decoration: underline;
+}
+
+.compareAnchor {
+  scroll-margin-top: 2rem;
+}
+
+.tableSectionTitle {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0 0 1rem;
+  padding: 0;
+}
+
+.compareSection {
+  margin-top: 3rem;
+  padding-top: 2.5rem;
+  border-top: 1px solid var(--krea-border, rgba(0, 0, 0, 0.08));
 }
 
 .tableWrap {
   overflow-x: auto;
-  margin: 2rem 0 3rem;
+  margin: 0 0 3rem;
   border: 1px solid var(--krea-border, rgba(0, 0, 0, 0.08));
   border-radius: 1rem;
   background: var(--krea-card, #fff);
@@ -169,12 +256,6 @@
   color: var(--krea-muted, #999);
 }
 
-.tableSectionTitle {
-  font-size: 1rem;
-  font-weight: 600;
-  margin: 2rem 0 1rem;
-  padding: 0 2rem;
-}
 
 .savings {
   max-width: 40rem;
