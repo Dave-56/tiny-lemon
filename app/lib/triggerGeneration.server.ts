@@ -9,6 +9,7 @@ import {
   reserveGenerations,
   PLAN_LIMITS,
   PLAN_ANGLES,
+  DEMO_SHOP_ID,
 } from "./billing.server";
 
 export type TriggerGenerationBody = {
@@ -92,9 +93,12 @@ export async function handleTriggerGeneration(
       brandStyleRecord?.angleIds?.length ?
         brandStyleRecord.angleIds
       : PLAN_ANGLES[plan] ?? PLAN_ANGLES.free;
-    const allowedPoses = (PLAN_ANGLES[plan] ?? PLAN_ANGLES.free).filter((p) =>
+    let allowedPoses = (PLAN_ANGLES[plan] ?? PLAN_ANGLES.free).filter((p) =>
       effectiveAngleIds.includes(p)
     );
+    if (shopId === DEMO_SHOP_ID) {
+      allowedPoses = ["front"];
+    }
 
     const outfit = await prisma.outfit.create({
       data: {

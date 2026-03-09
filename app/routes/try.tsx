@@ -1,0 +1,323 @@
+import { useState, useRef, useEffect } from "react";
+import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "react-router";
+import { Link, useFetcher, useLoaderData } from "react-router";
+import { readFileSync } from "fs";
+import { join } from "path";
+
+import { login } from "../shopify.server";
+import { ensureShop } from "../db.server";
+import { handleTriggerGeneration } from "../lib/triggerGeneration.server";
+import { DEMO_SHOP_ID } from "../lib/billing.server";
+import { checkDemoRateLimit, getClientIp } from "../lib/demoRateLimit.server";
+
+import landingStyles from "./_index/styles.module.css";
+import styles from "../styles/try.module.css";
+
+export const meta: MetaFunction = () => {
+  const title = "Try free: flat-lay to studio shot — Tiny Lemon";
+  const description =
+    "Generate one AI studio shot from your flat-lay in seconds. No signup. For fashion brands on Shopify.";
+  return [
+    { title },
+    { name: "description", content: description },
+    { property: "og:title", content: title },
+    { property: "og:description", content: description },
+  ];
+};
+
+type PresetModel = { id: string; name: string; imageUrl: string };
+
+export const loader = async (_args: LoaderFunctionArgs) => {
+  let presets: PresetModel[] = [];
+  try {
+    const path = join(process.cwd(), "public", "preset-models.json");
+    const raw = readFileSync(path, "utf-8");
+    const arr = JSON.parse(raw) as Array<{ id: string; name: string; imageUrl: string }>;
+    presets = arr.slice(0, 8).map((p) => ({ id: p.id, name: p.name, imageUrl: p.imageUrl }));
+  } catch {
+    // ignore
+  }
+  return { presets, showForm: Boolean(login) };
+};
+
+export const action = async ({ request }: ActionFunctionArgs) => {
+  if (request.method !== "POST") {
+    return Response.json({ error: "Method not allowed" }, { status: 405 });
+  }
+  const ip = getClientIp(request);
+  const { allowed } = checkDemoRateLimit(ip);
+  if (!allowed) {
+    return Response.json(
+      { error: "rate_limited", message: "One free generation per day. Try again tomorrow or install the app for more." },
+      { status: 429 }
+    );
+  }
+  const fd = await request.formData();
+  const modelId = (fd.get("modelId") as string) || "";
+  const flatLay = fd.get("flatLay") as File | null;
+  if (!flatLay || !modelId) {
+    return Response.json({ error: "Missing flatLay or modelId" }, { status: 400 });
+  }
+  const buf = Buffer.from(await flatLay.arrayBuffer());
+  const base64 = buf.toString("base64");
+  const mime = flatLay.type || "image/png";
+  let presets: PresetModel[] = [];
+  try {
+    const path = join(process.cwd(), "public", "preset-models.json");
+    const raw = readFileSync(path, "utf-8");
+    const arr = JSON.parse(raw) as Array<{ id: string; name: string; imageUrl: string }>;
+    presets = arr.map((p) => ({ id: p.id, name: p.name, imageUrl: p.imageUrl }));
+  } catch {
+    return Response.json({ error: "Presets unavailable" }, { status: 500 });
+  }
+  const preset = presets.find((p) => p.id === modelId);
+  if (!preset) {
+    return Response.json({ error: "Invalid model" }, { status: 400 });
+  }
+  await ensureShop(DEMO_SHOP_ID);
+  const res = await handleTriggerGeneration(DEMO_SHOP_ID, {
+    modelId: preset.id,
+    modelImageUrl: preset.imageUrl,
+    frontB64: base64,
+    frontMime: mime,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return Response.json(data, { status: res.status });
+  }
+  const data = (await res.json()) as { outfitId: string; shopId: string };
+  return Response.json(data);
+};
+
+export default function TryPage() {
+  const { presets, showForm } = useLoaderData<typeof loader>();
+  const fetcher = useFetcher<{ outfitId?: string; shopId?: string; error?: string; message?: string }>();
+  const [selectedModelId, setSelectedModelId] = useState<string>(presets[0]?.id ?? "");
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const isSubmitting = fetcher.state === "submitting" || fetcher.state === "loading";
+  const data = fetcher.data;
+  const error = data?.error ? (data.message || data.error) : null;
+  const outfitId = data?.outfitId ?? null;
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const url = URL.createObjectURL(file);
+      setPreviewUrl(url);
+    } else {
+      setPreviewUrl(null);
+    }
+  };
+
+  return (
+    <div className={landingStyles.page}>
+      <div className={landingStyles.headerWrapper}>
+        <header className={landingStyles.header}>
+          <Link to="/" className={landingStyles.logo}>
+            TinyLemon
+          </Link>
+          <nav className={landingStyles.nav} aria-label="Main">
+            <Link to="/features" className={landingStyles.navLink}>
+              Features
+            </Link>
+            <Link to="/pricing" className={landingStyles.navLink}>
+              Pricing
+            </Link>
+            <Link to="/try" className={landingStyles.navLink}>
+              Try free
+            </Link>
+            <Link to="/blog" className={landingStyles.navLink}>
+              Blog
+            </Link>
+            <Link to="/#how-it-works" className={landingStyles.navLink}>
+              About
+            </Link>
+            <Link to="/#login" className={landingStyles.navLink}>
+              Contact
+            </Link>
+            {showForm && (
+              <Link to="/#login" className={landingStyles.navLink}>
+                Log in
+              </Link>
+            )}
+          </nav>
+          <div className={landingStyles.headerActions}>
+            {showForm && (
+              <Link to="/#login" className={landingStyles.btnPrimary}>
+                Get started
+              </Link>
+            )}
+          </div>
+        </header>
+      </div>
+
+      <main>
+        <section className={styles.section}>
+          <h1 className={styles.pageTitle}>Try one free</h1>
+          <p className={styles.subtitle}>
+            Upload a flat-lay and pick a model. You get one front-angle studio
+            shot. No signup. One per day per device.
+          </p>
+
+          {outfitId ? (
+            <TryPollResult outfitId={outfitId} />
+          ) : (
+            <fetcher.Form method="post" className={styles.form}>
+              <div className={styles.field}>
+                <label className={styles.label}>Flat-lay image</label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  name="flatLay"
+                  accept="image/png,image/jpeg,image/webp"
+                  required
+                  onChange={handleFileChange}
+                  className={styles.fileInput}
+                />
+                {previewUrl && (
+                  <div className={styles.preview}>
+                    <img src={previewUrl} alt="Preview" />
+                  </div>
+                )}
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label}>Model</label>
+                <div className={styles.modelGrid}>
+                  {presets.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className={`${styles.modelCard} ${selectedModelId === p.id ? styles.modelCardSelected : ""}`}
+                      onClick={() => setSelectedModelId(p.id)}
+                    >
+                      <img src={p.imageUrl} alt={p.name} />
+                      <span>{p.name}</span>
+                    </button>
+                  ))}
+                </div>
+                <input type="hidden" name="modelId" value={selectedModelId} />
+              </div>
+              {error && <p className={styles.error}>{error}</p>}
+              <button
+                type="submit"
+                className={landingStyles.btnPrimary}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? "Generating…" : "Generate"}
+              </button>
+            </fetcher.Form>
+          )}
+
+          <p className={styles.cta}>
+            Need more angles and your store?{" "}
+            <Link to="/#login">Install the Tiny Lemon app</Link> and connect your
+            Shopify store.
+          </p>
+        </section>
+      </main>
+
+      <footer className={landingStyles.footer}>
+        <div className={landingStyles.footerTop}>
+          <div className={landingStyles.footerBrand}>
+            <Link to="/" className={landingStyles.footerLogo}>
+              TinyLemon
+            </Link>
+            <p className={landingStyles.footerTagline}>
+              Beautiful product photos in minutes. For fashion brands on Shopify.
+            </p>
+          </div>
+          <div className={landingStyles.footerColumns}>
+            <div className={landingStyles.footerCol}>
+              <h3 className={landingStyles.footerHeading}>Product</h3>
+              <Link to="/features" className={landingStyles.footerLink}>
+                Features
+              </Link>
+              <Link to="/pricing" className={landingStyles.footerLink}>
+                Pricing
+              </Link>
+              <Link to="/try" className={landingStyles.footerLink}>
+                Try free
+              </Link>
+              <a href="/#login" className={landingStyles.footerLink}>
+                Contact
+              </a>
+            </div>
+            <div className={landingStyles.footerCol}>
+              <h3 className={landingStyles.footerHeading}>Company</h3>
+              <Link to="/blog" className={landingStyles.footerLink}>
+                Blog
+              </Link>
+              <a href="/#how-it-works" className={landingStyles.footerLink}>
+                About
+              </a>
+              <a href="/#login" className={landingStyles.footerLink}>
+                Contact
+              </a>
+            </div>
+            <div className={landingStyles.footerCol}>
+              <h3 className={landingStyles.footerHeading}>Legal</h3>
+              <Link to="/privacy" className={landingStyles.footerLink}>
+                Privacy Policy
+              </Link>
+              <Link to="/terms" className={landingStyles.footerLink}>
+                Terms of Use
+              </Link>
+            </div>
+          </div>
+        </div>
+        <div className={landingStyles.footerBottom}>
+          <span className={landingStyles.footerCopyright}>
+            © {new Date().getFullYear()} TinyLemon.
+          </span>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+function TryPollResult({ outfitId }: { outfitId: string }) {
+  const [status, setStatus] = useState<"pending" | "processing" | "completed" | "failed">("pending");
+  const [images, setImages] = useState<{ pose: string; imageUrl: string }[]>([]);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      const res = await fetch(`/try/status?outfitId=${encodeURIComponent(outfitId)}`);
+      const data = (await res.json()) as {
+        status: string;
+        errorMessage?: string | null;
+        images?: { pose: string; imageUrl: string }[];
+      };
+      if (cancelled) return;
+      setStatus(data.status as "pending" | "processing" | "completed" | "failed");
+      if (data.errorMessage) setErrorMsg(data.errorMessage);
+      if (data.images?.length) setImages(data.images);
+      if (data.status !== "completed" && data.status !== "failed") {
+        setTimeout(poll, 2500);
+      }
+    };
+    poll();
+    return () => {
+      cancelled = true;
+    };
+  }, [outfitId]);
+
+  return (
+    <div className={styles.result}>
+      {status === "pending" || status === "processing" ? (
+        <p className={styles.resultStatus}>Generating your studio shot…</p>
+      ) : status === "failed" ? (
+        <p className={styles.error}>{errorMsg || "Generation failed. Try again or install the app."}</p>
+      ) : (
+        <div className={styles.resultImages}>
+          {images.map((img) => (
+            <img key={img.pose} src={img.imageUrl} alt={img.pose} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

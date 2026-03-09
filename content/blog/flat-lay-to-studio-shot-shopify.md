@@ -29,4 +29,4 @@ This workflow fits **fashion brands on Shopify** that want to:
 - Keep one consistent look across the catalog
 - Ship new products fast with professional-looking assets
 
-If that sounds like you, you can [try one free generation](/try) or [install the Tiny Lemon app](https://apps.shopify.com) and connect your store to get started.
+If that sounds like you, you can [try one free generation](/try) or [install the Tiny Lemon app](/#login) and connect your store to get started.

@@ -1,0 +1,137 @@
+.section {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 0 2rem 4rem;
+}
+
+.pageTitle {
+  font-size: clamp(1.75rem, 4vw, 2.25rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin: 0 0 0.5rem;
+  font-family: "Space Grotesk", sans-serif;
+  text-align: center;
+}
+
+.subtitle {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--krea-muted, #555);
+  margin: 0 auto 2rem;
+  text-align: center;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.label {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--krea-text, #111);
+}
+
+.fileInput {
+  font-size: 0.9375rem;
+  padding: 0.5rem 0;
+}
+
+.preview {
+  margin-top: 0.5rem;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--krea-border, rgba(0, 0, 0, 0.08));
+  max-width: 280px;
+}
+
+.preview img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.modelGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 0.75rem;
+}
+
+.modelCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem;
+  border: 2px solid var(--krea-border, rgba(0, 0, 0, 0.08));
+  border-radius: 10px;
+  background: var(--krea-card, #fff);
+  cursor: pointer;
+  font-size: 0.75rem;
+  transition: border-color 0.15s;
+}
+
+.modelCard:hover {
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+.modelCardSelected {
+  border-color: var(--krea-accent, #111);
+}
+
+.modelCard img {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.error {
+  font-size: 0.9375rem;
+  color: #b91c1c;
+  margin: 0;
+}
+
+.cta {
+  font-size: 0.9375rem;
+  color: var(--krea-muted, #555);
+  text-align: center;
+  margin: 0;
+}
+
+.cta a {
+  color: var(--krea-accent, #111);
+  text-decoration: underline;
+}
+
+.result {
+  margin-bottom: 2rem;
+}
+
+.resultStatus {
+  text-align: center;
+  color: var(--krea-muted, #555);
+}
+
+.resultImages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.resultImages img {
+  max-width: 100%;
+  width: 280px;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid var(--krea-border, rgba(0, 0, 0, 0.08));
+}

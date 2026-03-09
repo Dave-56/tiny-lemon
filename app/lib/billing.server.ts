@@ -37,6 +37,7 @@ export async function getMonthlyUsage(shopId: string): Promise<number> {
 }
 
 export async function getPlanForShop(shopId: string): Promise<string> {
+  if (shopId === DEMO_SHOP_ID) return "free";
   const shop = await prisma.shop.findUnique({
     where: { id: shopId },
     select: { plan: true },
@@ -61,6 +62,9 @@ export async function reserveGenerations(
   shopId: string,
   count: number,
 ): Promise<string> {
+  if (shopId === DEMO_SHOP_ID) {
+    return "free";
+  }
   const plan = await getPlanForShop(shopId);
   const limit = PLAN_LIMITS[plan] ?? PLAN_LIMITS.free;
   const startOfMonth = startOfCalendarMonth();
