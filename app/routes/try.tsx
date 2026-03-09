@@ -173,6 +173,9 @@ export default function TryPage() {
             <fetcher.Form method="post" className={styles.form}>
               <div className={styles.field}>
                 <label className={styles.label}>Flat-lay image</label>
+                <p className={styles.modelHint}>
+                  Upload a photo of your product laid flat. Your shot will use this image.
+                </p>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -180,46 +183,44 @@ export default function TryPage() {
                   accept="image/png,image/jpeg,image/webp"
                   required
                   onChange={handleFileChange}
-                  className={styles.fileInput}
+                  className={styles.fileInputHidden}
+                  id="flatlay-upload"
                 />
+                <button
+                  type="button"
+                  className={styles.uploadButton}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {previewUrl ? "Change flat-lay image" : "Choose flat-lay image"}
+                </button>
                 {previewUrl && (
-                  <div className={styles.preview}>
-                    <img src={previewUrl} alt="Preview" />
+                  <div className={styles.flatlayPreview}>
+                    <img src={previewUrl} alt="Your flat-lay" />
                   </div>
                 )}
               </div>
               <div className={styles.field}>
                 <label className={styles.label}>Model</label>
-                <div className={styles.modelSection}>
-                  {selectedModelId && (() => {
-                    const selected = presets.find((p) => p.id === selectedModelId);
-                    if (!selected) return null;
-                    return (
-                      <div className={styles.selectedPreview} aria-hidden>
-                        <img src={selected.imageUrl} alt="" />
-                        <span className={styles.selectedName}>Choosing: {selected.name}</span>
-                      </div>
-                    );
-                  })()}
-                  <p className={styles.modelHint}>
-                    Click a model to select — your shot will use their look.
-                  </p>
-                  <div className={styles.modelGrid}>
-                    {presets.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        className={`${styles.modelCard} ${selectedModelId === p.id ? styles.modelCardSelected : ""}`}
-                        onClick={() => setSelectedModelId(p.id)}
-                        title={`Select ${p.name}`}
-                      >
-                        <img src={p.imageUrl} alt={p.name} />
-                        <span>{p.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                  <input type="hidden" name="modelId" value={selectedModelId} />
+                <p className={styles.modelHint}>
+                  Click a model to select — your shot will use their look.
+                </p>
+                <div className={styles.modelGridWrapper}>
+                <div className={styles.modelGrid}>
+                  {presets.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className={`${styles.modelCard} ${selectedModelId === p.id ? styles.modelCardSelected : ""}`}
+                      onClick={() => setSelectedModelId(p.id)}
+                      title={`Select ${p.name}`}
+                    >
+                      <img src={p.imageUrl} alt={p.name} />
+                      <span>{p.name}</span>
+                    </button>
+                  ))}
                 </div>
+                </div>
+                <input type="hidden" name="modelId" value={selectedModelId} />
               </div>
               {error && <p className={styles.error}>{error}</p>}
               <button

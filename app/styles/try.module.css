@@ -1,5 +1,5 @@
 .section {
-  max-width: 40rem;
+  max-width: 56rem;
   margin: 0 auto;
   padding: 0 2rem 4rem;
 }
@@ -45,46 +45,48 @@
   color: var(--krea-text, #111);
 }
 
-.fileInput {
-  font-size: 0.9375rem;
-  padding: 0.5rem 0;
-}
-
-.preview {
-  margin-top: 0.5rem;
-  border-radius: 8px;
+.fileInputHidden {
+  position: absolute;
+  width: 0.1px;
+  height: 0.1px;
+  opacity: 0;
   overflow: hidden;
-  border: 1px solid var(--krea-border, rgba(0, 0, 0, 0.08));
-  max-width: 280px;
+  z-index: -1;
 }
 
-.preview img {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-
-.selectedPreview {
-  margin-bottom: 1rem;
-  text-align: center;
-}
-
-.selectedPreview img {
-  width: 100%;
-  max-width: 280px;
-  height: auto;
-  aspect-ratio: 3 / 4;
-  object-fit: cover;
-  border-radius: 12px;
-  border: 2px solid var(--krea-border, rgba(0, 0, 0, 0.08));
-  display: block;
-  margin: 0 auto 0.5rem;
-}
-
-.selectedName {
+.uploadButton {
+  display: inline-block;
   font-size: 0.9375rem;
   font-weight: 600;
-  color: var(--krea-text, #111);
+  padding: 0.75rem 1.25rem;
+  border: 2px solid var(--krea-accent, #111);
+  border-radius: 10px;
+  background: var(--krea-card, #fff);
+  color: var(--krea-accent, #111);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.uploadButton:hover {
+  background: var(--krea-accent, #111);
+  color: #fff;
+}
+
+.flatlayPreview {
+  margin-top: 1rem;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 2px solid var(--krea-border, rgba(0, 0, 0, 0.08));
+  max-width: 320px;
+  background: var(--krea-muted, #f5f5f5);
+}
+
+.flatlayPreview img {
+  width: 100%;
+  height: auto;
+  display: block;
+  max-height: 320px;
+  object-fit: contain;
 }
 
 .modelHint {
@@ -93,9 +95,14 @@
   margin: 0 0 0.75rem;
 }
 
+.modelGridWrapper {
+  max-width: 56rem;
+  margin: 0 auto;
+}
+
 .modelGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 1rem;
 }
 
@@ -103,14 +110,14 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.375rem;
+  gap: 0.5rem;
   padding: 0.5rem;
   border: 2px solid var(--krea-border, rgba(0, 0, 0, 0.08));
   border-radius: 12px;
   background: var(--krea-card, #fff);
   cursor: pointer;
-  font-size: 0.8125rem;
-  font-weight: 500;
+  font-size: 0.9375rem;
+  font-weight: 600;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
@@ -136,7 +143,6 @@
 .modelCard img {
   width: 100%;
   aspect-ratio: 3 / 4;
-  max-height: 140px;
   object-fit: cover;
   border-radius: 8px;
 }
