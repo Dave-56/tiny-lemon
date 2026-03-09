@@ -10,16 +10,24 @@
 }
 
 /* ----- Header ----- */
+.headerWrapper {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  padding: 1rem 2rem 1.5rem;
+}
+
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1.25rem 2rem;
+  padding: 0.875rem 1.5rem;
+  max-width: 72rem;
+  margin: 0 auto;
   background: var(--krea-sidebar, #fff);
-  border-bottom: 1px solid var(--krea-border, rgba(0, 0, 0, 0.08));
-  position: sticky;
-  top: 0;
-  z-index: 10;
+  border-radius: 14px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--krea-border, rgba(0, 0, 0, 0.06));
 }
 
 .logo {
@@ -33,7 +41,7 @@
 .nav {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
+  gap: 2rem;
 }
 
 .navLink {
@@ -76,18 +84,19 @@
   color: var(--krea-btn-text, #fff);
   background: var(--krea-btn-bg, #111);
   text-decoration: none;
-  padding: 0.5rem 1rem;
-  border-radius: 0.5rem;
+  padding: 0.5rem 1.25rem;
+  border-radius: 10px;
   border: none;
   cursor: pointer;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.15s ease, transform 0.1s ease;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
 
 .btnPrimary:hover {
-  opacity: 0.9;
+  opacity: 0.92;
 }
 
 /* ----- Hero ----- */
@@ -368,36 +377,160 @@
 /* ----- Footer ----- */
 .footer {
   margin-top: auto;
-  padding: 1.5rem 2rem;
-  border-top: 1px solid var(--krea-border, rgba(0, 0, 0, 0.08));
+  background: #0f0f0f;
+  color: #e5e5e5;
+  padding: 3rem 2rem 1.5rem;
+}
+
+.footerTop {
+  max-width: 72rem;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1.2fr 1.8fr;
+  gap: 3rem;
+  padding-bottom: 2rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.footerBrand {
   display: flex;
-  justify-content: center;
-  gap: 1.5rem;
-  background: var(--krea-sidebar, #fff);
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.footerLogo {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #fff;
+  text-decoration: none;
+  letter-spacing: -0.02em;
+}
+
+.footerLogo:hover {
+  color: #fff;
+  opacity: 0.9;
+}
+
+.footerTagline {
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: #a3a3a3;
+  margin: 0;
+  max-width: 20rem;
+}
+
+.footerColumns {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+}
+
+.footerCol {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.footerHeading {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 0.25rem;
 }
 
 .footerLink {
   font-size: 0.875rem;
-  color: var(--krea-muted, #666);
+  color: #a3a3a3;
   text-decoration: none;
   transition: color 0.15s ease;
 }
 
 .footerLink:hover {
-  color: var(--krea-text, #111);
+  color: #fff;
+}
+
+.footerBottom {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding-top: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.footerCopyright {
+  font-size: 0.8125rem;
+  color: #737373;
+}
+
+.footerSocial {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.footerSocialLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #a3a3a3;
+  transition: color 0.15s ease;
+}
+
+.footerSocialLink:hover {
+  color: #fff;
 }
 
 /* ----- Responsive ----- */
-@media (max-width: 640px) {
+@media (max-width: 768px) {
+  .headerWrapper {
+    padding: 0.75rem 1rem 1rem;
+  }
+
   .header {
-    padding: 1rem 1.25rem;
     flex-wrap: wrap;
     gap: 0.75rem;
+    padding: 0.75rem 1rem;
+  }
+
+  .nav {
+    order: 3;
+    width: 100%;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .footerTop {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+
+  .footerColumns {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .header {
+    padding: 0.75rem 1rem;
   }
 
   .headerActions {
     width: 100%;
     justify-content: flex-end;
+  }
+
+  .footerColumns {
+    grid-template-columns: 1fr;
+  }
+
+  .footerBottom {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .hero {

@@ -39,28 +39,39 @@ export default function LandingPage() {
 
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <a href="/" className={styles.logo}>
-          Tiny Lemon
-        </a>
-        <nav className={styles.nav}>
-          {showForm && (
+      <div className={styles.headerWrapper}>
+        <header className={styles.header}>
+          <a href="/" className={styles.logo}>
+            TinyLemon
+          </a>
+          <nav className={styles.nav} aria-label="Main">
+            <a href="#how-it-works" className={styles.navLink}>
+              Features
+            </a>
+            <a href="#pricing" className={styles.navLink}>
+              Pricing
+            </a>
+            <a href="#how-it-works" className={styles.navLink}>
+              About
+            </a>
             <a href="#login" className={styles.navLink}>
-              Log in
+              Contact
             </a>
-          )}
-        </nav>
-        {showForm && (
+            {showForm && (
+              <a href="#login" className={styles.navLink}>
+                Log in
+              </a>
+            )}
+          </nav>
           <div className={styles.headerActions}>
-            <a href="#login" className={styles.btnGhost}>
-              Get started
-            </a>
-            <a href="#login" className={styles.btnPrimary}>
-              Log in
-            </a>
+            {showForm && (
+              <a href="#login" className={styles.btnPrimary}>
+                Get started
+              </a>
+            )}
           </div>
-        )}
-      </header>
+        </header>
+      </div>
 
       <main>
         <section className={styles.hero}>
@@ -121,7 +132,7 @@ export default function LandingPage() {
           </ol>
         </section>
 
-        <section className={styles.features}>
+        <section id="pricing" className={styles.features}>
           <div className={styles.featureCard}>
             <h2 className={styles.featureTitle}>
               One consistent look across your catalog
@@ -173,12 +184,83 @@ export default function LandingPage() {
       </main>
 
       <footer className={styles.footer}>
-        <a href="/privacy" className={styles.footerLink}>
-          Privacy
-        </a>
-        <a href="/terms" className={styles.footerLink}>
-          Terms
-        </a>
+        <div className={styles.footerTop}>
+          <div className={styles.footerBrand}>
+            <a href="/" className={styles.footerLogo}>
+              TinyLemon
+            </a>
+            <p className={styles.footerTagline}>
+              Studio-quality product angles in minutes. Built for Shopify
+              fashion brands.
+            </p>
+          </div>
+          <div className={styles.footerColumns}>
+            <div className={styles.footerCol}>
+              <h3 className={styles.footerHeading}>Product</h3>
+              <a href="#how-it-works" className={styles.footerLink}>
+                Features
+              </a>
+              <a href="#pricing" className={styles.footerLink}>
+                Pricing
+              </a>
+              <a href="#login" className={styles.footerLink}>
+                Contact
+              </a>
+            </div>
+            <div className={styles.footerCol}>
+              <h3 className={styles.footerHeading}>Company</h3>
+              <a href="#how-it-works" className={styles.footerLink}>
+                About
+              </a>
+              <a href="#login" className={styles.footerLink}>
+                Contact
+              </a>
+            </div>
+            <div className={styles.footerCol}>
+              <h3 className={styles.footerHeading}>Legal</h3>
+              <a href="/privacy" className={styles.footerLink}>
+                Privacy Policy
+              </a>
+              <a href="/terms" className={styles.footerLink}>
+                Terms of Use
+              </a>
+            </div>
+          </div>
+        </div>
+        <div className={styles.footerBottom}>
+          <span className={styles.footerCopyright}>
+            © {new Date().getFullYear()} TinyLemon.
+          </span>
+          <div className={styles.footerSocial}>
+            <a
+              href="https://twitter.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.footerSocialLink}
+              aria-label="X (Twitter)"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+            </a>
+            <a
+              href="https://linkedin.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.footerSocialLink}
+              aria-label="LinkedIn"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg>
+            </a>
+            <a
+              href="https://instagram.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.footerSocialLink}
+              aria-label="Instagram"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+            </a>
+          </div>
+        </div>
       </footer>
     </div>
   );
