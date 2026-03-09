@@ -35,9 +35,6 @@ export default function BlogIndexPage() {
             TinyLemon
           </Link>
           <nav className={landingStyles.nav} aria-label="Main">
-            <Link to="/try" className={landingStyles.navLink}>
-              Try free
-            </Link>
             <Link to="/#features" className={landingStyles.navLink}>
               Features
             </Link>

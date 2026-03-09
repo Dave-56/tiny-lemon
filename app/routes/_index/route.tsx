@@ -46,9 +46,6 @@ export default function LandingPage() {
             TinyLemon
           </a>
           <nav className={styles.nav} aria-label="Main">
-            <Link to="/try" className={styles.navLink}>
-              Try free
-            </Link>
             <a href="#features" className={styles.navLink}>
               Features
             </a>
