@@ -49,7 +49,7 @@
 
 | # | Gig title / description | Platform (Upwork) | Posted | Status | Responses | Stores contacted | Installs | Reviews left | Notes |
 |---|---------------------------|-------------------|--------|--------|-----------|------------------|----------|--------------|--------|
-| 1 | *(see Upwork post below)* | Upwork | | Draft / Live | | | | | |
+| 1 | Fashion store manager — try our Shopify app (flat-lay → studio shots), leave a review | Upwork | 2025-03-09 | Live | | | | | |
 | 2 | | Upwork | | | | | | | |
 | 3 | | Upwork | | | | | | | |
 | 4 | | Upwork | | | | | | | |

@@ -12,15 +12,17 @@ const LANDING_2 = {
   after: "/landing-after-1.png",
 };
 
-export const meta: MetaFunction = () => {
+export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const title = "Tiny Lemon: Studio shots from flat-lays in 60 seconds";
   const description =
     "Turn flat-lays into studio shots in 60 seconds. No photographer, no $15K shoot. Front, 3/4, and back angles for your Shopify fashion store.";
+  const ogImage = data?.origin ? `${data.origin}/app-icon-1200x1200.png` : undefined;
   return [
     { title },
     { name: "description", content: description },
     { property: "og:title", content: title },
     { property: "og:description", content: description },
+    ...(ogImage ? [{ property: "og:image", content: ogImage }] : []),
   ];
 };
 
@@ -32,7 +34,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   const installUrl = process.env.SHOPIFY_APP_INSTALL_URL ?? "";
-  return { showForm: Boolean(login), installUrl };
+  const origin = new URL(request.url).origin;
+  return { showForm: Boolean(login), installUrl, origin };
 };
 
 function normalizeShopDomain(value: string): string {
@@ -50,8 +53,9 @@ export default function LandingPage() {
     <div className={styles.page}>
       <div className={styles.headerWrapper}>
         <header className={styles.header}>
-          <a href="/" className={styles.logo}>
-            TinyLemon
+          <a href="/" className={styles.logo} aria-label="Tiny Lemon home">
+            <img src="/app-icon-1200x1200.png" alt="" className={styles.logoIcon} width={32} height={32} />
+            <span>TinyLemon</span>
           </a>
           <nav className={styles.nav} aria-label="Main">
             <a href="#features" className={styles.navLink}>
@@ -264,8 +268,9 @@ export default function LandingPage() {
       <footer className={styles.footer}>
         <div className={styles.footerTop}>
           <div className={styles.footerBrand}>
-            <a href="/" className={styles.footerLogo}>
-              TinyLemon
+            <a href="/" className={styles.footerLogo} aria-label="Tiny Lemon home">
+              <img src="/app-icon-1200x1200.png" alt="" className={styles.footerLogoIcon} width={28} height={28} />
+              <span>TinyLemon</span>
             </a>
             <p className={styles.footerTagline}>
               Beautiful product photos in minutes. For fashion brands on

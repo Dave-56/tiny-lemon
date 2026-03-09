@@ -11,6 +11,8 @@ export default function App() {
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <link rel="icon" href="/app-icon-1200x1200.png" type="image/png" />
+        <link rel="apple-touch-icon" href="/app-icon-1200x1200.png" />
         <link rel="preconnect" href="https://cdn.shopify.com/" />
         <link
           rel="stylesheet"
