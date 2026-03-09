@@ -35,6 +35,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return { showForm: Boolean(login), installUrl };
 };
 
+function normalizeShopDomain(value: string): string {
+  const trimmed = value.trim().toLowerCase().replace(/^https?:\/\//, "").split("/")[0] ?? "";
+  if (!trimmed) return "";
+  if (trimmed.endsWith(".myshopify.com")) return trimmed;
+  if (trimmed.includes(".myshopify.com")) return trimmed;
+  return `${trimmed.replace(/\.myshopify\.com$/i, "")}.myshopify.com`;
+}
+
 export default function LandingPage() {
   const { showForm, installUrl } = useLoaderData<typeof loader>();
 
@@ -211,14 +219,13 @@ export default function LandingPage() {
             New to Tiny Lemon? Add the app to your store. Already use it? Log in
             below.
           </p>
-          {showForm && installUrl && (
+          {showForm && (
             <a
-              href={installUrl}
-              target="_blank"
-              rel="noopener noreferrer"
+              href={installUrl || "/auth/login"}
+              {...(installUrl ? { target: "_blank", rel: "noopener noreferrer" } : {})}
               className={styles.loginPrimaryCta}
             >
-              Add to Shopify
+              Add the app to my store
             </a>
           )}
           {showForm && (
@@ -228,6 +235,13 @@ export default function LandingPage() {
                 className={styles.form}
                 method="post"
                 action="/auth/login"
+                onSubmit={(e) => {
+                  const form = e.currentTarget;
+                  const shopInput = form.querySelector<HTMLInputElement>('input[name="shop"]');
+                  if (shopInput?.value) {
+                    shopInput.value = normalizeShopDomain(shopInput.value);
+                  }
+                }}
               >
                 <label className={styles.label}>
                   <span className={styles.labelText}>Shop domain</span>

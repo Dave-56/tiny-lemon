@@ -37,7 +37,8 @@ export const loader = async (_args: LoaderFunctionArgs) => {
   } catch {
     // ignore
   }
-  return { presets, showForm: Boolean(login) };
+  const installUrl = process.env.SHOPIFY_APP_INSTALL_URL ?? "";
+  return { presets, showForm: Boolean(login), installUrl };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -89,8 +90,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return Response.json(data);
 };
 
+function normalizeShopDomain(value: string): string {
+  const trimmed = value.trim().toLowerCase().replace(/^https?:\/\//, "").split("/")[0] ?? "";
+  if (!trimmed) return "";
+  if (trimmed.endsWith(".myshopify.com")) return trimmed;
+  if (trimmed.includes(".myshopify.com")) return trimmed;
+  return `${trimmed.replace(/\.myshopify\.com$/i, "")}.myshopify.com`;
+}
+
 export default function TryPage() {
-  const { presets, showForm } = useLoaderData<typeof loader>();
+  const { presets, showForm, installUrl } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<{ outfitId?: string; shopId?: string; error?: string; message?: string }>();
   const [selectedModelId, setSelectedModelId] = useState<string>(presets[0]?.id ?? "");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -224,10 +233,55 @@ export default function TryPage() {
           )}
 
           <p className={styles.cta}>
-            Need more angles and your store?{" "}
-            <Link to="/#login">Install the Tiny Lemon app</Link> and connect your
-            Shopify store.
+            Need more angles and your store? Add the app and connect your
+            Shopify store below.
           </p>
+
+          {showForm && (
+            <section id="login" className={landingStyles.loginSection}>
+              <h2 className={landingStyles.loginTitle}>Get started</h2>
+              <p className={landingStyles.loginSubtext}>
+                New to Tiny Lemon? Add the app to your store. Already use it? Log
+                in below.
+              </p>
+              <a
+                href={installUrl || "/auth/login"}
+                {...(installUrl ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                className={landingStyles.loginPrimaryCta}
+              >
+                Add the app to my store
+              </a>
+              <p className={landingStyles.loginDivider}>Already have the app?</p>
+              <form
+                className={landingStyles.form}
+                method="post"
+                action="/auth/login"
+                onSubmit={(e) => {
+                  const form = e.currentTarget;
+                  const shopInput = form.querySelector<HTMLInputElement>('input[name="shop"]');
+                  if (shopInput?.value) {
+                    shopInput.value = normalizeShopDomain(shopInput.value);
+                  }
+                }}
+              >
+                <label className={landingStyles.label}>
+                  <span className={landingStyles.labelText}>Shop domain</span>
+                  <input
+                    className={landingStyles.input}
+                    type="text"
+                    name="shop"
+                    placeholder="my-store.myshopify.com"
+                    required
+                    pattern="[a-z0-9][a-z0-9-]*\.myshopify\.com"
+                    title="Enter your Shopify store domain (e.g. my-store.myshopify.com)"
+                  />
+                </label>
+                <button type="submit" className={landingStyles.btnGhost}>
+                  Log in
+                </button>
+              </form>
+            </section>
+          )}
         </section>
       </main>
 
