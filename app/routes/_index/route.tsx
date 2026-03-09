@@ -1,5 +1,5 @@
 import type { LoaderFunctionArgs, MetaFunction } from "react-router";
-import { redirect, Form, useLoaderData } from "react-router";
+import { redirect, Form, Link, useLoaderData } from "react-router";
 
 import { login } from "../../shopify.server";
 import { BeforeAfterSlider } from "../../components/BeforeAfterSlider";
@@ -45,12 +45,12 @@ export default function LandingPage() {
             TinyLemon
           </a>
           <nav className={styles.nav} aria-label="Main">
-            <a href="#how-it-works" className={styles.navLink}>
+            <Link to="/features" className={styles.navLink}>
               Features
-            </a>
-            <a href="#pricing" className={styles.navLink}>
+            </Link>
+            <Link to="/pricing" className={styles.navLink}>
               Pricing
-            </a>
+            </Link>
             <a href="#how-it-works" className={styles.navLink}>
               About
             </a>
@@ -190,19 +190,19 @@ export default function LandingPage() {
               TinyLemon
             </a>
             <p className={styles.footerTagline}>
-              Studio-quality product angles in minutes. Built for Shopify
-              fashion brands.
+              Beautiful product photos in minutes. For fashion brands on
+              Shopify.
             </p>
           </div>
           <div className={styles.footerColumns}>
             <div className={styles.footerCol}>
               <h3 className={styles.footerHeading}>Product</h3>
-              <a href="#how-it-works" className={styles.footerLink}>
+              <Link to="/features" className={styles.footerLink}>
                 Features
-              </a>
-              <a href="#pricing" className={styles.footerLink}>
+              </Link>
+              <Link to="/pricing" className={styles.footerLink}>
                 Pricing
-              </a>
+              </Link>
               <a href="#login" className={styles.footerLink}>
                 Contact
               </a>
