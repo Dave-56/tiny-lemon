@@ -39,6 +39,12 @@ export default function FeaturesPage() {
             <Link to="/pricing" className={landingStyles.navLink}>
               Pricing
             </Link>
+            <Link to="/try" className={landingStyles.navLink}>
+              Try free
+            </Link>
+            <Link to="/blog" className={landingStyles.navLink}>
+              Blog
+            </Link>
             <Link to="/#how-it-works" className={landingStyles.navLink}>
               About
             </Link>
@@ -218,12 +224,18 @@ export default function FeaturesPage() {
               <Link to="/pricing" className={landingStyles.footerLink}>
                 Pricing
               </Link>
+              <Link to="/try" className={landingStyles.footerLink}>
+                Try free
+              </Link>
               <Link to="/#login" className={landingStyles.footerLink}>
                 Contact
               </Link>
             </div>
             <div className={landingStyles.footerCol}>
               <h3 className={landingStyles.footerHeading}>Company</h3>
+              <Link to="/blog" className={landingStyles.footerLink}>
+                Blog
+              </Link>
               <Link to="/#how-it-works" className={landingStyles.footerLink}>
                 About
               </Link>

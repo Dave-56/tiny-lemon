@@ -26,7 +26,7 @@
 
 .tiers {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 1.25rem;
   margin-bottom: 2rem;
 }
@@ -81,7 +81,7 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: #fff;
-  background: var(--krea-accent, #111);
+  background: #2563eb;
   padding: 0.25rem 0.5rem;
   border-radius: 0.25rem;
   white-space: nowrap;

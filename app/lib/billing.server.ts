@@ -1,6 +1,9 @@
 import { Prisma } from "@prisma/client";
 import prisma from "../db.server";
 
+/** Demo shop id for public /try free tool. No credits; rate limit only. */
+export const DEMO_SHOP_ID = process.env.DEMO_SHOP_ID ?? "__demo__";
+
 export const PLAN_LIMITS: Record<string, number> = {
   free: 3,
   Starter: 30,

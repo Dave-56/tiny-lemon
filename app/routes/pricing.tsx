@@ -39,6 +39,12 @@ export default function PricingPage() {
             <Link to="/pricing" className={landingStyles.navLink}>
               Pricing
             </Link>
+            <Link to="/try" className={landingStyles.navLink}>
+              Try free
+            </Link>
+            <Link to="/blog" className={landingStyles.navLink}>
+              Blog
+            </Link>
             <Link to="/#how-it-works" className={landingStyles.navLink}>
               About
             </Link>
@@ -189,33 +195,6 @@ export default function PricingPage() {
                 </a>
               </div>
             </div>
-
-            {/* AGENCY */}
-            <div className={styles.tierCard}>
-              <div className={styles.tierCardHeader}>
-                <h2 className={styles.tierName}>Agency</h2>
-              </div>
-              <p className={styles.tierTagline}>
-                For studios, agencies, or brands managing multiple Shopify
-                stores.
-              </p>
-              <p className={styles.tierPriceAmount}>Custom</p>
-              <Link to="/#login" className={styles.tierCta}>
-                Contact sales →
-              </Link>
-              <ul className={styles.tierList}>
-                <li>Custom generation volume</li>
-                <li>All Scale features</li>
-                <li>API access</li>
-                <li>Multi-workspace / client management</li>
-                <li>Dedicated support + SLA</li>
-              </ul>
-              <div className={styles.tierCardFooter}>
-                <a href="#compare-plans" className={styles.seeAllFeatures}>
-                  See all features →
-                </a>
-              </div>
-            </div>
           </div>
 
           <div
@@ -232,7 +211,6 @@ export default function PricingPage() {
                   <th>Starter</th>
                   <th>Growth</th>
                   <th>Scale</th>
-                  <th>Agency</th>
                 </tr>
               </thead>
               <tbody>
@@ -242,7 +220,6 @@ export default function PricingPage() {
                   <td>30</td>
                   <td>100</td>
                   <td>300</td>
-                  <td>Custom</td>
                 </tr>
                 <tr>
                   <td>Model saves</td>
@@ -250,11 +227,9 @@ export default function PricingPage() {
                   <td>3</td>
                   <td>10</td>
                   <td>Unlimited</td>
-                  <td>Unlimited</td>
                 </tr>
                 <tr>
                   <td>Front hero</td>
-                  <td className={styles.yes}>Yes</td>
                   <td className={styles.yes}>Yes</td>
                   <td className={styles.yes}>Yes</td>
                   <td className={styles.yes}>Yes</td>
@@ -266,12 +241,10 @@ export default function PricingPage() {
                   <td className={styles.yes}>Yes</td>
                   <td className={styles.yes}>Yes</td>
                   <td className={styles.yes}>Yes</td>
-                  <td className={styles.yes}>Yes</td>
                 </tr>
                 <tr>
                   <td>Back view</td>
                   <td className={styles.no}>—</td>
-                  <td className={styles.yes}>Yes</td>
                   <td className={styles.yes}>Yes</td>
                   <td className={styles.yes}>Yes</td>
                   <td className={styles.yes}>Yes</td>
@@ -282,13 +255,11 @@ export default function PricingPage() {
                   <td className={styles.no}>—</td>
                   <td className={styles.yes}>Yes</td>
                   <td className={styles.yes}>Yes</td>
-                  <td className={styles.yes}>Yes</td>
                 </tr>
                 <tr>
                   <td>Flat lay output</td>
                   <td className={styles.no}>—</td>
                   <td className={styles.no}>—</td>
-                  <td className={styles.yes}>Yes</td>
                   <td className={styles.yes}>Yes</td>
                   <td className={styles.yes}>Yes</td>
                 </tr>
@@ -298,13 +269,11 @@ export default function PricingPage() {
                   <td className={styles.no}>—</td>
                   <td className={styles.no}>—</td>
                   <td className={styles.yes}>Yes</td>
-                  <td className={styles.yes}>Yes</td>
                 </tr>
                 <tr>
                   <td>Multi background</td>
                   <td className={styles.no}>—</td>
                   <td className={styles.no}>—</td>
-                  <td className={styles.yes}>Yes</td>
                   <td className={styles.yes}>Yes</td>
                   <td className={styles.yes}>Yes</td>
                 </tr>
@@ -314,12 +283,10 @@ export default function PricingPage() {
                   <td>1</td>
                   <td>2</td>
                   <td>Unlimited</td>
-                  <td>Unlimited</td>
                 </tr>
                 <tr>
                   <td>High-res output</td>
                   <td className={styles.no}>—</td>
-                  <td className={styles.yes}>Yes</td>
                   <td className={styles.yes}>Yes</td>
                   <td className={styles.yes}>Yes</td>
                   <td className={styles.yes}>Yes</td>
@@ -330,15 +297,6 @@ export default function PricingPage() {
                   <td className={styles.no}>—</td>
                   <td className={styles.no}>—</td>
                   <td className={styles.no}>—</td>
-                  <td className={styles.no}>—</td>
-                </tr>
-                <tr>
-                  <td>API access</td>
-                  <td className={styles.no}>—</td>
-                  <td className={styles.no}>—</td>
-                  <td className={styles.no}>—</td>
-                  <td className={styles.no}>—</td>
-                  <td className={styles.yes}>Yes</td>
                 </tr>
                 <tr>
                   <td>Price</td>
@@ -346,7 +304,6 @@ export default function PricingPage() {
                   <td>~$39/mo</td>
                   <td>~$99/mo</td>
                   <td>~$249/mo</td>
-                  <td>Custom</td>
                 </tr>
               </tbody>
             </table>
@@ -377,11 +334,14 @@ export default function PricingPage() {
           <div className={landingStyles.footerColumns}>
             <div className={landingStyles.footerCol}>
               <h3 className={landingStyles.footerHeading}>Product</h3>
-                <Link to="/features" className={landingStyles.footerLink}>
+              <Link to="/features" className={landingStyles.footerLink}>
                 Features
               </Link>
               <Link to="/pricing" className={landingStyles.footerLink}>
                 Pricing
+              </Link>
+              <Link to="/try" className={landingStyles.footerLink}>
+                Try free
               </Link>
               <Link to="/#login" className={landingStyles.footerLink}>
                 Contact
@@ -389,6 +349,9 @@ export default function PricingPage() {
             </div>
             <div className={landingStyles.footerCol}>
               <h3 className={landingStyles.footerHeading}>Company</h3>
+              <Link to="/blog" className={landingStyles.footerLink}>
+                Blog
+              </Link>
               <Link to="/#how-it-works" className={landingStyles.footerLink}>
                 About
               </Link>

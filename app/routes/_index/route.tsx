@@ -51,6 +51,12 @@ export default function LandingPage() {
             <Link to="/pricing" className={styles.navLink}>
               Pricing
             </Link>
+            <Link to="/try" className={styles.navLink}>
+              Try free
+            </Link>
+            <Link to="/blog" className={styles.navLink}>
+              Blog
+            </Link>
             <a href="#how-it-works" className={styles.navLink}>
               About
             </a>
@@ -203,12 +209,18 @@ export default function LandingPage() {
               <Link to="/pricing" className={styles.footerLink}>
                 Pricing
               </Link>
+              <Link to="/try" className={styles.footerLink}>
+                Try free
+              </Link>
               <a href="#login" className={styles.footerLink}>
                 Contact
               </a>
             </div>
             <div className={styles.footerCol}>
               <h3 className={styles.footerHeading}>Company</h3>
+              <Link to="/blog" className={styles.footerLink}>
+                Blog
+              </Link>
               <a href="#how-it-works" className={styles.footerLink}>
                 About
               </a>
