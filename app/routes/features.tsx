@@ -4,7 +4,7 @@ import { Link, useLoaderData } from "react-router";
 import { login } from "../shopify.server";
 
 import landingStyles from "./_index/styles.module.css";
-import styles from "./features.module.css";
+import styles from "../styles/features.module.css";
 
 export const meta: MetaFunction = () => {
   const title = "Features — TinyLemon";
