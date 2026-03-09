@@ -31,11 +31,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     throw redirect(`/app?${url.searchParams.toString()}`);
   }
 
-  return { showForm: Boolean(login) };
+  const installUrl = process.env.SHOPIFY_APP_INSTALL_URL ?? "";
+  return { showForm: Boolean(login), installUrl };
 };
 
 export default function LandingPage() {
-  const { showForm } = useLoaderData<typeof loader>();
+  const { showForm, installUrl } = useLoaderData<typeof loader>();
 
   return (
     <div className={styles.page}>
@@ -70,8 +71,17 @@ export default function LandingPage() {
             )}
           </nav>
           <div className={styles.headerActions}>
+            <Link to="/try" className={styles.btnPrimary}>
+              Try free
+            </Link>
             {showForm && (
-              <a href="#login" className={styles.btnPrimary}>
+              <a
+                href={installUrl || "#login"}
+                {...(installUrl
+                  ? { target: "_blank", rel: "noopener noreferrer" }
+                  : {})}
+                className={styles.btnPrimary}
+              >
                 Get started
               </a>
             )}
@@ -90,16 +100,25 @@ export default function LandingPage() {
             time, built for your Shopify store. No photographer, no $15K
             photoshoot.
           </p>
-          {showForm && (
-            <div className={styles.heroCtas}>
-              <a href="#login" className={styles.heroCta}>
-                Connect your store
+          <div className={styles.heroCtas}>
+            <Link to="/try" className={styles.heroCta}>
+              Try free
+            </Link>
+            {showForm && (
+              <a
+                href={installUrl || "#login"}
+                {...(installUrl
+                  ? { target: "_blank", rel: "noopener noreferrer" }
+                  : {})}
+                className={styles.heroCtaSecondary}
+              >
+                Add to Shopify
               </a>
-              <a href="#how-it-works" className={styles.heroCtaSecondary}>
-                See how it works
-              </a>
-            </div>
-          )}
+            )}
+            <a href="#how-it-works" className={styles.heroCtaSecondary}>
+              See how it works
+            </a>
+          </div>
         </section>
 
         <section className={styles.sliderSection}>
@@ -154,7 +173,13 @@ export default function LandingPage() {
               <li>No photographer, no model booking, no shoot day</li>
             </ul>
             {showForm && (
-              <a href="#login" className={styles.featureCta}>
+              <a
+                href={installUrl || "#login"}
+                {...(installUrl
+                  ? { target: "_blank", rel: "noopener noreferrer" }
+                  : {})}
+                className={styles.featureCta}
+              >
                 Try it in the app
               </a>
             )}
