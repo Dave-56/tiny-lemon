@@ -27,6 +27,25 @@ export const meta: MetaFunction = () => {
 
 type PresetModel = { id: string; name: string; imageUrl: string };
 
+/**
+ * Get buffer and mime from a form file value. Works with File/Blob in browser
+ * and in runtimes (e.g. Vercel) that may expose a different shape.
+ */
+async function getFileBytes(
+  value: unknown
+): Promise<{ buffer: Buffer; mime: string } | null> {
+  if (value == null) return null;
+  if (typeof (value as File)?.arrayBuffer !== "function") return null;
+  try {
+    const ab = await (value as File).arrayBuffer();
+    const buffer = Buffer.from(ab);
+    const mime = (value as Blob).type || "image/png";
+    return { buffer, mime };
+  } catch {
+    return null;
+  }
+}
+
 export const loader = async (_args: LoaderFunctionArgs) => {
   let presets: PresetModel[] = [];
   try {
@@ -57,13 +76,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
   const fd = await request.formData();
   const modelId = (fd.get("modelId") as string) || "";
-  const flatLay = fd.get("flatLay") as File | null;
+  const flatLay = fd.get("flatLay");
   if (!flatLay || !modelId) {
     return Response.json({ error: "Missing flatLay or modelId" }, { status: 400 });
   }
-  const buf = Buffer.from(await flatLay.arrayBuffer());
-  const base64 = buf.toString("base64");
-  const mime = flatLay.type || "image/png";
+  const fileResult = await getFileBytes(flatLay);
+  if (!fileResult) {
+    return Response.json({ error: "Invalid file upload" }, { status: 400 });
+  }
+  const base64 = fileResult.buffer.toString("base64");
+  const mime = fileResult.mime;
   let presets: PresetModel[] = [];
   try {
     const path = join(process.cwd(), "public", "preset-models.json");
@@ -91,14 +113,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const data = (await res.json()) as { outfitId: string; shopId: string };
   return Response.json(data);
 };
-
-function normalizeShopDomain(value: string): string {
-  const trimmed = value.trim().toLowerCase().replace(/^https?:\/\//, "").split("/")[0] ?? "";
-  if (!trimmed) return "";
-  if (trimmed.endsWith(".myshopify.com")) return trimmed;
-  if (trimmed.includes(".myshopify.com")) return trimmed;
-  return `${trimmed.replace(/\.myshopify\.com$/i, "")}.myshopify.com`;
-}
 
 export default function TryPage() {
   const { presets, showForm, installUrl } = useLoaderData<typeof loader>();
@@ -237,55 +251,25 @@ export default function TryPage() {
             </fetcher.Form>
           )}
 
-          <p className={styles.cta}>
-            Need more angles and your store? Add the app and connect your
-            Shopify store below.
-          </p>
-
           {showForm && (
-            <section id="login" className={landingStyles.loginSection}>
-              <h2 className={landingStyles.loginTitle}>Get started</h2>
-              <p className={landingStyles.loginSubtext}>
-                New to Tiny Lemon? Add the app to your store. Already use it? Log
-                in below.
+            <div className={styles.ctaBlock}>
+              <p className={styles.cta}>
+                Need more angles or your store? Add the app.
               </p>
               <a
                 href={installUrl || "/auth/login"}
                 {...(installUrl ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-                className={landingStyles.loginPrimaryCta}
+                className={landingStyles.btnPrimary}
               >
                 Add the app to my store
               </a>
-              <p className={landingStyles.loginDivider}>Already have the app?</p>
-              <form
-                className={landingStyles.form}
-                method="post"
-                action="/auth/login"
-                onSubmit={(e) => {
-                  const form = e.currentTarget;
-                  const shopInput = form.querySelector<HTMLInputElement>('input[name="shop"]');
-                  if (shopInput?.value) {
-                    shopInput.value = normalizeShopDomain(shopInput.value);
-                  }
-                }}
-              >
-                <label className={landingStyles.label}>
-                  <span className={landingStyles.labelText}>Shop domain</span>
-                  <input
-                    className={landingStyles.input}
-                    type="text"
-                    name="shop"
-                    placeholder="my-store.myshopify.com"
-                    required
-                    pattern="[a-z0-9][a-z0-9-]*\.myshopify\.com"
-                    title="Enter your Shopify store domain (e.g. my-store.myshopify.com)"
-                  />
-                </label>
-                <button type="submit" className={landingStyles.btnGhost}>
+              <p className={styles.ctaSecondary}>
+                Already have the app?{" "}
+                <Link to="/auth/login" className={styles.ctaLink}>
                   Log in
-                </button>
-              </form>
-            </section>
+                </Link>
+              </p>
+            </div>
           )}
         </section>
       </main>
