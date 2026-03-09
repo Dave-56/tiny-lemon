@@ -33,14 +33,14 @@ export default function PricingPage() {
             TinyLemon
           </Link>
           <nav className={landingStyles.nav} aria-label="Main">
-            <Link to="/features" className={landingStyles.navLink}>
+            <Link to="/try" className={landingStyles.navLink}>
+              Try free
+            </Link>
+            <Link to="/#features" className={landingStyles.navLink}>
               Features
             </Link>
             <Link to="/pricing" className={landingStyles.navLink}>
               Pricing
-            </Link>
-            <Link to="/try" className={landingStyles.navLink}>
-              Try free
             </Link>
             <Link to="/blog" className={landingStyles.navLink}>
               Blog
@@ -334,14 +334,14 @@ export default function PricingPage() {
           <div className={landingStyles.footerColumns}>
             <div className={landingStyles.footerCol}>
               <h3 className={landingStyles.footerHeading}>Product</h3>
-              <Link to="/features" className={landingStyles.footerLink}>
+              <Link to="/try" className={landingStyles.footerLink}>
+                Try free
+              </Link>
+              <Link to="/#features" className={landingStyles.footerLink}>
                 Features
               </Link>
               <Link to="/pricing" className={landingStyles.footerLink}>
                 Pricing
-              </Link>
-              <Link to="/try" className={landingStyles.footerLink}>
-                Try free
               </Link>
               <Link to="/#login" className={landingStyles.footerLink}>
                 Contact

@@ -35,6 +35,10 @@
   --krea-btn-sec-text: #000000;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 .krea-input {
   @apply bg-krea-input-bg border border-krea-border text-krea-text rounded-lg px-4 py-2 focus:outline-none focus:border-krea-accent/30 transition-colors;
 }

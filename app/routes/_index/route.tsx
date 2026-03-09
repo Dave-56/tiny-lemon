@@ -46,14 +46,14 @@ export default function LandingPage() {
             TinyLemon
           </a>
           <nav className={styles.nav} aria-label="Main">
-            <Link to="/features" className={styles.navLink}>
-              Features
-            </Link>
-            <Link to="/pricing" className={styles.navLink}>
-              Pricing
-            </Link>
             <Link to="/try" className={styles.navLink}>
               Try free
+            </Link>
+            <a href="#features" className={styles.navLink}>
+              Features
+            </a>
+            <Link to="/pricing" className={styles.navLink}>
+              Pricing
             </Link>
             <Link to="/blog" className={styles.navLink}>
               Blog
@@ -157,32 +157,54 @@ export default function LandingPage() {
           </ol>
         </section>
 
-        <section id="pricing" className={styles.features}>
-          <div className={styles.featureCard}>
-            <h2 className={styles.featureTitle}>
-              One consistent look across your catalog
-            </h2>
-            <p className={styles.featureDesc}>
-              Same model, same background. Every product fits the same brand
-              look. Garment-accurate output that’s ready for your store. No
-              waiting weeks for a shoot.
-            </p>
-            <ul className={styles.featureList}>
-              <li>Studio-quality angles in minutes, not weeks</li>
-              <li>Built for Shopify. Generate and add to your products</li>
-              <li>No photographer, no model booking, no shoot day</li>
-            </ul>
-            {showForm && (
-              <a
-                href={installUrl || "#login"}
-                {...(installUrl
-                  ? { target: "_blank", rel: "noopener noreferrer" }
-                  : {})}
-                className={styles.featureCta}
-              >
-                Try it in the app
-              </a>
-            )}
+        <section id="features" className={styles.featuresSection}>
+          <h2 className={styles.featuresSectionTitle}>
+            All features in 1 tool
+          </h2>
+          <p className={styles.featuresSectionSubtitle}>
+            Discover features that simplify workflows and grow your business.
+          </p>
+          <div className={styles.featuresGrid}>
+            <div className={styles.featureCardGrid}>
+              <div className={styles.featureCardImage} aria-hidden />
+              <div className={styles.featureCardIcon}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/></svg>
+              </div>
+              <h3 className={styles.featureCardTitle}>Flat-lay to studio in minutes</h3>
+              <p className={styles.featureCardDesc}>
+                Upload a flat-lay photo. We generate on-model shots so the product looks the same as in real life — fabric, fit, and construction — without a photoshoot.
+              </p>
+            </div>
+            <div className={styles.featureCardGrid}>
+              <div className={styles.featureCardImage} aria-hidden />
+              <div className={styles.featureCardIcon}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+              </div>
+              <h3 className={styles.featureCardTitle}>Built for Shopify</h3>
+              <p className={styles.featureCardDesc}>
+                Generate images in the app and add them directly to your Shopify products. No export, no manual uploads — same look every time.
+              </p>
+            </div>
+            <div className={styles.featureCardGrid}>
+              <div className={styles.featureCardImage} aria-hidden />
+              <div className={styles.featureCardIcon}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              </div>
+              <h3 className={styles.featureCardTitle}>Your model, your style</h3>
+              <p className={styles.featureCardDesc}>
+                Create custom models and brand style profiles so every shot matches your aesthetic. Studio backgrounds and styling based on the Fashion PDP framework.
+              </p>
+            </div>
+            <div className={styles.featureCardGrid}>
+              <div className={styles.featureCardImage} aria-hidden />
+              <div className={styles.featureCardIcon}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              </div>
+              <h3 className={styles.featureCardTitle}>Multiple angles & image types</h3>
+              <p className={styles.featureCardDesc}>
+                Structural set (front, 3/4, back), detail close-ups, flat lay, and lifestyle. Each tier unlocks more of the set for your store.
+              </p>
+            </div>
           </div>
         </section>
 
@@ -228,14 +250,14 @@ export default function LandingPage() {
           <div className={styles.footerColumns}>
             <div className={styles.footerCol}>
               <h3 className={styles.footerHeading}>Product</h3>
-              <Link to="/features" className={styles.footerLink}>
-                Features
-              </Link>
-              <Link to="/pricing" className={styles.footerLink}>
-                Pricing
-              </Link>
               <Link to="/try" className={styles.footerLink}>
                 Try free
+              </Link>
+              <a href="#features" className={styles.footerLink}>
+                Features
+              </a>
+              <Link to="/pricing" className={styles.footerLink}>
+                Pricing
               </Link>
               <a href="#login" className={styles.footerLink}>
                 Contact

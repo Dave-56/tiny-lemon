@@ -250,74 +250,79 @@
 }
 
 /* ----- Features ----- */
-.features {
-  max-width: 56rem;
+.featuresSection {
+  max-width: 72rem;
   margin: 0 auto;
   padding: 0 2rem 5rem;
 }
 
-.featureCard {
+.featuresSectionTitle {
+  font-size: clamp(1.75rem, 4vw, 2.25rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin: 0 0 0.5rem;
+  font-family: "Space Grotesk", sans-serif;
+  text-align: center;
+}
+
+.featuresSectionSubtitle {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--krea-muted, #555);
+  margin: 0 auto 2.5rem;
+  max-width: 40rem;
+  text-align: center;
+}
+
+.featuresGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+.featureCardGrid {
   background: var(--krea-card, #fff);
   border: 1px solid var(--krea-border, rgba(0, 0, 0, 0.08));
   border-radius: 1rem;
-  padding: 2.5rem 3rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-}
-
-.featureTitle {
-  font-size: 1.5rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  margin: 0 0 1rem;
-}
-
-.featureDesc {
-  font-size: 1rem;
-  line-height: 1.65;
-  color: var(--krea-muted, #555);
-  margin: 0 0 1.5rem;
-}
-
-.featureList {
-  list-style: none;
   padding: 0;
-  margin: 0 0 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
 }
 
-.featureList li {
-  font-size: 0.9375rem;
-  color: var(--krea-text, #111);
-  padding-left: 1.25rem;
-  position: relative;
+.featureCardImage {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  background: var(--krea-border, rgba(0, 0, 0, 0.08));
+  flex-shrink: 0;
 }
 
-.featureList li::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0.5em;
-  width: 0.35rem;
-  height: 0.35rem;
+.featureCardIcon {
+  flex-shrink: 0;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.5rem;
   background: var(--krea-accent, #111);
-  border-radius: 50%;
-}
-
-.featureCta {
+  color: #fff;
   display: inline-flex;
-  font-size: 0.9375rem;
-  font-weight: 500;
-  color: var(--krea-text, #111);
-  text-decoration: none;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid currentColor;
-  transition: opacity 0.15s ease;
+  align-items: center;
+  justify-content: center;
+  margin: 1.25rem 1.5rem 0;
 }
 
-.featureCta:hover {
-  opacity: 0.8;
+.featureCardTitle {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0.5rem 1.5rem 0;
+}
+
+.featureCardDesc {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--krea-muted, #555);
+  margin: 0 1.5rem 1.5rem;
 }
 
 /* ----- Login section ----- */
@@ -554,8 +559,8 @@
     padding: 0 1.25rem 3rem;
   }
 
-  .featureCard {
-    padding: 1.75rem 1.5rem;
+  .featuresGrid {
+    grid-template-columns: 1fr;
   }
 
   .loginSection {
