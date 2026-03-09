@@ -111,7 +111,7 @@ export default function LandingPage() {
             </Link>
             {showForm && (
               <a
-                href={installUrl || "#login"}
+                href={installUrl || "/auth/login"}
                 {...(installUrl
                   ? { target: "_blank", rel: "noopener noreferrer" }
                   : {})}
@@ -120,9 +120,6 @@ export default function LandingPage() {
                 Add to Shopify
               </a>
             )}
-            <a href="#how-it-works" className={styles.heroCtaSecondary}>
-              See how it works
-            </a>
           </div>
         </section>
 
