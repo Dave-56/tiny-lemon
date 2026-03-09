@@ -205,32 +205,49 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {showForm && (
-          <section id="login" className={styles.loginSection}>
-            <h2 className={styles.loginTitle}>Already have the app?</h2>
-            <Form
-              className={styles.form}
-              method="post"
-              action="/auth/login"
+        <section id="login" className={styles.loginSection}>
+          <h2 className={styles.loginTitle}>Get started</h2>
+          <p className={styles.loginSubtext}>
+            New to Tiny Lemon? Add the app to your store. Already use it? Log in
+            below.
+          </p>
+          {showForm && installUrl && (
+            <a
+              href={installUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.loginPrimaryCta}
             >
-              <label className={styles.label}>
-                <span className={styles.labelText}>Shop domain</span>
-                <input
-                  className={styles.input}
-                  type="text"
-                  name="shop"
-                  placeholder="my-store.myshopify.com"
-                  required
-                  pattern="[a-z0-9][a-z0-9-]*\.myshopify\.com"
-                  title="Enter your Shopify store domain (e.g. my-store.myshopify.com)"
-                />
-              </label>
-              <button type="submit" className={styles.btnPrimary}>
-                Log in
-              </button>
-            </Form>
-          </section>
-        )}
+              Add to Shopify
+            </a>
+          )}
+          {showForm && (
+            <>
+              <p className={styles.loginDivider}>Already have the app?</p>
+              <Form
+                className={styles.form}
+                method="post"
+                action="/auth/login"
+              >
+                <label className={styles.label}>
+                  <span className={styles.labelText}>Shop domain</span>
+                  <input
+                    className={styles.input}
+                    type="text"
+                    name="shop"
+                    placeholder="my-store.myshopify.com"
+                    required
+                    pattern="[a-z0-9][a-z0-9-]*\.myshopify\.com"
+                    title="Enter your Shopify store domain (e.g. my-store.myshopify.com)"
+                  />
+                </label>
+                <button type="submit" className={styles.btnGhost}>
+                  Log in
+                </button>
+              </Form>
+            </>
+          )}
+        </section>
       </main>
 
       <footer className={styles.footer}>

@@ -181,20 +181,36 @@ export default function TryPage() {
               </div>
               <div className={styles.field}>
                 <label className={styles.label}>Model</label>
-                <div className={styles.modelGrid}>
-                  {presets.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      className={`${styles.modelCard} ${selectedModelId === p.id ? styles.modelCardSelected : ""}`}
-                      onClick={() => setSelectedModelId(p.id)}
-                    >
-                      <img src={p.imageUrl} alt={p.name} />
-                      <span>{p.name}</span>
-                    </button>
-                  ))}
+                <div className={styles.modelSection}>
+                  {selectedModelId && (() => {
+                    const selected = presets.find((p) => p.id === selectedModelId);
+                    if (!selected) return null;
+                    return (
+                      <div className={styles.selectedPreview} aria-hidden>
+                        <img src={selected.imageUrl} alt="" />
+                        <span className={styles.selectedName}>Choosing: {selected.name}</span>
+                      </div>
+                    );
+                  })()}
+                  <p className={styles.modelHint}>
+                    Click a model to select — your shot will use their look.
+                  </p>
+                  <div className={styles.modelGrid}>
+                    {presets.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className={`${styles.modelCard} ${selectedModelId === p.id ? styles.modelCardSelected : ""}`}
+                        onClick={() => setSelectedModelId(p.id)}
+                        title={`Select ${p.name}`}
+                      >
+                        <img src={p.imageUrl} alt={p.name} />
+                        <span>{p.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <input type="hidden" name="modelId" value={selectedModelId} />
                 </div>
-                <input type="hidden" name="modelId" value={selectedModelId} />
               </div>
               {error && <p className={styles.error}>{error}</p>}
               <button
