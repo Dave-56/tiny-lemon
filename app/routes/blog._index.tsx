@@ -31,8 +31,9 @@ export default function BlogIndexPage() {
     <div className={landingStyles.page}>
       <div className={landingStyles.headerWrapper}>
         <header className={landingStyles.header}>
-          <Link to="/" className={landingStyles.logo}>
-            TinyLemon
+          <Link to="/" className={landingStyles.logo} aria-label="Tiny Lemon home">
+            <img src="/app-icon-1200x1200.png" alt="" className={landingStyles.logoIcon} width={32} height={32} />
+            <span>TinyLemon</span>
           </Link>
           <nav className={landingStyles.nav} aria-label="Main">
             <Link to="/#features" className={landingStyles.navLink}>
