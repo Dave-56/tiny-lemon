@@ -32,8 +32,10 @@ export const loader = async (_args: LoaderFunctionArgs) => {
   try {
     const path = join(process.cwd(), "public", "preset-models.json");
     const raw = readFileSync(path, "utf-8");
-    const arr = JSON.parse(raw) as Array<{ id: string; name: string; imageUrl: string }>;
-    presets = arr.slice(0, 8).map((p) => ({ id: p.id, name: p.name, imageUrl: p.imageUrl }));
+    const arr = JSON.parse(raw) as Array<{ id: string; name: string; imageUrl: string; gender?: string }>;
+    const females = arr.filter((p) => p.gender === "Female").slice(0, 5);
+    const males = arr.filter((p) => p.gender === "Male").slice(0, 4);
+    presets = [...females, ...males].map((p) => ({ id: p.id, name: p.name, imageUrl: p.imageUrl }));
   } catch {
     // ignore
   }
@@ -172,6 +174,30 @@ export default function TryPage() {
           ) : (
             <fetcher.Form method="post" className={styles.form}>
               <div className={styles.field}>
+                <label className={styles.label}>Model</label>
+                <p className={styles.modelHint}>
+                  Click a model to select — your shot will use their look.
+                </p>
+                <div className={styles.modelGridWrapper}>
+                  <div className={styles.modelGrid}>
+                    {presets.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className={`${styles.modelCard} ${selectedModelId === p.id ? styles.modelCardSelected : ""}`}
+                        onClick={() => setSelectedModelId(p.id)}
+                        title={`Select ${p.name}`}
+                      >
+                        <img src={p.imageUrl} alt={p.name} />
+                        <span>{p.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <input type="hidden" name="modelId" value={selectedModelId} />
+              </div>
+              {error && <p className={styles.error}>{error}</p>}
+              <div className={styles.field}>
                 <label className={styles.label}>Flat-lay image</label>
                 <p className={styles.modelHint}>
                   Upload a photo of your product laid flat. Your shot will use this image.
@@ -194,42 +220,20 @@ export default function TryPage() {
                   {previewUrl ? "Change flat-lay image" : "Choose flat-lay image"}
                 </button>
                 {previewUrl && (
-                  <div className={styles.flatlayPreview}>
-                    <img src={previewUrl} alt="Your flat-lay" />
-                  </div>
+                  <>
+                    <div className={styles.flatlayPreview}>
+                      <img src={previewUrl} alt="Your flat-lay" />
+                    </div>
+                    <button
+                      type="submit"
+                      className={`${landingStyles.btnPrimary} ${styles.generateButton}`}
+                      disabled={isSubmitting}
+                    >
+                      {isSubmitting ? "Generating…" : "Generate"}
+                    </button>
+                  </>
                 )}
               </div>
-              <div className={styles.field}>
-                <label className={styles.label}>Model</label>
-                <p className={styles.modelHint}>
-                  Click a model to select — your shot will use their look.
-                </p>
-                <div className={styles.modelGridWrapper}>
-                <div className={styles.modelGrid}>
-                  {presets.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      className={`${styles.modelCard} ${selectedModelId === p.id ? styles.modelCardSelected : ""}`}
-                      onClick={() => setSelectedModelId(p.id)}
-                      title={`Select ${p.name}`}
-                    >
-                      <img src={p.imageUrl} alt={p.name} />
-                      <span>{p.name}</span>
-                    </button>
-                  ))}
-                </div>
-                </div>
-                <input type="hidden" name="modelId" value={selectedModelId} />
-              </div>
-              {error && <p className={styles.error}>{error}</p>}
-              <button
-                type="submit"
-                className={landingStyles.btnPrimary}
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? "Generating…" : "Generate"}
-              </button>
             </fetcher.Form>
           )}
 
