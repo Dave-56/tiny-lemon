@@ -2,9 +2,10 @@ import { task } from '@trigger.dev/sdk/v3';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import prisma from '../app/db.server';
 import { uploadImageToBlob } from '../app/blob.server';
-import { cleanFlatLay } from '../app/lib/flatLayCleanup';
+import { cleanFlatLay, cleanFlatLayForDemo } from '../app/lib/flatLayCleanup';
 import { extractGarmentSpec } from '../app/lib/garmentSpec';
 import { buildPromptFromSpec } from '../app/lib/garmentFidelityPrompt';
+import { buildTryDemoPrompt } from '../app/lib/tryDemoPrompt';
 import { normalizeReferenceImageServer } from '../app/lib/normalizeReferenceImage.server';
 import { PDP_STYLE_PRESETS, STYLING_DIRECTION_PRESETS } from '../app/lib/pdpPresets';
 import { DEMO_SHOP_ID } from '../app/lib/billing.server';
@@ -84,10 +85,11 @@ export const generateOutfitTask = task({
     let cleanFlatLayUrl: string;
     let cleanBackFlatLayB64: string | null = null;
     let cleanBackFlatLayUrl: string | null = null;
-    const cleanMime = isDemo ? frontMime as 'image/png' | 'image/jpeg' : 'image/png';
+    const cleanMime = 'image/png';
 
     if (isDemo) {
-      cleanFlatLayB64 = rawFrontB64;
+      // Run aggressive cleanup for quality, but skip blob upload (demo has no regeneration)
+      cleanFlatLayB64 = await cleanFlatLayForDemo(rawFrontB64, frontMime, apiKey);
       cleanBackFlatLayB64 = rawBackB64;
       cleanFlatLayUrl = rawFrontUrl;
     } else {
@@ -149,9 +151,9 @@ export const generateOutfitTask = task({
       frontB64 = await fetchAsBase64(frontRecord.imageUrl);
     } else {
       await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_front' } });
-      const frontPrompt = buildPromptFromSpec(
-        garmentSpec, 'front', stylePreset.promptSnippet, hasBack, false, modelHeight, stylingDir, modelGender,
-      );
+      const frontPrompt = isDemo
+        ? buildTryDemoPrompt(garmentSpec, modelGender, modelHeight)
+        : buildPromptFromSpec(garmentSpec, 'front', stylePreset.promptSnippet, hasBack, false, modelHeight, stylingDir, modelGender);
       const frontResp = await chat.sendMessage({
         message: [
           { inlineData: { data: cleanFlatLayB64, mimeType: cleanMime } },

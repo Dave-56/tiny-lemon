@@ -25,7 +25,7 @@ export const meta: MetaFunction = () => {
   ];
 };
 
-type PresetModel = { id: string; name: string; imageUrl: string; ethnicity: string; bodyBuild: string; height: string };
+type PresetModel = { id: string; name: string; imageUrl: string; gender: string; ethnicity: string; bodyBuild: string; height: string };
 
 // #region agent log
 function debugLog(
@@ -99,15 +99,14 @@ async function getFileBytes(
 export const loader = async (_args: LoaderFunctionArgs) => {
   let presets: PresetModel[] = [];
   try {
-    const path = join(process.cwd(), "public", "preset-models.json");
+    const path = join(process.cwd(), "public", "try-preset-models.json");
     const raw = readFileSync(path, "utf-8");
     const arr = JSON.parse(raw) as Array<{ id: string; name: string; imageUrl: string; gender?: string; ethnicity?: string; bodyBuild?: string; height?: string }>;
-    const females = arr.filter((p) => p.gender === "Female").slice(0, 5);
-    const males = arr.filter((p) => p.gender === "Male").slice(0, 4);
-    presets = [...females, ...males].map((p) => ({
+    presets = arr.map((p) => ({
       id: p.id,
       name: p.name,
       imageUrl: p.imageUrl,
+      gender: p.gender ?? "",
       ethnicity: p.ethnicity ?? "",
       bodyBuild: p.bodyBuild ?? "",
       height: p.height ?? "",
@@ -172,10 +171,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const mime = fileResult.mime;
   let presets: PresetModel[] = [];
   try {
-    const path = join(process.cwd(), "public", "preset-models.json");
+    const path = join(process.cwd(), "public", "try-preset-models.json");
     const raw = readFileSync(path, "utf-8");
-    const arr = JSON.parse(raw) as Array<{ id: string; name: string; imageUrl: string }>;
-    presets = arr.map((p) => ({ id: p.id, name: p.name, imageUrl: p.imageUrl }));
+    const arr = JSON.parse(raw) as Array<{ id: string; name: string; imageUrl: string; gender?: string }>;
+    presets = arr.map((p) => ({ id: p.id, name: p.name, imageUrl: p.imageUrl, gender: p.gender ?? "" }));
   } catch {
     return Response.json({ error: "Presets unavailable" }, { status: 500 });
   }
@@ -187,6 +186,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const res = await handleTriggerGeneration(DEMO_SHOP_ID, {
     modelId: preset.id,
     modelImageUrl: preset.imageUrl,
+    modelGender: preset.gender || undefined,
     frontB64: base64,
     frontMime: mime,
   });
@@ -203,7 +203,6 @@ export default function TryPage() {
   const fetcher = useFetcher<{ outfitId?: string; shopId?: string; error?: string; message?: string }>();
   const [selectedModelId, setSelectedModelId] = useState<string>(presets[0]?.id ?? "");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewModel, setPreviewModel] = useState<PresetModel | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isSubmitting = fetcher.state === "submitting" || fetcher.state === "loading";
@@ -211,13 +210,6 @@ export default function TryPage() {
   const error = data?.error ? (data.message || data.error) : null;
   const outfitId = data?.outfitId ?? null;
   const selectedPreset = presets.find((p) => p.id === selectedModelId) ?? null;
-
-  useEffect(() => {
-    if (!previewModel) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setPreviewModel(null); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [previewModel]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -357,8 +349,8 @@ export default function TryPage() {
                         key={p.id}
                         type="button"
                         className={`${styles.modelCard} ${selectedModelId === p.id ? styles.modelCardSelected : ""}`}
-                        onClick={() => setPreviewModel(p)}
-                        title={`Preview ${p.name}`}
+                        onClick={() => setSelectedModelId(p.id)}
+                        title={p.name}
                       >
                         <img src={p.imageUrl} alt={p.name} />
                         <span>{p.name}</span>
@@ -450,48 +442,6 @@ export default function TryPage() {
         </div>
       </footer>
 
-      {/* ── Model preview overlay ── */}
-      {previewModel && (
-        <div
-          className={styles.modelOverlay}
-          onClick={() => setPreviewModel(null)}
-        >
-          <div
-            className={styles.modelOverlayInner}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              className={styles.modelOverlayClose}
-              onClick={() => setPreviewModel(null)}
-              aria-label="Close"
-            >
-              ✕
-            </button>
-            <img
-              src={previewModel.imageUrl}
-              alt={previewModel.name}
-              className={styles.modelOverlayImg}
-              referrerPolicy="no-referrer"
-            />
-            <div className={styles.modelOverlayInfo}>
-              <div className={styles.modelOverlayMeta}>
-                <p className={styles.modelOverlayName}>{previewModel.name}</p>
-                {previewModel.ethnicity && <p className={styles.modelOverlayDetail}>{previewModel.ethnicity}</p>}
-                {previewModel.bodyBuild && <p className={styles.modelOverlayDetail}>{previewModel.bodyBuild}</p>}
-                {previewModel.height && <p className={styles.modelOverlayDetail}>{previewModel.height}</p>}
-              </div>
-              <button
-                type="button"
-                className={`${landingStyles.btnPrimary} ${styles.modelOverlaySelect}`}
-                onClick={() => { setSelectedModelId(previewModel.id); setPreviewModel(null); }}
-              >
-                {selectedModelId === previewModel.id ? "Selected ✓" : "Select model"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

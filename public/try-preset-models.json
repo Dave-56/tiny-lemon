@@ -1,0 +1,80 @@
+[
+  {
+    "id": "model-01",
+    "name": "Aisha",
+    "gender": "Female",
+    "ethnicity": "Black / African Descent",
+    "skinTone": "Deep Ebony",
+    "bodyBuild": "Slender / Slim",
+    "height": "5'10\" (178cm)",
+    "hairStyle": "Long box braids",
+    "hairColor": "Black",
+    "ageRange": "18–24",
+    "imageUrl": "https://axuxhuif6aiflbu8.public.blob.vercel-storage.com/preset-models/v3/model-01.png"
+  },
+  {
+    "id": "model-02",
+    "name": "Zara",
+    "gender": "Female",
+    "ethnicity": "Black / African Descent",
+    "skinTone": "Rich Caramel",
+    "bodyBuild": "Curvy / Hourglass",
+    "height": "5'8\" (173cm)",
+    "hairStyle": "Natural afro",
+    "hairColor": "Black",
+    "ageRange": "25–34",
+    "imageUrl": "https://axuxhuif6aiflbu8.public.blob.vercel-storage.com/preset-models/v3/model-02.png"
+  },
+  {
+    "id": "model-06",
+    "name": "Emma",
+    "gender": "Female",
+    "ethnicity": "White / Caucasian",
+    "skinTone": "Fair / Porcelain",
+    "bodyBuild": "Slender / Slim",
+    "height": "5'10\" (178cm)",
+    "hairStyle": "Straight, long",
+    "hairColor": "Blonde",
+    "ageRange": "18–24",
+    "imageUrl": "https://axuxhuif6aiflbu8.public.blob.vercel-storage.com/preset-models/v3/model-06.png"
+  },
+  {
+    "id": "model-07",
+    "name": "Layla",
+    "gender": "Female",
+    "ethnicity": "Middle Eastern",
+    "skinTone": "Medium / Olive",
+    "bodyBuild": "Slender / Slim",
+    "height": "5'8\" (173cm)",
+    "hairStyle": "Long waves",
+    "hairColor": "Dark Brown",
+    "ageRange": "18–24",
+    "imageUrl": "https://axuxhuif6aiflbu8.public.blob.vercel-storage.com/preset-models/v3/model-07.png"
+  },
+  {
+    "id": "model-09",
+    "name": "Kofi",
+    "gender": "Male",
+    "ethnicity": "Black / African Descent",
+    "skinTone": "Deep Ebony",
+    "bodyBuild": "Athletic / Toned",
+    "height": "6'0\" (183cm)",
+    "hairStyle": "Low fade",
+    "hairColor": "Black",
+    "ageRange": "25–34",
+    "imageUrl": "https://axuxhuif6aiflbu8.public.blob.vercel-storage.com/preset-models/v3/model-09.png"
+  },
+  {
+    "id": "model-13",
+    "name": "Liam",
+    "gender": "Male",
+    "ethnicity": "White / Caucasian",
+    "skinTone": "Light / Ivory",
+    "bodyBuild": "Athletic / Toned",
+    "height": "6'0\" (183cm)",
+    "hairStyle": "Short, neat",
+    "hairColor": "Brown",
+    "ageRange": "25–34",
+    "imageUrl": "https://axuxhuif6aiflbu8.public.blob.vercel-storage.com/preset-models/v3/model-13.png"
+  }
+]
