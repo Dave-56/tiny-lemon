@@ -15,7 +15,7 @@ const LANDING_2 = {
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const title = "Tiny Lemon: Studio shots from flat-lays in 60 seconds";
   const description =
-    "Turn flat-lays into studio shots in 60 seconds. No photographer, no $15K shoot. Front, 3/4, and back angles for your Shopify fashion store.";
+    "Turn flat-lays into studio shots in 60 seconds. No photographer, no $15K shoot. Every on-model view your customers need, for your Shopify fashion store.";
   const ogImage = data?.origin ? `${data.origin}/app-icon-1200x1200.png` : undefined;
   return [
     { title },
@@ -154,7 +154,7 @@ export default function LandingPage() {
             </li>
             <li className={styles.howItWorksItem}>
               <span className={styles.howItWorksStep}>2</span>
-              <span>Get front, 3/4, and back angles in minutes</span>
+              <span>Get a full set of on-model photos in minutes</span>
             </li>
             <li className={styles.howItWorksItem}>
               <span className={styles.howItWorksStep}>3</span>
@@ -206,9 +206,9 @@ export default function LandingPage() {
               <div className={styles.featureCardIcon}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
               </div>
-              <h3 className={styles.featureCardTitle}>Multiple angles & image types</h3>
+              <h3 className={styles.featureCardTitle}>Every photo your listing needs</h3>
               <p className={styles.featureCardDesc}>
-                Structural set (front, 3/4, back), detail close-ups, flat lay, and lifestyle. Each tier unlocks more of the set for your store.
+                On-model front, side, and back views, detail close-ups, flat lay, and lifestyle. Each tier unlocks more of the set for your store.
               </p>
             </div>
           </div>
