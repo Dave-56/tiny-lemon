@@ -204,13 +204,18 @@ export default function TryPage() {
   const [selectedModelId, setSelectedModelId] = useState<string>(presets[0]?.id ?? "");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewModel, setPreviewModel] = useState<PresetModel | null>(null);
+  const [dismissed, setDismissed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isSubmitting = fetcher.state === "submitting" || fetcher.state === "loading";
   const data = fetcher.data;
   const error = data?.error ? (data.message || data.error) : null;
-  const outfitId = data?.outfitId ?? null;
+  const outfitId = dismissed ? null : (data?.outfitId ?? null);
   const selectedPreset = presets.find((p) => p.id === selectedModelId) ?? null;
+
+  useEffect(() => {
+    if (fetcher.state === "submitting") setDismissed(false);
+  }, [fetcher.state]);
 
   useEffect(() => {
     if (!previewModel) return;
@@ -303,6 +308,7 @@ export default function TryPage() {
                 flatLayPreviewUrl={previewUrl}
                 installUrl={installUrl}
                 showInstallCta={showForm}
+                onReset={() => setDismissed(true)}
               />
             </div>
           ) : (
@@ -364,9 +370,9 @@ export default function TryPage() {
                           type="button"
                           className={styles.modelCardInfoBtn}
                           onClick={(e) => { e.stopPropagation(); setPreviewModel(p); }}
-                          aria-label={`View ${p.name} details`}
+                          aria-label={`Preview ${p.name}`}
                         >
-                          i
+                          ⤢
                         </button>
                         <img src={p.imageUrl} alt={p.name} />
                         <span>{p.name}</span>
@@ -522,11 +528,13 @@ function TryPollResult({
   flatLayPreviewUrl,
   installUrl,
   showInstallCta,
+  onReset,
 }: {
   outfitId: string;
   flatLayPreviewUrl: string | null;
   installUrl: string;
   showInstallCta: boolean;
+  onReset: () => void;
 }) {
   const [status, setStatus] = useState<string>("pending");
   const [images, setImages] = useState<{ pose: string; imageUrl: string }[]>([]);
@@ -572,7 +580,10 @@ function TryPollResult({
   if (status === "failed") {
     return (
       <div className={styles.progressPanel}>
-        <p className={styles.error}>{errorMsg || "Generation failed. Try again or install the app."}</p>
+        <p className={styles.error}>{errorMsg || "Generation failed. Please try a different garment image."}</p>
+        <button type="button" className={styles.uploadButton} onClick={onReset}>
+          Try a different image
+        </button>
       </div>
     );
   }
