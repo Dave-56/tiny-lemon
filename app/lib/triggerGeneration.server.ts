@@ -277,7 +277,7 @@ export async function handleRegenerateOutfit(
       data: { status: "pending", errorMessage: null },
     });
 
-    await tasks.trigger("regenerate-outfit", {
+    const handle = await tasks.trigger("regenerate-outfit", {
       outfitId,
       shopId,
       userDirection: userDirection?.trim() || undefined,
@@ -286,6 +286,11 @@ export async function handleRegenerateOutfit(
       modelGender: model.modelGender,
       styleId,
       allowedPoses,
+    });
+
+    await prisma.outfit.update({
+      where: { id: outfitId, shopId },
+      data: { jobId: handle.id },
     });
 
     return Response.json({ ok: true, outfitId });

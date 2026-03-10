@@ -42,6 +42,11 @@ export const generateOutfitTask = task({
 
   /** Called only after all retry attempts are exhausted — mark outfit failed */
   onFailure: async ({ payload, error }: { payload: GenerateOutfitPayload; error: unknown }) => {
+    const existing = await prisma.outfit.findFirst({
+      where: { id: payload.outfitId, shopId: payload.shopId },
+      select: { errorMessage: true },
+    });
+    if (existing?.errorMessage === 'Cancelled by user') return;
     const errorMessage = error instanceof Error ? error.message : 'Generation failed.';
     await prisma.outfit
       .update({ where: { id: payload.outfitId }, data: { status: 'failed', errorMessage } })

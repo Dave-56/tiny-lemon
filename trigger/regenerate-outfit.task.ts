@@ -65,6 +65,11 @@ export const regenerateOutfitTask = task({
   retry: { maxAttempts: 2 },
 
   onFailure: async ({ payload, error }: { payload: RegenerateOutfitPayload; error: unknown }) => {
+    const existing = await prisma.outfit.findFirst({
+      where: { id: payload.outfitId, shopId: payload.shopId },
+      select: { errorMessage: true },
+    });
+    if (existing?.errorMessage === 'Cancelled by user') return;
     const errorMessage = error instanceof Error ? error.message : 'Regeneration failed.';
     await prisma.outfit
       .update({ where: { id: payload.outfitId }, data: { status: 'failed', errorMessage } })

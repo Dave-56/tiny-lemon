@@ -14,6 +14,7 @@ import { authenticate } from '../shopify.server';
 import prisma from '../db.server';
 import { STYLING_DIRECTION_PRESETS } from '../lib/pdpPresets';
 import { handleRegenerateOutfit } from '../lib/triggerGeneration.server';
+import { runs } from '../trigger.server';
 
 // ── Loader ─────────────────────────────────────────────────────────────────────
 
@@ -95,6 +96,42 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const outfitId = body.outfitId as string;
     const userDirection = (body.userDirection as string) || undefined;
     return handleRegenerateOutfit(shopId, outfitId, userDirection);
+  }
+
+  if (body.intent === 'cancel_generation') {
+    const outfitId = body.outfitId as string;
+    if (!outfitId || typeof outfitId !== 'string') {
+      return Response.json({ error: 'outfitId required' }, { status: 400 });
+    }
+    const outfit = await prisma.outfit.findFirst({
+      where: { id: outfitId, shopId },
+      select: { status: true, jobId: true },
+    });
+    if (!outfit) return Response.json({ error: 'Not found' }, { status: 404 });
+    const inProgress =
+      outfit.status !== 'completed' && outfit.status !== 'failed';
+    if (!inProgress) {
+      return Response.json(
+        { error: 'Outfit is not generating. Nothing to cancel.' },
+        { status: 400 }
+      );
+    }
+    if (outfit.jobId) {
+      try {
+        await runs.cancel(outfit.jobId);
+      } catch (e) {
+        // Run may already be finished (404) — still mark outfit cancelled
+      }
+    }
+    await prisma.outfit.update({
+      where: { id: outfitId, shopId },
+      data: {
+        status: 'failed',
+        errorMessage: 'Cancelled by user',
+        jobId: null,
+      },
+    });
+    return Response.json({ ok: true });
   }
 
   return Response.json({ error: 'Unknown intent' }, { status: 400 });
@@ -446,6 +483,7 @@ function OutfitCard({
   onToggleSelect,
   onLightbox,
   onRegenerate,
+  onCancel,
 }: {
   outfit: OutfitWithImages;
   modelName: string | undefined;
@@ -457,6 +495,7 @@ function OutfitCard({
   onToggleSelect: (id: string) => void;
   onLightbox: (outfitId: string, index: number) => void;
   onRegenerate?: (outfitId: string) => void;
+  onCancel?: (outfitId: string) => void;
 }) {
   const status = (outfit as { status?: string }).status ?? 'completed';
   const isInProgress = status !== OUTFIT_STATUS.completed && status !== OUTFIT_STATUS.failed;
@@ -721,11 +760,22 @@ function OutfitCard({
 
       {/* In-progress banner */}
       {isInProgress && (
-        <div className="mx-4 mb-2 flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2">
-          <Loader2 className="w-4 h-4 text-amber-600 animate-spin shrink-0" />
-          <span className="text-xs text-amber-800">
-            {status === 'pending' || status === 'processing' ? 'Regenerating…' : 'Generating…'}
-          </span>
+        <div className="mx-4 mb-2 flex items-center justify-between gap-2 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2">
+          <div className="flex items-center gap-2">
+            <Loader2 className="w-4 h-4 text-amber-600 animate-spin shrink-0" />
+            <span className="text-xs text-amber-800">
+              {status === 'pending' || status === 'processing' ? 'Regenerating…' : 'Generating…'}
+            </span>
+          </div>
+          {onCancel && (
+            <button
+              type="button"
+              onClick={() => onCancel(outfit.id)}
+              className="text-xs font-medium text-amber-800 hover:text-amber-900 underline decoration-amber-300 hover:decoration-amber-500 transition-colors shrink-0"
+            >
+              Cancel
+            </button>
+          )}
         </div>
       )}
 
@@ -846,6 +896,16 @@ export default function Outfits() {
     return { ok: true };
   }
 
+  async function cancelGeneration(outfitId: string) {
+    const res = await authenticatedFetch('/app/outfits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ intent: 'cancel_generation', outfitId }),
+    });
+    if (!res.ok) return;
+    revalidate();
+  }
+
   async function deleteSelectedOutfits() {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
@@ -952,6 +1012,7 @@ export default function Outfits() {
                 onToggleSelect={toggleSelect}
                 onLightbox={(id, idx) => setLightbox({ outfitId: id, index: idx })}
                 onRegenerate={() => setRegenerateModal({ outfitId: outfit.id, outfitName: outfit.name || 'Untitled' })}
+                onCancel={cancelGeneration}
               />
             ))}
           </div>
