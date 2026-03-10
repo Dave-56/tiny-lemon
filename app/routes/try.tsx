@@ -202,6 +202,7 @@ export default function TryPage() {
   const data = fetcher.data;
   const error = data?.error ? (data.message || data.error) : null;
   const outfitId = data?.outfitId ?? null;
+  const selectedPreset = presets.find((p) => p.id === selectedModelId) ?? null;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -262,7 +263,33 @@ export default function TryPage() {
           </p>
 
           {outfitId ? (
-            <TryPollResult outfitId={outfitId} />
+            <div className={styles.generatingLayout}>
+              <div className={styles.lockedForm}>
+                {previewUrl && (
+                  <div>
+                    <p className={styles.lockedLabel}>Your flat-lay</p>
+                    <div className={styles.flatlayPreview}>
+                      <img src={previewUrl} alt="Your flat-lay" />
+                    </div>
+                  </div>
+                )}
+                {selectedPreset && (
+                  <div>
+                    <p className={styles.lockedLabel}>Model</p>
+                    <div className={styles.lockedModelCard}>
+                      <img src={selectedPreset.imageUrl} alt={selectedPreset.name} />
+                      <span>{selectedPreset.name}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <TryPollResult
+                outfitId={outfitId}
+                flatLayPreviewUrl={previewUrl}
+                installUrl={installUrl}
+                showInstallCta={showForm}
+              />
+            </div>
           ) : (
             <fetcher.Form method="post" encType="multipart/form-data" className={styles.form}>
               <div className={styles.formGrid}>
@@ -329,7 +356,7 @@ export default function TryPage() {
             </fetcher.Form>
           )}
 
-          {showForm && (
+          {showForm && !outfitId && (
             <div className={styles.ctaBlock}>
               <p className={styles.cta}>
                 Need more angles or your store? Add the app.
@@ -411,10 +438,42 @@ export default function TryPage() {
   );
 }
 
-function TryPollResult({ outfitId }: { outfitId: string }) {
-  const [status, setStatus] = useState<"pending" | "processing" | "completed" | "failed">("pending");
+const PROGRESS_STEPS = [
+  { key: "pending", label: "Analysing your garment" },
+  { key: "generating_front", label: "Dressing the model" },
+  { key: "completed", label: "Your studio shot is ready" },
+] as const;
+
+function getActiveStep(status: string): number {
+  if (status === "pending") return 0;
+  if (status === "generating_front") return 1;
+  if (status === "completed" || status === "failed") return 2;
+  return 0;
+}
+
+function TryPollResult({
+  outfitId,
+  flatLayPreviewUrl,
+  installUrl,
+  showInstallCta,
+}: {
+  outfitId: string;
+  flatLayPreviewUrl: string | null;
+  installUrl: string;
+  showInstallCta: boolean;
+}) {
+  const [status, setStatus] = useState<string>("pending");
   const [images, setImages] = useState<{ pose: string; imageUrl: string }[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef(Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -426,7 +485,7 @@ function TryPollResult({ outfitId }: { outfitId: string }) {
         images?: { pose: string; imageUrl: string }[];
       };
       if (cancelled) return;
-      setStatus(data.status as "pending" | "processing" | "completed" | "failed");
+      setStatus(data.status);
       if (data.errorMessage) setErrorMsg(data.errorMessage);
       if (data.images?.length) setImages(data.images);
       if (data.status !== "completed" && data.status !== "failed") {
@@ -439,18 +498,81 @@ function TryPollResult({ outfitId }: { outfitId: string }) {
     };
   }, [outfitId]);
 
-  return (
-    <div className={styles.result}>
-      {status === "pending" || status === "processing" ? (
-        <p className={styles.resultStatus}>Generating your studio shot…</p>
-      ) : status === "failed" ? (
+  const activeStep = getActiveStep(status);
+  const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
+  const ss = String(elapsed % 60).padStart(2, "0");
+  const resultImage = images.find((i) => i.pose === "front") ?? images[0] ?? null;
+
+  if (status === "failed") {
+    return (
+      <div className={styles.progressPanel}>
         <p className={styles.error}>{errorMsg || "Generation failed. Try again or install the app."}</p>
-      ) : (
-        <div className={styles.resultImages}>
-          {images.map((img) => (
-            <img key={img.pose} src={img.imageUrl} alt={img.pose} />
-          ))}
-        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.progressPanel}>
+      {status !== "completed" && (
+        <>
+          <ol className={styles.progressSteps}>
+            {PROGRESS_STEPS.map((step, i) => (
+              <li
+                key={step.key}
+                className={
+                  i < activeStep
+                    ? styles.stepDone
+                    : i === activeStep
+                    ? styles.stepActive
+                    : styles.stepPending
+                }
+              >
+                <span className={styles.stepDot}>{i < activeStep ? "✓" : i + 1}</span>
+                <span className={styles.stepLabel}>{step.label}</span>
+              </li>
+            ))}
+          </ol>
+          <p className={styles.timerLine}>Usually 45–90 sec · {mm}:{ss} elapsed</p>
+        </>
+      )}
+
+      {status === "completed" && resultImage && (
+        <>
+          <div className={styles.resultReveal}>
+            {flatLayPreviewUrl && (
+              <div className={styles.revealItem}>
+                <p className={styles.revealLabel}>Your flat-lay</p>
+                <img src={flatLayPreviewUrl} alt="Your flat-lay" className={styles.revealImg} />
+              </div>
+            )}
+            <div className={styles.revealArrow} aria-hidden="true">→</div>
+            <div className={styles.revealItem}>
+              <p className={styles.revealLabel}>Studio shot</p>
+              <img
+                src={resultImage.imageUrl}
+                alt="Studio shot"
+                className={`${styles.revealImg} ${styles.revealImgResult}`}
+              />
+            </div>
+          </div>
+          <div className={styles.revealActions}>
+            <a href={resultImage.imageUrl} download="studio-shot.jpg" className={styles.downloadButton}>
+              Download
+            </a>
+          </div>
+          {showInstallCta && (
+            <div className={styles.resultCta}>
+              <p className={styles.resultCtaText}>Want 3 angles for your whole catalogue?</p>
+              <a
+                href={installUrl || "/auth/login"}
+                {...(installUrl ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                className={landingStyles.btnPrimary}
+              >
+                Add the app to my store
+              </a>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
