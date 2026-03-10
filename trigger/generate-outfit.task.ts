@@ -7,6 +7,7 @@ import { extractGarmentSpec } from '../app/lib/garmentSpec';
 import { buildPromptFromSpec } from '../app/lib/garmentFidelityPrompt';
 import { normalizeReferenceImageServer } from '../app/lib/normalizeReferenceImage.server';
 import { PDP_STYLE_PRESETS, STYLING_DIRECTION_PRESETS } from '../app/lib/pdpPresets';
+import { DEMO_SHOP_ID } from '../app/lib/billing.server';
 import type { GarmentSpec } from '../app/lib/garmentSpec';
 
 // ── Payload ───────────────────────────────────────────────────────────────────
@@ -63,8 +64,9 @@ export const generateOutfitTask = task({
     } = payload;
     const poses = allowedPoses?.length ? allowedPoses : ['front'];
     const apiKey = process.env.GEMINI_API_KEY!;
+    const isDemo = shopId === DEMO_SHOP_ID;
 
-    // ── Reset status — preserves completed poses across retries ──────────────
+    // ── Validate ──────────────────────────────────────────────────────────────
     const existing = await prisma.outfit.findFirst({ where: { id: outfitId, shopId }, select: { id: true } });
     if (!existing) {
       throw new Error(
@@ -73,98 +75,86 @@ export const generateOutfitTask = task({
     }
     await prisma.outfit.update({ where: { id: outfitId, shopId }, data: { status: 'pending' } });
 
-    // ── 0. Fetch raw images, clean, extract spec, upload cleaned, backfill outfit ─
+    // ── 0. Fetch raw images ───────────────────────────────────────────────────
     const rawFrontB64 = await fetchAsBase64(rawFrontUrl);
     const rawBackB64 = rawBackUrl ? await fetchAsBase64(rawBackUrl).catch(() => null) : null;
 
-    const cleanFlatLayB64 = await cleanFlatLay(rawFrontB64, frontMime, apiKey);
-    const cleanBackFlatLayB64 =
-      rawBackB64
-        ? await cleanFlatLay(rawBackB64, backMime, apiKey).catch(() => null)
-        : null;
-
-    const garmentSpec = await extractGarmentSpec(cleanFlatLayB64, 'image/png', apiKey);
-
-    const cleanFlatLayUrl = await uploadImageToBlob(
-      Buffer.from(cleanFlatLayB64, 'base64'),
-      `outfits/${shopId}/${outfitId}/flat-lay.png`,
-    );
+    // ── 1. Clean flat lay — skipped for demo to save ~20s ────────────────────
+    let cleanFlatLayB64: string;
+    let cleanFlatLayUrl: string;
+    let cleanBackFlatLayB64: string | null = null;
     let cleanBackFlatLayUrl: string | null = null;
-    if (cleanBackFlatLayB64) {
-      cleanBackFlatLayUrl = await uploadImageToBlob(
-        Buffer.from(cleanBackFlatLayB64, 'base64'),
-        `outfits/${shopId}/${outfitId}/flat-lay-back.png`,
-      );
+    const cleanMime = isDemo ? frontMime as 'image/png' | 'image/jpeg' : 'image/png';
+
+    if (isDemo) {
+      cleanFlatLayB64 = rawFrontB64;
+      cleanBackFlatLayB64 = rawBackB64;
+      cleanFlatLayUrl = rawFrontUrl;
+    } else {
+      cleanFlatLayB64 = await cleanFlatLay(rawFrontB64, frontMime, apiKey);
+      const [uploadedUrl, cleanedBack] = await Promise.all([
+        uploadImageToBlob(Buffer.from(cleanFlatLayB64, 'base64'), `outfits/${shopId}/${outfitId}/flat-lay.png`),
+        rawBackB64 ? cleanFlatLay(rawBackB64, backMime, apiKey).catch(() => null) : Promise.resolve(null),
+      ]);
+      cleanFlatLayUrl = uploadedUrl;
+      cleanBackFlatLayB64 = cleanedBack;
+      if (cleanBackFlatLayB64) {
+        cleanBackFlatLayUrl = await uploadImageToBlob(
+          Buffer.from(cleanBackFlatLayB64, 'base64'),
+          `outfits/${shopId}/${outfitId}/flat-lay-back.png`,
+        );
+      }
     }
+
+    // ── 2. Spec extraction + model normalisation in parallel ──────────────────
+    const [garmentSpec, normalizedModelB64] = await Promise.all([
+      extractGarmentSpec(cleanFlatLayB64, cleanMime, apiKey),
+      fetchAsBuffer(modelImageUrl)
+        .then(buf => normalizeReferenceImageServer(buf))
+        .then(buf => buf.toString('base64')),
+    ]);
 
     await prisma.outfit.update({
       where: { id: outfitId, shopId },
-      data: {
-        frontFlatLayUrl: cleanFlatLayUrl,
-        cleanFlatLayUrl,
-        cleanBackFlatLayUrl,
-        garmentSpec: JSON.parse(JSON.stringify(garmentSpec)),
-      },
+      data: { frontFlatLayUrl: cleanFlatLayUrl, cleanFlatLayUrl, cleanBackFlatLayUrl, garmentSpec: JSON.parse(JSON.stringify(garmentSpec)) },
     });
 
-    // ── 1. Fetch outfit data (now with clean URLs + spec) ──────────────────────
-    const outfit = await prisma.outfit.findFirstOrThrow({
-      where: { id: outfitId, shopId },
-      select: { cleanFlatLayUrl: true, garmentSpec: true, name: true },
-    });
-
-    const outfitGarmentSpec = outfit.garmentSpec as GarmentSpec | null;
-    if (!outfitGarmentSpec) throw new Error('Garment spec missing from outfit record');
-    if (!outfit.cleanFlatLayUrl) throw new Error('Clean flat lay URL missing from outfit record');
-
-    // ── Query completed poses for retry idempotency ───────────────────────────
+    // ── 3. Idempotency: skip poses already done on a previous attempt ─────────
     const existingImages = await prisma.generatedImage.findMany({
       where: { outfitId },
       select: { pose: true, imageUrl: true },
     });
     const completedPoses = new Set(existingImages.map((img) => img.pose));
 
-    // cleanFlatLayB64 and cleanBackFlatLayB64 already in memory from phase 0
-
-    // ── 2. Download + normalize model reference ───────────────────────────────
-    const modelBuffer = await fetchAsBuffer(modelImageUrl);
-    const normalizedModelBuffer = await normalizeReferenceImageServer(modelBuffer);
-    const normalizedModelB64 = normalizedModelBuffer.toString('base64');
-
-    // ── 3. Resolve style presets ──────────────────────────────────────────────
+    // ── 4. Style presets ──────────────────────────────────────────────────────
     const stylePreset = PDP_STYLE_PRESETS.find(p => p.id === styleId) ?? PDP_STYLE_PRESETS[0];
-    const stylingDir =
-      STYLING_DIRECTION_PRESETS.find(p => p.id === stylingDirectionId) ??
-      STYLING_DIRECTION_PRESETS[0];
+    const stylingDir = STYLING_DIRECTION_PRESETS.find(p => p.id === stylingDirectionId) ?? STYLING_DIRECTION_PRESETS[0];
 
-    // ── 4. Init Gemini stateful chat ──────────────────────────────────────────
+    // ── 5. Init Gemini chat — ThinkingLevel.NONE for demo, HIGH for paid ──────
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
     const genConfig = {
       temperature: 0.2,
       imageConfig: { aspectRatio: '2:3' as const, imageSize: '1K' as const },
-      thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
+      thinkingConfig: { thinkingLevel: isDemo ? ThinkingLevel.NONE : ThinkingLevel.HIGH },
     };
     const chat = ai.chats.create({ model: 'gemini-3.1-flash-image-preview', config: genConfig });
     const sharp = (await import('sharp')).default;
 
     const hasBack = !!cleanBackFlatLayB64;
 
-    // ── 5. Front pose ─────────────────────────────────────────────────────────
+    // ── 6. Front pose ─────────────────────────────────────────────────────────
     let frontB64: string;
     if (completedPoses.has('front')) {
-      // Front already generated on a previous attempt — re-fetch from blob so
-      // tq/back can use it as an inline reference without regenerating.
       const frontRecord = existingImages.find((img) => img.pose === 'front')!;
       frontB64 = await fetchAsBase64(frontRecord.imageUrl);
     } else {
       await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_front' } });
-
       const frontPrompt = buildPromptFromSpec(
-        outfitGarmentSpec, 'front', stylePreset.promptSnippet, hasBack, false, modelHeight, stylingDir, modelGender,
+        garmentSpec, 'front', stylePreset.promptSnippet, hasBack, false, modelHeight, stylingDir, modelGender,
       );
       const frontResp = await chat.sendMessage({
         message: [
-          { inlineData: { data: cleanFlatLayB64, mimeType: 'image/png' as const } },
+          { inlineData: { data: cleanFlatLayB64, mimeType: cleanMime } },
           { inlineData: { data: normalizedModelB64, mimeType: 'image/png' as const } },
           { text: frontPrompt },
         ],
@@ -175,25 +165,19 @@ export const generateOutfitTask = task({
         .resize({ width: 800, height: 1200, fit: 'cover', position: 'top' })
         .png()
         .toBuffer();
-      const frontUrl = await uploadImageToBlob(
-        frontCropped,
-        `outfits/${shopId}/${outfitId}/front.png`,
-      );
-      await prisma.generatedImage.create({
-        data: { shopId, outfitId, imageUrl: frontUrl, pose: 'front', styleId },
-      });
+      const frontUrl = await uploadImageToBlob(frontCropped, `outfits/${shopId}/${outfitId}/front.png`);
+      await prisma.generatedImage.create({ data: { shopId, outfitId, imageUrl: frontUrl, pose: 'front', styleId } });
     }
 
-    // ── 6. Three-quarter pose ─────────────────────────────────────────────────
+    // ── 7. Three-quarter pose ─────────────────────────────────────────────────
     if (poses.includes('three-quarter') && !completedPoses.has('three-quarter')) {
       await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_tq' } });
-
       const tqPrompt = buildPromptFromSpec(
-        outfitGarmentSpec, 'three-quarter', stylePreset.promptSnippet, hasBack, true, modelHeight, stylingDir, modelGender,
+        garmentSpec, 'three-quarter', stylePreset.promptSnippet, hasBack, true, modelHeight, stylingDir, modelGender,
       );
       const tqResp = await chat.sendMessage({
         message: [
-          { inlineData: { data: cleanFlatLayB64, mimeType: 'image/png' as const } },
+          { inlineData: { data: cleanFlatLayB64, mimeType: cleanMime } },
           { inlineData: { data: normalizedModelB64, mimeType: 'image/png' as const } },
           { inlineData: { data: frontB64, mimeType: 'image/png' as const } },
           { text: tqPrompt },
@@ -205,25 +189,19 @@ export const generateOutfitTask = task({
         .resize({ width: 800, height: 1200, fit: 'cover', position: 'top' })
         .png()
         .toBuffer();
-      const tqUrl = await uploadImageToBlob(
-        tqCropped,
-        `outfits/${shopId}/${outfitId}/three-quarter.png`,
-      );
-      await prisma.generatedImage.create({
-        data: { shopId, outfitId, imageUrl: tqUrl, pose: 'three-quarter', styleId },
-      });
+      const tqUrl = await uploadImageToBlob(tqCropped, `outfits/${shopId}/${outfitId}/three-quarter.png`);
+      await prisma.generatedImage.create({ data: { shopId, outfitId, imageUrl: tqUrl, pose: 'three-quarter', styleId } });
     }
 
-    // ── 7. Back pose ──────────────────────────────────────────────────────────
+    // ── 8. Back pose ──────────────────────────────────────────────────────────
     if (poses.includes('back') && !completedPoses.has('back')) {
       await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_back' } });
-
       const backPrompt = buildPromptFromSpec(
-        outfitGarmentSpec, 'back', stylePreset.promptSnippet, hasBack, true, modelHeight, stylingDir, modelGender,
+        garmentSpec, 'back', stylePreset.promptSnippet, hasBack, true, modelHeight, stylingDir, modelGender,
       );
       const backResp = await chat.sendMessage({
         message: [
-          { inlineData: { data: cleanBackFlatLayB64 ?? cleanFlatLayB64, mimeType: 'image/png' as const } },
+          { inlineData: { data: cleanBackFlatLayB64 ?? cleanFlatLayB64, mimeType: cleanMime } },
           { inlineData: { data: normalizedModelB64, mimeType: 'image/png' as const } },
           { inlineData: { data: frontB64, mimeType: 'image/png' as const } },
           { text: backPrompt },
@@ -235,16 +213,11 @@ export const generateOutfitTask = task({
         .resize({ width: 800, height: 1200, fit: 'cover', position: 'top' })
         .png()
         .toBuffer();
-      const backUrl = await uploadImageToBlob(
-        backCropped,
-        `outfits/${shopId}/${outfitId}/back.png`,
-      );
-      await prisma.generatedImage.create({
-        data: { shopId, outfitId, imageUrl: backUrl, pose: 'back', styleId },
-      });
+      const backUrl = await uploadImageToBlob(backCropped, `outfits/${shopId}/${outfitId}/back.png`);
+      await prisma.generatedImage.create({ data: { shopId, outfitId, imageUrl: backUrl, pose: 'back', styleId } });
     }
 
-    // ── 8. Complete ───────────────────────────────────────────────────────────
+    // ── 9. Complete ───────────────────────────────────────────────────────────
     await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'completed' } });
 
     return { outfitId, status: 'completed' };
