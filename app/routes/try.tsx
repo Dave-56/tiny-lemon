@@ -126,7 +126,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { allowed } = checkDemoRateLimit(ip);
   if (!allowed) {
     return Response.json(
-      { error: "rate_limited", message: "10 free generations per day limit reached. Try again tomorrow or install the app for more." },
+      { error: "rate_limited", message: "1 free generation per day limit reached. Try again tomorrow or install the app for unlimited generations." },
       { status: 429 }
     );
   }
@@ -279,7 +279,7 @@ export default function TryPage() {
           <h1 className={styles.pageTitle}>Try free</h1>
           <p className={styles.subtitle}>
             Upload a flat-lay and pick a model. You get one front-angle studio
-            shot. No signup. Up to 10 per day per device.
+            shot. No signup. 1 per day per device.
           </p>
 
           {outfitId ? (
