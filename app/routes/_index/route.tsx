@@ -220,7 +220,13 @@ export default function LandingPage() {
               </p>
             </div>
             <div className={styles.featureCardGrid}>
-              <div className={styles.featureCardImage} aria-hidden />
+              <img
+                src="/every-photo-your-listing-needs-1600x900.png"
+                alt="Multiple product image types: on-model angles, detail close-ups, flat lay, and lifestyle"
+                className={styles.featureCardImage}
+                width={1600}
+                height={900}
+              />
               <div className={styles.featureCardIcon}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
               </div>
