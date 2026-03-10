@@ -539,21 +539,11 @@ function TryPollResult({
       {status === "completed" && resultImage && (
         <>
           <div className={styles.resultReveal}>
-            {flatLayPreviewUrl && (
-              <div className={styles.revealItem}>
-                <p className={styles.revealLabel}>Your flat-lay</p>
-                <img src={flatLayPreviewUrl} alt="Your flat-lay" className={styles.revealImg} />
-              </div>
-            )}
-            <div className={styles.revealArrow} aria-hidden="true">→</div>
-            <div className={styles.revealItem}>
-              <p className={styles.revealLabel}>Studio shot</p>
-              <img
-                src={resultImage.imageUrl}
-                alt="Studio shot"
-                className={`${styles.revealImg} ${styles.revealImgResult}`}
-              />
-            </div>
+            <img
+              src={resultImage.imageUrl}
+              alt="Studio shot"
+              className={`${styles.revealImg} ${styles.revealImgResult}`}
+            />
           </div>
           <div className={styles.revealActions}>
             <a href={resultImage.imageUrl} download="studio-shot.jpg" className={styles.downloadButton}>

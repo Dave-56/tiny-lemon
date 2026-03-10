@@ -360,20 +360,7 @@
 /* ── Result reveal ───────────────────────────────────────────── */
 
 .resultReveal {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: 0.75rem;
-  align-items: center;
-}
-
-@media (max-width: 480px) {
-  .resultReveal {
-    grid-template-columns: 1fr;
-  }
-
-  .revealArrow {
-    transform: rotate(90deg);
-  }
+  display: block;
 }
 
 .revealItem {
@@ -393,6 +380,8 @@
 .revealImg {
   width: 100%;
   height: auto;
+  max-height: 600px;
+  object-fit: contain;
   border-radius: 10px;
   border: 1px solid var(--krea-border, rgba(0, 0, 0, 0.08));
   display: block;
