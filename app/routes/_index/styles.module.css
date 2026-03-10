@@ -306,6 +306,8 @@
   aspect-ratio: 16 / 10;
   background: var(--krea-border, rgba(0, 0, 0, 0.08));
   flex-shrink: 0;
+  object-fit: cover;
+  display: block;
 }
 
 .featureCardIcon {
