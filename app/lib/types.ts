@@ -41,6 +41,8 @@ export function normalizeModelGender(value: string | undefined): ModelGender | u
 export interface StylingDirectionPreset {
   id: string;
   label: string;
+  /** Optional image path for brand-style UI (e.g. /presets/styling/minimal.png). */
+  imageUrl?: string;
   description?: string;
   /** Injected into the front pose prompt — replaces the hardcoded neutral pose sentence. */
   frontSnippet: string;
@@ -55,6 +57,8 @@ export interface StylingDirectionPreset {
 export interface PdpStylePreset {
   id: string;
   label: string;
+  /** Optional image path for brand-style UI (e.g. /presets/backgrounds/white-studio.png). */
+  imageUrl?: string;
   /** Optional short description for workspace UI (e.g. White / Grey studio). */
   description?: string;
   promptSnippet: string;
@@ -63,6 +67,8 @@ export interface PdpStylePreset {
 export interface AnglePreset {
   id: string;
   label: string;
+  /** Optional image path for brand-style UI (e.g. /presets/poses/front.png). */
+  imageUrl?: string;
   promptSnippet: string;
 }
 

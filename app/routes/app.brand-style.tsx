@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from 'react-router';
 import { useFetcher, useLoaderData, useRouteError } from 'react-router';
 import { boundary } from '@shopify/shopify-app-react-router/server';
@@ -7,6 +7,66 @@ import { authenticate } from '../shopify.server';
 import prisma, { ensureShop } from '../db.server';
 import { PDP_STYLE_PRESETS, ANGLE_PRESETS, STYLING_DIRECTION_PRESETS } from '../lib/pdpPresets';
 import { getPlanForShop, PLAN_ANGLES } from '../lib/billing.server';
+
+// ── Shared preset card (Background, Poses, Styling Direction) ─────────────────
+
+type PresetItem = { id: string; label: string; imageUrl?: string };
+
+function PresetCard({
+  preset,
+  selected,
+  onSelect,
+}: {
+  preset: PresetItem;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const [imgError, setImgError] = useState(false);
+  const showImage = preset.imageUrl && !imgError;
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        onSelect();
+      }
+    },
+    [onSelect],
+  );
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      onKeyDown={handleKeyDown}
+      className={`flex flex-col rounded-lg border-2 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-krea-accent/50 focus:ring-offset-2 ${
+        selected
+          ? 'border-krea-accent bg-krea-accent/5'
+          : 'border-krea-border bg-white hover:border-krea-muted hover:bg-gray-50/50'
+      }`}
+    >
+      <div className="aspect-[3/4] w-full overflow-hidden rounded-t-md bg-krea-bg">
+        {showImage ? (
+          <img
+            src={preset.imageUrl}
+            alt={preset.label}
+            className="h-full w-full object-cover"
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-xs text-krea-muted">Preview</div>
+        )}
+      </div>
+      <span
+        className={`block px-2 py-1.5 text-xs font-medium ${
+          selected ? 'text-krea-accent' : 'text-krea-text'
+        }`}
+      >
+        {preset.label}
+      </span>
+    </button>
+  );
+}
 
 // ── Loader ────────────────────────────────────────────────────────────────────
 
@@ -96,25 +156,19 @@ export default function BrandStyle() {
 
   return (
     <div className="min-h-screen bg-krea-bg p-6">
-      <div className="max-w-sm space-y-8">
+      <div className="max-w-md space-y-8">
 
-        {/* Background */}
+        {/* Background — same card pattern as Poses and Styling */}
         <section className="space-y-2">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-krea-muted">Background</p>
-          <div className="flex gap-2">
+          <div className="grid grid-cols-2 gap-3">
             {PDP_STYLE_PRESETS.map((p) => (
-              <button
+              <PresetCard
                 key={p.id}
-                type="button"
-                onClick={() => toggleStyleId(p.id)}
-                className={`flex-1 h-8 rounded-md border text-xs font-medium transition-colors ${
-                  selectedStyleIds.includes(p.id)
-                    ? 'border-krea-accent bg-krea-accent text-white'
-                    : 'border-krea-border bg-white text-krea-muted hover:border-krea-muted hover:text-krea-text'
-                }`}
-              >
-                {p.label}
-              </button>
+                preset={p}
+                selected={selectedStyleIds.includes(p.id)}
+                onSelect={() => toggleStyleId(p.id)}
+              />
             ))}
           </div>
           {PDP_STYLE_PRESETS.filter((p) => selectedStyleIds.includes(p.id)).map((p) =>
@@ -129,38 +183,33 @@ export default function BrandStyle() {
           <section className="space-y-2">
             <p className="text-[11px] font-semibold uppercase tracking-widest text-krea-muted">Poses</p>
             <p className="text-xs text-krea-muted">Views generated per outfit.</p>
-            <div className="flex gap-2">
+            <div className="grid grid-cols-3 gap-3">
               {allowedAnglePresets.map((p) => (
-                <button
+                <PresetCard
                   key={p.id}
-                  type="button"
-                  onClick={() => toggleAngleId(p.id)}
-                  className={`flex-1 h-8 rounded-md border text-xs font-medium transition-colors ${
-                    selectedAngleIds.includes(p.id)
-                      ? 'border-krea-accent bg-krea-accent text-white'
-                      : 'border-krea-border bg-white text-krea-muted hover:border-krea-muted hover:text-krea-text'
-                  }`}
-                >
-                  {p.label}
-                </button>
+                  preset={p}
+                  selected={selectedAngleIds.includes(p.id)}
+                  onSelect={() => toggleAngleId(p.id)}
+                />
               ))}
             </div>
           </section>
         )}
 
-        {/* Styling Direction */}
+        {/* Styling Direction — 2-column grid, single-select cards */}
         <section className="space-y-2">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-krea-muted">Styling Direction</p>
           <p className="text-xs text-krea-muted">The energy your model projects. Set once for your brand.</p>
-          <select
-            value={stylingDirectionId}
-            onChange={(e) => setStylingDirectionId(e.target.value)}
-            className="w-full h-9 rounded-md border border-krea-border bg-white px-3 text-sm text-krea-text focus:outline-none focus:border-krea-accent/40 transition-colors appearance-none"
-          >
+          <div className="grid grid-cols-2 gap-3">
             {STYLING_DIRECTION_PRESETS.map((p) => (
-              <option key={p.id} value={p.id}>{p.label}</option>
+              <PresetCard
+                key={p.id}
+                preset={p}
+                selected={stylingDirectionId === p.id}
+                onSelect={() => setStylingDirectionId(p.id)}
+              />
             ))}
-          </select>
+          </div>
           {selectedDirection?.description && (
             <p className="text-xs text-krea-muted leading-relaxed">{selectedDirection.description}</p>
           )}
