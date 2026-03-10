@@ -203,6 +203,7 @@ export default function TryPage() {
   const fetcher = useFetcher<{ outfitId?: string; shopId?: string; error?: string; message?: string }>();
   const [selectedModelId, setSelectedModelId] = useState<string>(presets[0]?.id ?? "");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewModel, setPreviewModel] = useState<PresetModel | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isSubmitting = fetcher.state === "submitting" || fetcher.state === "loading";
@@ -210,6 +211,13 @@ export default function TryPage() {
   const error = data?.error ? (data.message || data.error) : null;
   const outfitId = data?.outfitId ?? null;
   const selectedPreset = presets.find((p) => p.id === selectedModelId) ?? null;
+
+  useEffect(() => {
+    if (!previewModel) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setPreviewModel(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [previewModel]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -352,6 +360,14 @@ export default function TryPage() {
                         onClick={() => setSelectedModelId(p.id)}
                         title={p.name}
                       >
+                        <button
+                          type="button"
+                          className={styles.modelCardInfoBtn}
+                          onClick={(e) => { e.stopPropagation(); setPreviewModel(p); }}
+                          aria-label={`View ${p.name} details`}
+                        >
+                          i
+                        </button>
                         <img src={p.imageUrl} alt={p.name} />
                         <span>{p.name}</span>
                       </button>
@@ -442,6 +458,48 @@ export default function TryPage() {
         </div>
       </footer>
 
+      {/* ── Model preview overlay ── */}
+      {previewModel && (
+        <div
+          className={styles.modelOverlay}
+          onClick={() => setPreviewModel(null)}
+        >
+          <div
+            className={styles.modelOverlayInner}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className={styles.modelOverlayClose}
+              onClick={() => setPreviewModel(null)}
+              aria-label="Close"
+            >
+              ✕
+            </button>
+            <img
+              src={previewModel.imageUrl}
+              alt={previewModel.name}
+              className={styles.modelOverlayImg}
+              referrerPolicy="no-referrer"
+            />
+            <div className={styles.modelOverlayInfo}>
+              <div className={styles.modelOverlayMeta}>
+                <p className={styles.modelOverlayName}>{previewModel.name}</p>
+                {previewModel.ethnicity && <p className={styles.modelOverlayDetail}>{previewModel.ethnicity}</p>}
+                {previewModel.bodyBuild && <p className={styles.modelOverlayDetail}>{previewModel.bodyBuild}</p>}
+                {previewModel.height && <p className={styles.modelOverlayDetail}>{previewModel.height}</p>}
+              </div>
+              <button
+                type="button"
+                className={`${landingStyles.btnPrimary} ${styles.modelOverlaySelect}`}
+                onClick={() => { setSelectedModelId(previewModel.id); setPreviewModel(null); }}
+              >
+                {selectedModelId === previewModel.id ? "Selected ✓" : "Select model"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
