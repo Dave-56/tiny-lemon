@@ -49,31 +49,41 @@
 
 | # | Gig title / description | Platform (Upwork) | Posted | Status | Responses | Stores contacted | Installs | Reviews left | Notes |
 |---|---------------------------|-------------------|--------|--------|-----------|------------------|----------|--------------|--------|
-| 1 | Fashion store manager — try our Shopify app (flat-lay → studio shots), leave a review | Upwork | 2025-03-09 | Live | | | | | |
+| 1 | *(old: "leave a review" in scope)* | Upwork | 2025-03-09 | **Removed** (policy: pay-for-review = deceptive marketing) | — | — | — | — | Use "Safe for Upwork" copy below for repost |
 | 2 | | Upwork | | | | | | | |
 | 3 | | Upwork | | | | | | | |
 | 4 | | Upwork | | | | | | | |
 | 5 | | Upwork | | | | | | | |
 
-**Goals:** 3–5 installs on stores with real traffic; 3–5 honest App Store reviews; usage/behavior data.
+**Goals:** 3–5 installs on stores with real traffic; usage/behavior data; *optionally* ask for App Store review **after** work is done (never in the paid scope on Upwork).
 
-**Budget (fill in):** $______ total for Upwork phase. Suggested: **$50–$100 per store** (install + 2-week use + honest review + short feedback). 3–5 stores ≈ $150–$500.
+**Budget (fill in):** $______ total for Upwork phase. Suggested: **$50–$75 per store** (install + 2-week use + detailed feedback). 3–5 stores ≈ $150–$375.
+
+**⚠️ Upwork policy:** Upwork prohibits paying for reviews (they treat it as "deceptive marketing"). **Do not mention "review" or "App Store review" in the job post or contract.** Pay only for: install + use + **feedback/report**. After delivery, you may ask the freelancer *separately* if they’d be willing to leave a review (voluntary, not part of payment).
 
 ---
 
-## Upwork Post — Short Copy-Paste Version
+## Upwork Post — Safe for Upwork (use this)
 
-**Gig title:** Fashion store manager — try our Shopify app (flat-lay → studio shots), leave a review — we pay you
+**Gig title:** E-commerce / fashion store manager — user testing our Shopify app (flat-lay → studio shots), paid
 
 **Description (paste this):**
 
-We built **Tiny Lemon** — a Shopify app that turns flat-lay product photos into on-model studio shots in about 60 seconds (front, 3/4, back). No photographer, no shoot. It’s live on the App Store; we’re early and want real feedback from people who run fashion/apparel stores.
+We built **Tiny Lemon** — a Shopify app that turns flat-lay product photos into on-model studio shots in about 60 seconds (front, 3/4, back). No photographer, no shoot. It’s live on the App Store; we’re early and need real-world feedback from people who run fashion/apparel stores.
 
-**What we need:** Someone who manages or has access to a **Shopify fashion/apparel store with real traffic** (not a test store). We’re not selling to you — we pay you to install the app, use it for 1–2 weeks to generate some product images, leave an **honest review** on the App Store, and share quick feedback (what worked, what didn’t).
+**What we need:** Someone who manages or has access to a **Shopify fashion/apparel store with real traffic** (not a test store). We pay you to:
 
-**What you get:** $[50–75] per store for install + trial + review + short feedback. No long-term commitment.
+1. **Install** our app on that store.
+2. **Use it for 1–2 weeks** — upload flat-lays, generate product images, add them to products if that’s part of your workflow.
+3. **Provide detailed feedback** — written report or short call: usability, workflow, output quality, what would make it useful day-to-day.
 
-**Reply with:** (1) What kind of store you manage (niche, approx. traffic if you know it), (2) That you can install apps and leave a review, (3) That you’re okay with the rate above.
+**Scope:** One store = one fixed-price milestone. We’ll send a short checklist so you know exactly what we need.
+
+**Pay:** $60 per store (install + trial + feedback). No long-term commitment.
+
+**Reply with:** (1) Brief description of the store you manage (niche, approx. traffic if you know it), (2) Confirmation you can install and use the app in a real store, (3) That you’re okay with the rate.
+
+*After the work is done, if they had a good experience, you can ask them separately (e.g. by email) if they’d be willing to leave a review on the App Store — voluntary, not part of the Upwork contract.*
 
 ---
 
@@ -87,37 +97,36 @@ We built **Tiny Lemon** — a Shopify app that turns flat-lay product photos int
 
 ---
 
-## Upwork Post — Full Version (for longer gig descriptions)
+## Upwork Post — Full Version (safe for Upwork)
 
-**Use this when you have more character space or want the full story.**
+**Use when you have more character space. Still no mention of "review" — pay only for install + use + feedback.**
 
 ### What we're building
 
 **Tiny Lemon** is a Shopify app for fashion brands. You upload flat-lay product photos; we generate on-model studio shots (front, three-quarter, back) in about 60 seconds. Same look every time, no photographer, no $15K shoot. Built for Shopify — generate in the app and add images straight to your products.
 
-We're early. The app is live on the Shopify App Store. We want real feedback from people who run or manage fashion/apparel stores.
+We're early. The app is live on the Shopify App Store. We need real-world feedback from people who run or manage fashion/apparel stores.
 
 ### What we need help with
 
-We need **e-commerce managers or store operators** who have access to **Shopify fashion/apparel stores with real traffic** (not test or placeholder stores). We're not asking you to sell anything — we're paying you to:
+We need **e-commerce managers or store operators** who have access to **Shopify fashion/apparel stores with real traffic** (not test or placeholder stores). We're paying you for **user testing and feedback**:
 
 1. **Install** our app on a store you manage (fashion/apparel preferred).
-2. **Use it** for 1–2 weeks — run some flat-lays through, generate images, add them to products if that’s part of your workflow.
-3. **Leave an honest review** on the Shopify App Store based on your experience.
-4. **Share feedback** with us — what worked, what didn’t, what would make it useful day-to-day.
+2. **Use it** for 1–2 weeks — run flat-lays through, generate images, add them to products if that’s part of your workflow.
+3. **Deliver detailed feedback** — written summary or short call: usability, workflow, output quality, what would make it useful day-to-day. We’ll provide a short checklist.
 
-Ideal fit: you already manage one or more fashion/clothing stores on Shopify and can add our app without disrupting the store. We care about real usage so we can improve quality and workflow.
+Ideal fit: you already manage one or more fashion/clothing stores on Shopify and can add our app without disrupting the store. We care about real usage so we can improve the product.
 
 ### What we're offering
 
-- **Payment:** $50–$75 per store (install + 2-week trial + honest review + short feedback). [Adjust if needed.]
-- **No long-term commitment** — after the trial and review, you can keep the app or uninstall; we only ask for honest feedback.
-- **Clear scope:** we’ll give you a short checklist so you know exactly what we need.
+- **Payment:** $60 per store (install + 2-week trial + feedback deliverable). [Adjust if needed.]
+- **No long-term commitment** — after the project, you can keep the app or uninstall.
+- **Clear scope:** one store = one milestone; checklist provided.
 
 We're a small team building in public. Your feedback directly shapes what we build next.
 
-**If this fits — reply with:** (1) Brief description of the store(s) you manage (niche, approximate traffic if you know it), (2) Confirmation that you can install apps and leave a review, (3) Your acceptance of the rate above (or your ask).
+**If this fits — reply with:** (1) Brief description of the store(s) you manage (niche, approximate traffic if you know it), (2) Confirmation you can install and use the app in a real store, (3) Your acceptance of the rate above (or your ask).
 
 ---
 
-*Update the tracking table and budget as you post and close gigs.*
+*Update the tracking table as you post and close gigs. Remember: do not mention "review" or "App Store review" in any Upwork post or contract.*

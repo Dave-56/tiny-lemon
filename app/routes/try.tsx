@@ -264,7 +264,7 @@ export default function TryPage() {
           {outfitId ? (
             <TryPollResult outfitId={outfitId} />
           ) : (
-            <fetcher.Form method="post" className={styles.form}>
+            <fetcher.Form method="post" encType="multipart/form-data" className={styles.form}>
               <div className={styles.field}>
                 <label className={styles.label}>Model</label>
                 <p className={styles.modelHint}>
