@@ -178,7 +178,7 @@ export default function LandingPage() {
               </div>
               <h3 className={styles.featureCardTitle}>Flat-lay to studio in minutes</h3>
               <p className={styles.featureCardDesc}>
-                Upload a flat-lay photo. We generate on-model shots so the product looks the same as in real life — fabric, fit, and construction — without a photoshoot.
+                Upload a flat-lay photo. We generate on-model shots so the product looks the same as in real life, fabric, fit, and construction, without a photoshoot.
               </p>
             </div>
             <div className={styles.featureCardGrid}>
@@ -188,7 +188,7 @@ export default function LandingPage() {
               </div>
               <h3 className={styles.featureCardTitle}>Built for Shopify</h3>
               <p className={styles.featureCardDesc}>
-                Generate images in the app and add them directly to your Shopify products. No export, no manual uploads — same look every time.
+                Generate images in the app and add them directly to your Shopify products. No export, no manual uploads, same look every time.
               </p>
             </div>
             <div className={styles.featureCardGrid}>
