@@ -156,7 +156,7 @@ export default function BrandStyle() {
 
   return (
     <div className="min-h-screen bg-krea-bg p-6">
-      <div className="max-w-md space-y-8">
+      <div className="max-w-lg space-y-8">
 
         {/* Background — same card pattern as Poses and Styling */}
         <section className="space-y-2">
@@ -200,7 +200,7 @@ export default function BrandStyle() {
         <section className="space-y-2">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-krea-muted">Styling Direction</p>
           <p className="text-xs text-krea-muted">The energy your model projects. Set once for your brand.</p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             {STYLING_DIRECTION_PRESETS.map((p) => (
               <PresetCard
                 key={p.id}

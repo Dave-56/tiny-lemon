@@ -20,7 +20,9 @@
     "vite": "vite",
     "typecheck": "react-router typegen && tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "seed:presets": "npx tsx scripts/generate-preset-previews.ts",
+    "seed:three-quarter": "npx tsx scripts/generate-three-quarter-preview.ts"
   },
   "type": "module",
   "engines": {
@@ -73,6 +75,7 @@
     "jsdom": "^25.0.0",
     "prettier": "^3.6.2",
     "tailwindcss": "^4.2.1",
+    "tsx": "^4.19.2",
     "typescript": "^5.9.3",
     "vite": "^6.3.6",
     "vitest": "^2.1.0"
