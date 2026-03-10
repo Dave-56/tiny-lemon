@@ -4,10 +4,6 @@
   padding: 0 2rem 4rem;
 }
 
-.modelSection {
-  max-width: 52rem;
-  margin: 0 auto;
-}
 
 .pageTitle {
   font-size: clamp(1.75rem, 4vw, 2.25rem);
@@ -100,9 +96,17 @@
   margin: 0 0 0.75rem;
 }
 
-.modelGridWrapper {
-  max-width: 56rem;
-  margin: 0 auto;
+.formGrid {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 2.5rem;
+  align-items: start;
+}
+
+@media (max-width: 640px) {
+  .formGrid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .modelGrid {

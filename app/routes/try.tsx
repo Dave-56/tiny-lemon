@@ -265,12 +265,50 @@ export default function TryPage() {
             <TryPollResult outfitId={outfitId} />
           ) : (
             <fetcher.Form method="post" encType="multipart/form-data" className={styles.form}>
-              <div className={styles.field}>
-                <label className={styles.label}>Model</label>
-                <p className={styles.modelHint}>
-                  Click a model to select — your shot will use their look.
-                </p>
-                <div className={styles.modelGridWrapper}>
+              <div className={styles.formGrid}>
+                <div className={styles.field}>
+                  <label className={styles.label}>Flat-lay image</label>
+                  <p className={styles.modelHint}>
+                    Upload a photo of your product laid flat. Your shot will use this image.
+                  </p>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    name="flatLay"
+                    accept="image/png,image/jpeg,image/webp"
+                    required
+                    onChange={handleFileChange}
+                    className={styles.fileInputHidden}
+                    id="flatlay-upload"
+                  />
+                  <button
+                    type="button"
+                    className={styles.uploadButton}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {previewUrl ? "Change image" : "Choose flat-lay image"}
+                  </button>
+                  {previewUrl && (
+                    <>
+                      <div className={styles.flatlayPreview}>
+                        <img src={previewUrl} alt="Your flat-lay" />
+                      </div>
+                      <button
+                        type="submit"
+                        className={`${landingStyles.btnPrimary} ${styles.generateButton}`}
+                        disabled={isSubmitting}
+                      >
+                        {isSubmitting ? "Generating…" : "Generate"}
+                      </button>
+                    </>
+                  )}
+                  {error && <p className={styles.error}>{error}</p>}
+                </div>
+                <div className={styles.field}>
+                  <label className={styles.label}>Model</label>
+                  <p className={styles.modelHint}>
+                    Click a model to select — your shot will use their look.
+                  </p>
                   <div className={styles.modelGrid}>
                     {presets.map((p) => (
                       <button
@@ -285,46 +323,8 @@ export default function TryPage() {
                       </button>
                     ))}
                   </div>
+                  <input type="hidden" name="modelId" value={selectedModelId} />
                 </div>
-                <input type="hidden" name="modelId" value={selectedModelId} />
-              </div>
-              {error && <p className={styles.error}>{error}</p>}
-              <div className={styles.field}>
-                <label className={styles.label}>Flat-lay image</label>
-                <p className={styles.modelHint}>
-                  Upload a photo of your product laid flat. Your shot will use this image.
-                </p>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  name="flatLay"
-                  accept="image/png,image/jpeg,image/webp"
-                  required
-                  onChange={handleFileChange}
-                  className={styles.fileInputHidden}
-                  id="flatlay-upload"
-                />
-                <button
-                  type="button"
-                  className={styles.uploadButton}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  {previewUrl ? "Change flat-lay image" : "Choose flat-lay image"}
-                </button>
-                {previewUrl && (
-                  <>
-                    <div className={styles.flatlayPreview}>
-                      <img src={previewUrl} alt="Your flat-lay" />
-                    </div>
-                    <button
-                      type="submit"
-                      className={`${landingStyles.btnPrimary} ${styles.generateButton}`}
-                      disabled={isSubmitting}
-                    >
-                      {isSubmitting ? "Generating…" : "Generate"}
-                    </button>
-                  </>
-                )}
               </div>
             </fetcher.Form>
           )}
