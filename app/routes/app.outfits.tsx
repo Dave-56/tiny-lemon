@@ -99,6 +99,23 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return handleRegenerateOutfit(shopId, outfitId, userDirection);
   }
 
+  if (body.intent === 'cancel_sync') {
+    const outfitId = body.outfitId as string;
+    const outfit = await prisma.outfit.findFirst({
+      where: { id: outfitId, shopId },
+      select: { jobId: true },
+    });
+    if (!outfit) return Response.json({ error: 'Not found' }, { status: 404 });
+    if (outfit.jobId) {
+      try { await runs.cancel(outfit.jobId); } catch { /* already finished */ }
+    }
+    await prisma.outfit.update({
+      where: { id: outfitId },
+      data: { shopifySyncStatus: null },
+    });
+    return Response.json({ ok: true });
+  }
+
   if (body.intent === 'publish_to_shopify') {
     const outfitId = body.outfitId as string;
     const outfit = await prisma.outfit.findFirst({
@@ -560,6 +577,7 @@ function OutfitCard({
   onRegenerate,
   onCancel,
   onPublish,
+  onCancelSync,
 }: {
   outfit: OutfitWithImages;
   modelName: string | undefined;
@@ -573,8 +591,10 @@ function OutfitCard({
   onRegenerate?: (outfitId: string) => void;
   onCancel?: (outfitId: string) => void;
   onPublish?: (outfitId: string) => void;
+  onCancelSync?: (outfitId: string) => void;
 }) {
   const status = (outfit as { status?: string }).status ?? 'completed';
+  const syncStatus = (outfit as { shopifySyncStatus?: string | null }).shopifySyncStatus;
   const isInProgress = status !== OUTFIT_STATUS.completed && status !== OUTFIT_STATUS.failed;
   const canRegenerate = (status === OUTFIT_STATUS.completed || status === OUTFIT_STATUS.failed) && onRegenerate;
   const [menuOpen, setMenuOpen]         = useState(false);
@@ -798,6 +818,18 @@ function OutfitCard({
                 >
                   Rename
                 </button>
+                {syncStatus === 'syncing' && onCancelSync && (
+                  <>
+                    <div className="h-px bg-krea-border my-1" />
+                    <button
+                      type="button"
+                      onClick={() => { setMenuOpen(false); onCancelSync(outfit.id); }}
+                      className="w-full text-left px-3 py-2 text-xs text-amber-600 hover:bg-amber-50 transition-colors"
+                    >
+                      Cancel sync
+                    </button>
+                  </>
+                )}
                 {!isInProgress && (
                   <>
                     <div className="h-px bg-krea-border my-1" />
@@ -976,6 +1008,16 @@ export default function Outfits() {
     return { ok: true };
   }
 
+  async function cancelSync(outfitId: string) {
+    const res = await authenticatedFetch('/app/outfits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ intent: 'cancel_sync', outfitId }),
+    });
+    if (!res.ok) return;
+    revalidate();
+  }
+
   async function publishOutfit(outfitId: string) {
     const res = await authenticatedFetch('/app/outfits', {
       method: 'POST',
@@ -1104,6 +1146,7 @@ export default function Outfits() {
                 onRegenerate={() => setRegenerateModal({ outfitId: outfit.id, outfitName: outfit.name || 'Untitled' })}
                 onCancel={cancelGeneration}
                 onPublish={publishOutfit}
+                onCancelSync={cancelSync}
               />
             ))}
           </div>
