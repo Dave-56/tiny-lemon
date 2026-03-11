@@ -75,20 +75,24 @@ model Model {
 }
 
 model Outfit {
-  id                   String   @id @default(cuid())
+  id                   String    @id @default(cuid())
   shopId               String
   name                 String
   frontFlatLayUrl      String
   backFlatLayUrl       String?
-  cleanFlatLayUrl      String?  // cleaned studio flat lay (Gemini post-process) — input to all generation
-  cleanBackFlatLayUrl  String?  // cleaned back flat lay
+  cleanFlatLayUrl      String?   // cleaned studio flat lay (Gemini post-process) — input to all generation
+  cleanBackFlatLayUrl  String?   // cleaned back flat lay
   garmentSpec          Json?
-  modelId              String   // preset model ID or batchId of user-generated model
-  stylingDirectionId   String   @default("minimal") // preset id from STYLING_DIRECTION_PRESETS (pose/energy)
-  status               String   @default("pending") // pending | processing | completed | failed
-  jobId                String?  // Trigger.dev runId
-  errorMessage         String?  // failure reason, set on task failure
-  createdAt            DateTime @default(now())
+  modelId              String    // preset model ID or batchId of user-generated model
+  stylingDirectionId   String    @default("minimal") // preset id from STYLING_DIRECTION_PRESETS (pose/energy)
+  status               String    @default("pending") // pending | processing | completed | failed
+  jobId                String?   // Trigger.dev runId
+  errorMessage         String?   // failure reason, set on task failure
+  shopifyProductId     String?   // GID: "gid://shopify/Product/123"
+  shopifyProductUrl    String?   // Shopify admin URL for deep-linking
+  shopifySyncedAt      DateTime? // timestamp of last successful sync
+  shopifySyncStatus    String?   // syncing | synced | stale | failed
+  createdAt            DateTime  @default(now())
 
   shop   Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
   images GeneratedImage[]

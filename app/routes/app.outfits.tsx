@@ -7,6 +7,7 @@ import { boundary } from '@shopify/shopify-app-react-router/server';
 import {
   Download, MoreHorizontal, ZoomIn, X, Trash2, Loader2,
   ChevronLeft, ChevronRight, Image as ImageIcon, RefreshCw,
+  Upload, ExternalLink,
 } from 'lucide-react';
 import { zipSync } from 'fflate';
 import { useAuthenticatedFetch } from '../contexts/AuthenticatedFetchContext';
@@ -14,7 +15,7 @@ import { authenticate } from '../shopify.server';
 import prisma from '../db.server';
 import { STYLING_DIRECTION_PRESETS } from '../lib/pdpPresets';
 import { handleRegenerateOutfit } from '../lib/triggerGeneration.server';
-import { runs } from '../trigger.server';
+import { tasks, runs } from '../trigger.server';
 
 // ── Loader ─────────────────────────────────────────────────────────────────────
 
@@ -96,6 +97,28 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const outfitId = body.outfitId as string;
     const userDirection = (body.userDirection as string) || undefined;
     return handleRegenerateOutfit(shopId, outfitId, userDirection);
+  }
+
+  if (body.intent === 'publish_to_shopify') {
+    const outfitId = body.outfitId as string;
+    const outfit = await prisma.outfit.findFirst({
+      where: { id: outfitId, shopId },
+      select: { status: true, shopifyProductId: true, shopifySyncStatus: true },
+    });
+    if (!outfit) return Response.json({ error: 'Not found' }, { status: 404 });
+    if (outfit.status !== 'completed') {
+      return Response.json({ error: 'Outfit is not completed.' }, { status: 400 });
+    }
+    const handle = await tasks.trigger('sync-outfit-to-shopify', {
+      outfitId,
+      shopId,
+      shopifyProductId: outfit.shopifyProductId ?? undefined,
+    });
+    await prisma.outfit.update({
+      where: { id: outfitId },
+      data: { shopifySyncStatus: 'syncing', jobId: handle.id },
+    });
+    return Response.json({ ok: true });
   }
 
   if (body.intent === 'cancel_generation') {
@@ -460,6 +483,58 @@ function Lightbox({
   );
 }
 
+// ── ShopifyPublishButton ───────────────────────────────────────────────────────
+
+function ShopifyPublishButton({
+  outfit,
+  onPublish,
+}: {
+  outfit: OutfitWithImages;
+  onPublish?: (outfitId: string) => void;
+}) {
+  const syncStatus = (outfit as { shopifySyncStatus?: string | null }).shopifySyncStatus;
+  const productUrl = (outfit as { shopifyProductUrl?: string | null }).shopifyProductUrl;
+
+  if (syncStatus === 'synced' && productUrl) {
+    return (
+      <button
+        type="button"
+        onClick={() => window.open(productUrl, '_blank')}
+        className="flex items-center gap-1.5 text-[11px] text-krea-muted border border-krea-border rounded-md px-2.5 py-1 hover:bg-krea-border/40 transition-colors"
+      >
+        <ExternalLink className="w-3 h-3" />
+        View in Shopify
+      </button>
+    );
+  }
+
+  if (syncStatus === 'syncing') {
+    return (
+      <button
+        type="button"
+        disabled
+        className="flex items-center gap-1.5 text-[11px] text-krea-muted border border-krea-border rounded-md px-2.5 py-1 opacity-50 cursor-not-allowed"
+      >
+        <Loader2 className="w-3 h-3 animate-spin" />
+        Publishing…
+      </button>
+    );
+  }
+
+  const label = syncStatus === 'stale' ? 'Re-publish to Shopify' : 'Publish to Shopify';
+
+  return (
+    <button
+      type="button"
+      onClick={() => onPublish?.(outfit.id)}
+      className="flex items-center gap-1.5 text-[11px] text-krea-muted border border-krea-border rounded-md px-2.5 py-1 hover:bg-krea-border/40 transition-colors"
+    >
+      <Upload className="w-3 h-3" />
+      {label}
+    </button>
+  );
+}
+
 // ── OutfitCard ─────────────────────────────────────────────────────────────────
 
 const OUTFIT_STATUS = {
@@ -484,6 +559,7 @@ function OutfitCard({
   onLightbox,
   onRegenerate,
   onCancel,
+  onPublish,
 }: {
   outfit: OutfitWithImages;
   modelName: string | undefined;
@@ -496,6 +572,7 @@ function OutfitCard({
   onLightbox: (outfitId: string, index: number) => void;
   onRegenerate?: (outfitId: string) => void;
   onCancel?: (outfitId: string) => void;
+  onPublish?: (outfitId: string) => void;
 }) {
   const status = (outfit as { status?: string }).status ?? 'completed';
   const isInProgress = status !== OUTFIT_STATUS.completed && status !== OUTFIT_STATUS.failed;
@@ -685,6 +762,10 @@ function OutfitCard({
             {downloading ? 'Zipping…' : 'Download all'}
           </button>
 
+          {status === OUTFIT_STATUS.completed && (
+            <ShopifyPublishButton outfit={outfit} onPublish={onPublish} />
+          )}
+
           {/* ... menu */}
           <div className="relative" ref={menuRef}>
             <button
@@ -821,13 +902,12 @@ export default function Outfits() {
 
   const closeLightbox = useCallback(() => setLightbox(null), []);
 
-  // Poll when any outfit is in progress (pending or generating_*)
-  const hasInProgress = outfits.some(
-    (o) => {
-      const s = (o as { status?: string }).status;
-      return s && s !== 'completed' && s !== 'failed';
-    },
-  );
+  // Poll when any outfit is generating or being synced to Shopify
+  const hasInProgress = outfits.some((o) => {
+    const s = (o as { status?: string }).status;
+    const syncS = (o as { shopifySyncStatus?: string | null }).shopifySyncStatus;
+    return (s && s !== 'completed' && s !== 'failed') || syncS === 'syncing';
+  });
   useEffect(() => {
     if (!hasInProgress) return;
     const interval = setInterval(() => revalidate(), 5000);
@@ -894,6 +974,16 @@ export default function Outfits() {
     }
     revalidate();
     return { ok: true };
+  }
+
+  async function publishOutfit(outfitId: string) {
+    const res = await authenticatedFetch('/app/outfits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ intent: 'publish_to_shopify', outfitId }),
+    });
+    if (!res.ok) return;
+    revalidate();
   }
 
   async function cancelGeneration(outfitId: string) {
@@ -1013,6 +1103,7 @@ export default function Outfits() {
                 onLightbox={(id, idx) => setLightbox({ outfitId: id, index: idx })}
                 onRegenerate={() => setRegenerateModal({ outfitId: outfit.id, outfitName: outfit.name || 'Untitled' })}
                 onCancel={cancelGeneration}
+                onPublish={publishOutfit}
               />
             ))}
           </div>

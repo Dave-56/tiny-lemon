@@ -256,7 +256,9 @@ export const regenerateOutfitTask = task({
       prisma.generatedImage.createMany({ data: newImages }),
       prisma.outfit.update({
         where: { id: outfitId, shopId },
-        data: { status: 'completed', errorMessage: null },
+        // shopifyProductId is intentionally preserved so re-publish updates the
+        // existing Shopify product instead of creating a duplicate.
+        data: { status: 'completed', errorMessage: null, shopifySyncStatus: 'stale' },
       }),
     ]);
 

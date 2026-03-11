@@ -1,4 +1,5 @@
 import { defineConfig } from '@trigger.dev/sdk/v3';
+import { prismaExtension } from '@trigger.dev/build/extensions/prisma';
 
 export default defineConfig({
   // Replace with your Trigger.dev project reference from the dashboard
@@ -15,5 +16,13 @@ export default defineConfig({
       maxTimeoutInMs: 30000,
       factor: 2,
     },
+  },
+  build: {
+    extensions: [
+      prismaExtension({
+        schema: 'prisma/schema.prisma',
+        directUrlEnvVarName: 'DIRECT_URL',
+      }),
+    ],
   },
 });
