@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import posthog from 'posthog-js';
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from 'react-router';
 import { useLoaderData, useRouteError } from 'react-router';
 import { boundary } from '@shopify/shopify-app-react-router/server';
@@ -37,6 +38,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const used = await getMonthlyUsage(session.shop);
 
   return {
+    shop: session.shop,
     plan: activePlan,
     used,
     limit: PLAN_LIMITS[activePlan] ?? PLAN_LIMITS.free,
@@ -107,10 +109,14 @@ const PLANS = [
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Billing() {
-  const { plan, used, limit } = useLoaderData<typeof loader>();
+  const { shop, plan, used, limit } = useLoaderData<typeof loader>();
   const authenticatedFetch = useAuthenticatedFetch();
   const [isSubscribing, setIsSubscribing] = useState(false);
   const [submittingPlan, setSubmittingPlan] = useState<string | undefined>();
+
+  useEffect(() => {
+    posthog.capture('billing_viewed', { shop, plan });
+  }, [shop, plan]);
 
   async function handlePlanSubmit(planId: keyof typeof BILLING_PLANS) {
     if (!Object.values(BILLING_PLANS).includes(planId)) return;

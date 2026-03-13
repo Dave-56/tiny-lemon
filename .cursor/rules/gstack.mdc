@@ -1,0 +1,35 @@
+---
+description: gstack workflows — /plan-ceo-review, /plan-eng-review, /review, /ship, /browse, /retro. Use when user invokes these slash commands.
+alwaysApply: false
+---
+
+# gstack: Workflow skills for Cursor
+
+[gstack](https://github.com/garrytan/gstack) is installed at `.cursor/skills/gstack/`. When the user invokes one of the slash commands below, **read the corresponding SKILL.md** from that path and follow it step by step.
+
+**Path mapping:** In gstack skill files, any path like `.claude/skills/<name>/` means `.cursor/skills/gstack/<name>/` in this project.
+
+| Command | Mode | Skill path |
+|--------|------|------------|
+| `/plan-ceo-review` | Founder / CEO | `.cursor/skills/gstack/plan-ceo-review/SKILL.md` |
+| `/plan-eng-review` | Eng manager / tech lead | `.cursor/skills/gstack/plan-eng-review/SKILL.md` |
+| `/review` | Paranoid staff engineer (PR review) | `.cursor/skills/gstack/review/SKILL.md` |
+| `/ship` | Release engineer | `.cursor/skills/gstack/ship/SKILL.md` |
+| `/browse` | QA / browser | See below |
+| `/retro` | Engineering manager (retrospective) | `.cursor/skills/gstack/retro/SKILL.md` |
+
+## /browse (QA in the browser)
+
+- **Preferred in Cursor:** Use the **cursor-ide-browser** MCP tools (`browser_navigate`, `browser_snapshot`, `browser_click`, `browser_fill`, etc.) for web QA, screenshots, and form flows. Follow the MCP server instructions for lock/unlock and waiting.
+- **Optional gstack binary:** If the user wants the gstack browse CLI, they can run `cd .cursor/skills/gstack && ./setup` (requires [Bun](https://bun.sh)). The binary will be at `.cursor/skills/gstack/browse/dist/browse`. Use it via Bash as in `.cursor/skills/gstack/SKILL.md`.
+
+## How to run a skill
+
+1. User says e.g. `/review` or `/ship`.
+2. Read the full `SKILL.md` for that skill from `.cursor/skills/gstack/<skill>/SKILL.md` (or `retro/SKILL.md`, `plan-ceo-review/SKILL.md`, etc.).
+3. Follow the steps in that file. For paths inside the skill that refer to `.claude/skills/...`, use `.cursor/skills/gstack/...` instead.
+4. Do not ask for confirmation unless the skill explicitly says to stop and ask (e.g. critical review findings, version bump choice).
+
+## Updating gstack
+
+To pull the latest gstack: `cd .cursor/skills/gstack && git fetch origin && git reset --hard origin/main`. If you use the browse binary, run `./setup` again after updating.

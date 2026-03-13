@@ -9,6 +9,7 @@ import { generateModelImage } from '../gemini.server';
 import { uploadImageToBlob } from '../blob.server';
 import { PDP_STYLE_PRESETS, ANGLE_PRESETS } from '../lib/pdpPresets';
 import { OPTIONS, SKIN_TONE_COLORS, ETHNICITY_PRESETS } from '../lib/modelOptions';
+import posthog from 'posthog-js';
 import type { ModelAttributes } from '../lib/types';
 
 // Extend Vercel function timeout — generation + crop + upload can take up to ~45s
@@ -23,7 +24,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     orderBy: { createdAt: 'desc' },
     select: { id: true, name: true, gender: true, ethnicity: true, imageUrl: true },
   });
-  return { models };
+  return { shop: session.shop, models };
 };
 
 // ── Action ────────────────────────────────────────────────────────────────────
@@ -203,7 +204,7 @@ const SELECT_CLASS =
   'w-full h-9 rounded-md border border-krea-border bg-white px-3 text-sm text-krea-text focus:outline-none focus:border-krea-accent/40 transition-colors appearance-none disabled:opacity-50 disabled:cursor-not-allowed';
 
 export default function ModelBuilder() {
-  const { models } = useLoaderData<typeof loader>();
+  const { shop, models } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
 
   // Form state — initialised from the first ethnicity preset so fields are never blank
@@ -223,6 +224,10 @@ export default function ModelBuilder() {
   const isGenerating = fetcher.state !== 'idle';
   const actionData = fetcher.data as { errors?: string[]; model?: unknown } | undefined;
   const errors = actionData?.errors;
+
+  useEffect(() => {
+    posthog.capture('model_builder_visited', { shop });
+  }, [shop]);
 
   // Reset name after successful generate (loader revalidates automatically)
   const prevState = useRef(fetcher.state);

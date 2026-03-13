@@ -22,6 +22,7 @@ export default defineConfig({
       prismaExtension({
         schema: 'prisma/schema.prisma',
         directUrlEnvVarName: 'DIRECT_URL',
+        mode: 'legacy',
       }),
     ],
   },

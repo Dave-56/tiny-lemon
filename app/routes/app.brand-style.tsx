@@ -7,6 +7,8 @@ import { authenticate } from '../shopify.server';
 import prisma, { ensureShop } from '../db.server';
 import { PDP_STYLE_PRESETS, ANGLE_PRESETS, STYLING_DIRECTION_PRESETS } from '../lib/pdpPresets';
 import { getPlanForShop, PLAN_ANGLES } from '../lib/billing.server';
+import { getRecommendedDirections } from '../lib/brandProfileMapping';
+import posthog from 'posthog-js';
 
 // ── Shared preset card (Background, Poses, Styling Direction) ─────────────────
 
@@ -16,10 +18,12 @@ function PresetCard({
   preset,
   selected,
   onSelect,
+  recommended,
 }: {
   preset: PresetItem;
   selected: boolean;
   onSelect: () => void;
+  recommended?: boolean;
 }) {
   const [imgError, setImgError] = useState(false);
   const showImage = preset.imageUrl && !imgError;
@@ -57,13 +61,16 @@ function PresetCard({
           <div className="flex h-full w-full items-center justify-center text-xs text-krea-muted">Preview</div>
         )}
       </div>
-      <span
-        className={`block px-2 py-1.5 text-xs font-medium ${
-          selected ? 'text-krea-accent' : 'text-krea-text'
-        }`}
-      >
-        {preset.label}
-      </span>
+      <div className="flex items-center gap-1 px-2 py-1.5">
+        <span className={`flex-1 text-xs font-medium ${selected ? 'text-krea-accent' : 'text-krea-text'}`}>
+          {preset.label}
+        </span>
+        {recommended && (
+          <span className="text-[9px] font-semibold uppercase tracking-wide text-krea-accent opacity-70">
+            ✦
+          </span>
+        )}
+      </div>
     </button>
   );
 }
@@ -77,10 +84,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     getPlanForShop(session.shop),
   ]);
   return {
+    shop: session.shop,
     styleIds: brandStyle?.styleIds ?? [PDP_STYLE_PRESETS[0].id],
     angleIds: brandStyle?.angleIds ?? ANGLE_PRESETS.map((p) => p.id),
     stylingDirectionId: brandStyle?.stylingDirectionId ?? STYLING_DIRECTION_PRESETS[0].id,
     allowedAngleIds: PLAN_ANGLES[plan] ?? PLAN_ANGLES.free,
+    brandEnergy: brandStyle?.brandEnergy ?? null,
+    primaryCategory: brandStyle?.primaryCategory ?? null,
   };
 };
 
@@ -108,13 +118,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function BrandStyle() {
-  const { styleIds: savedStyleIds, angleIds: savedAngleIds, stylingDirectionId: savedStylingId, allowedAngleIds } =
+  const { shop, styleIds: savedStyleIds, angleIds: savedAngleIds, stylingDirectionId: savedStylingId, allowedAngleIds, brandEnergy, primaryCategory } =
     useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
+
+  const recommendedIds = getRecommendedDirections(brandEnergy, primaryCategory);
+  const hasBrandProfile = Boolean(brandEnergy && primaryCategory);
+  // Auto-expand if the saved direction is not in the recommended list
+  const savedIsRecommended = recommendedIds.includes(savedStylingId as never);
 
   const [selectedStyleIds, setSelectedStyleIds] = useState<string[]>(savedStyleIds);
   const [selectedAngleIds, setSelectedAngleIds] = useState<string[]>(savedAngleIds);
   const [stylingDirectionId, setStylingDirectionId] = useState<string>(savedStylingId);
+  const [showAllDirections, setShowAllDirections] = useState(!hasBrandProfile || !savedIsRecommended);
   const [saveFeedback, setSaveFeedback] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -122,6 +138,7 @@ export default function BrandStyle() {
   useEffect(() => {
     if (fetcher.state !== 'idle') return;
     if ((fetcher.data as { ok?: boolean } | undefined)?.ok) {
+      posthog.capture('brand_style_saved', { shop });
       setSaveFeedback(true);
       const t = window.setTimeout(() => setSaveFeedback(false), 2000);
       return () => clearTimeout(t);
@@ -196,20 +213,30 @@ export default function BrandStyle() {
           </section>
         )}
 
-        {/* Styling Direction — 2-column grid, single-select cards */}
+        {/* Styling Direction */}
         <section className="space-y-2">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-krea-muted">Styling Direction</p>
           <p className="text-xs text-krea-muted">The energy your model projects. Set once for your brand.</p>
           <div className="grid grid-cols-3 gap-3">
-            {STYLING_DIRECTION_PRESETS.map((p) => (
+            {(showAllDirections ? STYLING_DIRECTION_PRESETS : STYLING_DIRECTION_PRESETS.filter((p) => recommendedIds.includes(p.id as never))).map((p) => (
               <PresetCard
                 key={p.id}
                 preset={p}
                 selected={stylingDirectionId === p.id}
                 onSelect={() => setStylingDirectionId(p.id)}
+                recommended={hasBrandProfile && recommendedIds.includes(p.id as never)}
               />
             ))}
           </div>
+          {hasBrandProfile && (
+            <button
+              type="button"
+              onClick={() => setShowAllDirections((v) => !v)}
+              className="text-xs text-krea-muted underline underline-offset-2 hover:text-krea-text transition-colors"
+            >
+              {showAllDirections ? 'Show recommended only' : 'See all styles'}
+            </button>
+          )}
           {selectedDirection?.description && (
             <p className="text-xs text-krea-muted leading-relaxed">{selectedDirection.description}</p>
           )}

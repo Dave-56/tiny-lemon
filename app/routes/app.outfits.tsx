@@ -16,6 +16,7 @@ import prisma from '../db.server';
 import { STYLING_DIRECTION_PRESETS } from '../lib/pdpPresets';
 import { handleRegenerateOutfit } from '../lib/triggerGeneration.server';
 import { tasks, runs } from '../trigger.server';
+import posthog from 'posthog-js';
 
 // ── Loader ─────────────────────────────────────────────────────────────────────
 
@@ -52,7 +53,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     STYLING_DIRECTION_PRESETS.map((p) => [p.id, p.label]),
   );
 
-  return { outfits, modelNameMap, stylingDirectionLabelMap };
+  return { shop, outfits, modelNameMap, stylingDirectionLabelMap };
 };
 
 // ── Action ─────────────────────────────────────────────────────────────────────
@@ -921,9 +922,20 @@ function OutfitCard({
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function Outfits() {
-  const { outfits, modelNameMap, stylingDirectionLabelMap } = useLoaderData<typeof loader>();
+  const { shop, outfits, modelNameMap, stylingDirectionLabelMap } = useLoaderData<typeof loader>();
   const { revalidate } = useRevalidator();
   const authenticatedFetch = useAuthenticatedFetch();
+
+  const prevStatusRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    for (const outfit of outfits) {
+      const prev = prevStatusRef.current[outfit.id];
+      if (prev && prev !== 'completed' && outfit.status === 'completed') {
+        posthog.capture('generation_completed', { shop, outfitId: outfit.id });
+      }
+      prevStatusRef.current[outfit.id] = outfit.status ?? '';
+    }
+  }, [outfits, shop]);
 
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -1025,6 +1037,7 @@ export default function Outfits() {
       body: JSON.stringify({ intent: 'publish_to_shopify', outfitId }),
     });
     if (!res.ok) return;
+    posthog.capture('outfit_published', { shop, outfitId });
     revalidate();
   }
 

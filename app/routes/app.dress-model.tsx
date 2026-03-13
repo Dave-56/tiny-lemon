@@ -17,6 +17,7 @@ import {
   PLAN_ANGLES,
 } from '../lib/billing.server';
 import { handleTriggerGeneration } from '../lib/triggerGeneration.server';
+import posthog from 'posthog-js';
 
 // Short timeout — action only creates outfit, uploads raw images, enqueues job
 export const config = { maxDuration: 30 };
@@ -290,7 +291,7 @@ const ACTIVE_STATUSES: ItemStatus[] = [
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function DressModel() {
-  const { styleIds, stylingDirectionId, customModels } = useLoaderData<typeof loader>();
+  const { shop, styleIds, stylingDirectionId, customModels } = useLoaderData<typeof loader>();
   const shopify = useAppBridge();
   const authenticatedFetch = useAuthenticatedFetch();
 
@@ -516,6 +517,7 @@ export default function DressModel() {
           });
 
           const token = await shopify.idToken();
+          posthog.capture('generation_triggered', { shop, skuName: item.skuName });
           const res = await fetch('/api/trigger-generation', {
             method: 'POST',
             headers: {

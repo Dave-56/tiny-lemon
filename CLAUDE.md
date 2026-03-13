@@ -200,3 +200,18 @@ client.defineJob({
 Use SDK (`@trigger.dev/sdk`), check `result.ok` before accessing `result.output`
 
 <!-- TRIGGER.DEV basic END -->
+
+<!-- gstack START -->
+# gstack (workflow skills)
+
+This project uses [gstack](https://github.com/garrytan/gstack). When the user invokes a gstack slash command, use the **gstack** Cursor rule (`.cursor/rules/gstack.mdc`): read the corresponding skill from `.cursor/skills/gstack/<skill>/SKILL.md` and follow it.
+
+- **/plan-ceo-review** — Founder/CEO mode: rethink the problem, find the 10-star product.
+- **/plan-eng-review** — Eng manager mode: architecture, data flow, diagrams, edge cases, tests.
+- **/review** — Paranoid PR review: SQL safety, trust boundaries, race conditions, structural issues.
+- **/ship** — Release: sync main, run tests, bump version, update CHANGELOG, push, open PR.
+- **/browse** — QA in the browser: use cursor-ide-browser MCP (or gstack browse binary if set up).
+- **/retro** — Weekly retro: commit history, velocity, wins, improvements.
+
+If gstack skills aren’t found, ensure `.cursor/skills/gstack/` exists (clone from GitHub if needed). For `/browse` with the gstack binary: `cd .cursor/skills/gstack && ./setup`.
+ <!-- gstack END -->

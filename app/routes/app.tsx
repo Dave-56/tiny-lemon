@@ -4,6 +4,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 
 import { AuthenticatedFetchProvider } from "../contexts/AuthenticatedFetchContext";
+import { PostHogProvider } from "../components/PostHogProvider";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { getMonthlyUsage, PLAN_LIMITS } from "../lib/billing.server";
@@ -20,11 +21,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const limit = PLAN_LIMITS[plan] ?? PLAN_LIMITS.free;
 
   // eslint-disable-next-line no-undef
-  return { apiKey: process.env.SHOPIFY_API_KEY || "", plan, used, limit };
+  return { apiKey: process.env.SHOPIFY_API_KEY || "", shop: session.shop, plan, used, limit };
 };
 
 export default function App() {
-  const { apiKey, plan, used, limit } = useLoaderData<typeof loader>();
+  const { apiKey, shop, plan, used, limit } = useLoaderData<typeof loader>();
 
   return (
     <AppProvider embedded apiKey={apiKey}>
@@ -47,6 +48,7 @@ export default function App() {
         )}
       </div>
 
+      <PostHogProvider shop={shop} plan={plan} />
       <Outlet />
       </AuthenticatedFetchProvider>
     </AppProvider>

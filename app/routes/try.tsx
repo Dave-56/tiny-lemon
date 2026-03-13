@@ -173,8 +173,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   try {
     const path = join(process.cwd(), "public", "try-preset-models.json");
     const raw = readFileSync(path, "utf-8");
-    const arr = JSON.parse(raw) as Array<{ id: string; name: string; imageUrl: string; gender?: string }>;
-    presets = arr.map((p) => ({ id: p.id, name: p.name, imageUrl: p.imageUrl, gender: p.gender ?? "" }));
+    const arr = JSON.parse(raw) as Array<{ id: string; name: string; imageUrl: string; gender?: string; ethnicity?: string; bodyBuild?: string; height?: string }>;
+    presets = arr.map((p) => ({ id: p.id, name: p.name, imageUrl: p.imageUrl, gender: p.gender ?? "", ethnicity: p.ethnicity ?? "", bodyBuild: p.bodyBuild ?? "", height: p.height ?? "" }));
   } catch {
     return Response.json({ error: "Presets unavailable" }, { status: 500 });
   }

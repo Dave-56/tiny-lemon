@@ -43,11 +43,14 @@ model Shop {
 }
 
 model BrandStyle {
-  shopId             String   @id
-  styleIds           String[]
-  angleIds           String[]
-  stylingDirectionId String   @default("minimal")
-  updatedAt          DateTime @updatedAt
+  shopId              String   @id
+  styleIds            String[]
+  angleIds            String[]
+  stylingDirectionId  String   @default("minimal")
+  brandEnergy         String?  // minimal | accessible | editorial | premium | street | athletic
+  primaryCategory     String?  // womenswear | menswear | unisex | activewear | streetwear | formalwear | other
+  onboardingCompleted Boolean  @default(false)
+  updatedAt           DateTime @updatedAt
 
   shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
 }
