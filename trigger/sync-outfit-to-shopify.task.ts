@@ -69,62 +69,14 @@ export const syncOutfitToShopifyTask = task({
 
     if (ordered.length === 0) throw new Error('Outfit has no generated images to sync.');
 
-    // ── 4. Fetch all image buffers in parallel ────────────────────────────────
-    const buffers = await Promise.all(
-      ordered.map(async (img) => {
-        const res = await fetch(img.imageUrl);
-        if (!res.ok) throw new Error(`Failed to fetch image (${img.pose}): HTTP ${res.status}`);
-        return { img, buffer: Buffer.from(await res.arrayBuffer()) };
-      }),
-    );
-
-    // ── 5. Batch staged uploads — fileSize required upfront ───────────────────
-    const stagedInput = buffers.map(({ img, buffer }) => ({
-      filename: `${img.pose}.png`,
-      mimeType: 'image/png',
-      resource: 'PRODUCT_IMAGE',
-      fileSize: buffer.byteLength.toString(),
+    // ── 4. Media: use image URLs so Shopify fetches them (no staged upload / S3) ─
+    const mediaInput = ordered.map((img) => ({
+      originalSource: img.imageUrl,
+      alt: img.pose,
+      mediaContentType: 'IMAGE',
     }));
 
-    const stagedData = await shopifyGraphQL(shopId, accessToken, `
-      mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
-        stagedUploadsCreate(input: $input) {
-          stagedTargets {
-            url
-            resourceUrl
-            parameters { name value }
-          }
-          userErrors { field message }
-        }
-      }
-    `, { input: stagedInput });
-
-    const { stagedTargets, userErrors: stageErrors } = stagedData.stagedUploadsCreate as {
-      stagedTargets: Array<{ url: string; resourceUrl: string; parameters: Array<{ name: string; value: string }> }>;
-      userErrors: Array<{ field: string; message: string }>;
-    };
-
-    if (stageErrors?.length) throw new Error(`stagedUploadsCreate error: ${stageErrors[0].message}`);
-    if (!stagedTargets?.length) throw new Error('stagedUploadsCreate returned no targets.');
-
-    // ── 6. Upload buffers to S3 staged targets in parallel ────────────────────
-    await Promise.all(
-      buffers.map(async ({ buffer }, i) => {
-        const target = stagedTargets[i];
-        const form = new FormData();
-        // Shopify S3 requires parameters before the file field
-        for (const { name, value } of target.parameters) {
-          form.append(name, value);
-        }
-        form.append('file', new Blob([buffer], { type: 'image/png' }), `${ordered[i].pose}.png`);
-        const res = await fetch(target.url, { method: 'POST', body: form });
-        if (!res.ok) throw new Error(`S3 upload failed for ${ordered[i].pose}: HTTP ${res.status}`);
-      }),
-    );
-
-    const resourceUrls = stagedTargets.map((t) => t.resourceUrl);
-
-    // ── 7. Create product or reuse existing ───────────────────────────────────
+    // ── 5. Create product or reuse existing ───────────────────────────────────
     let productGid = payload.shopifyProductId;
     if (!productGid) {
       const createData = await shopifyGraphQL(shopId, accessToken, `
@@ -141,7 +93,7 @@ export const syncOutfitToShopifyTask = task({
       productGid = (createData.productCreate as { product: { id: string } }).product.id;
     }
 
-    // ── 8. Query existing media IDs (needed for productDeleteMedia) ───────────
+    // ── 6. Query existing media IDs (needed for productDeleteMedia) ───────────
     const mediaQueryData = await shopifyGraphQL(shopId, accessToken, `
       query getProductMedia($id: ID!) {
         product(id: $id) {
@@ -157,7 +109,7 @@ export const syncOutfitToShopifyTask = task({
         ?.media?.edges ?? []
     ).map((e) => e.node.id);
 
-    // ── 9. Delete old media before attaching new ──────────────────────────────
+    // ── 7. Delete old media before attaching new ──────────────────────────────
     if (existingMediaIds.length > 0) {
       const deleteData = await shopifyGraphQL(shopId, accessToken, `
         mutation productDeleteMedia($productId: ID!, $mediaIds: [ID!]!) {
@@ -174,13 +126,7 @@ export const syncOutfitToShopifyTask = task({
       if (deleteErrors?.length) throw new Error(`productDeleteMedia error: ${deleteErrors[0].message}`);
     }
 
-    // ── 10. Attach new images ─────────────────────────────────────────────────
-    const mediaInput = resourceUrls.map((url, i) => ({
-      originalSource: url,
-      alt: ordered[i].pose,
-      mediaContentType: 'IMAGE',
-    }));
-
+    // ── 8. Attach new images (Shopify fetches from originalSource URLs) ────────
     const attachData = await shopifyGraphQL(shopId, accessToken, `
       mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
         productCreateMedia(productId: $productId, media: $media) {
@@ -196,7 +142,7 @@ export const syncOutfitToShopifyTask = task({
     ).mediaUserErrors;
     if (mediaErrors?.length) throw new Error(`productCreateMedia error: ${mediaErrors[0].message}`);
 
-    // ── 11. Persist results ───────────────────────────────────────────────────
+    // ── 9. Persist results ───────────────────────────────────────────────────
     const numericId = productGid.split('/').pop();
     const shopifyProductUrl = `https://${shopId}/admin/products/${numericId}`;
 

@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "build": "react-router build",
-    "dev": "shopify app dev --tunnel-url https://unacoustical-nonembryonic-jaimie.ngrok-free.dev:3000",
+    "dev": "shopify app dev",
     "tunnel": "ngrok http --domain=unacoustical-nonembryonic-jaimie.ngrok-free.dev 3000",
     "config:link": "shopify app config link",
     "generate": "shopify app generate",
@@ -22,7 +22,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "seed:presets": "npx tsx scripts/generate-preset-previews.ts",
-    "seed:three-quarter": "npx tsx scripts/generate-three-quarter-preview.ts"
+    "seed:three-quarter": "npx tsx scripts/generate-three-quarter-preview.ts",
+    "trigger:dev": "npx trigger.dev@latest dev",
+    "trigger:deploy": "npx trigger.dev@latest deploy"
   },
   "type": "module",
   "engines": {
