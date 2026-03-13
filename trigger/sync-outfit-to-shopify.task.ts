@@ -128,13 +128,13 @@ export const syncOutfitToShopifyTask = task({
     let productGid = payload.shopifyProductId;
     if (!productGid) {
       const createData = await shopifyGraphQL(shopId, accessToken, `
-        mutation productCreate($input: ProductInput!) {
-          productCreate(input: $input) {
+        mutation productCreate($product: ProductCreateInput!) {
+          productCreate(product: $product) {
             product { id }
             userErrors { field message }
           }
         }
-      `, { input: { title: outfit.name, status: 'DRAFT' } });
+      `, { product: { title: outfit.name, status: 'DRAFT' } });
 
       const createErrors = (createData.productCreate as { userErrors: Array<{ message: string }> }).userErrors;
       if (createErrors?.length) throw new Error(`productCreate error: ${createErrors[0].message}`);
