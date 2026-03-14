@@ -144,7 +144,7 @@ export const generateOutfitTask = task({
     const genConfig = {
       temperature: 0.2,
       imageConfig: { aspectRatio: '2:3' as const, imageSize: '1K' as const },
-      thinkingConfig: { thinkingLevel: isDemo ? ThinkingLevel.NONE : ThinkingLevel.HIGH },
+      thinkingConfig: { thinkingLevel: isDemo ? ThinkingLevel.MINIMAL : ThinkingLevel.HIGH },
     };
     const chat = ai.chats.create({ model: 'gemini-3.1-flash-image-preview', config: genConfig });
     const sharp = (await import('sharp')).default;

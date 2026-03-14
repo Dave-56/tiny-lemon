@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from 'react-router';
-import { useFetcher, useLoaderData, useRouteError } from 'react-router';
+import { useFetcher, useLoaderData, useNavigate, useRouteError } from 'react-router';
 import { boundary } from '@shopify/shopify-app-react-router/server';
 import { Check } from 'lucide-react';
 import { authenticate } from '../shopify.server';
@@ -119,6 +119,7 @@ export default function BrandStyle() {
   const { shop, angleIds: savedAngleIds, stylingDirectionId: savedStylingId, allowedAngleIds, brandEnergy, primaryCategory } =
     useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
+  const navigate = useNavigate();
 
   const recommendedIds = getRecommendedDirections(brandEnergy, primaryCategory);
   const hasBrandProfile = Boolean(brandEnergy && primaryCategory);
@@ -131,19 +132,18 @@ export default function BrandStyle() {
   const [saveFeedback, setSaveFeedback] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Show "Saved" briefly after successful action, or an error if it failed
+  // Navigate back to dress-model on successful save, or surface an error
   useEffect(() => {
     if (fetcher.state !== 'idle') return;
     if ((fetcher.data as { ok?: boolean } | undefined)?.ok) {
       posthog.capture('brand_style_saved', { shop });
-      setSaveFeedback(true);
-      const t = window.setTimeout(() => setSaveFeedback(false), 2000);
-      return () => clearTimeout(t);
+      navigate('/app/dress-model');
+      return;
     }
     if (fetcher.data && !(fetcher.data as { ok?: boolean }).ok) {
       setSaveError('Failed to save. Please try again.');
     }
-  }, [fetcher.state, fetcher.data]);
+  }, [fetcher.state, fetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleAngleId = (id: string) => {
     setSelectedAngleIds((prev) => {

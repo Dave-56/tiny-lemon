@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from 'react-router';
-import { useLoaderData, useRouteError, Link } from 'react-router';
+import { useLoaderData, useRouteError, useSearchParams, Link } from 'react-router';
 import { boundary } from '@shopify/shopify-app-react-router/server';
 import { useAppBridge } from '@shopify/app-bridge-react';
 import { useAuthenticatedFetch } from '../contexts/AuthenticatedFetchContext';
@@ -242,6 +242,12 @@ interface BatchItem {
   quality: FlatLayQuality | null;
 }
 
+// Serializable subset of BatchItem stored in sessionStorage.
+// Excludes File objects (unserializable) and blob: preview URLs (tab-lived).
+type PersistedItem = Omit<BatchItem, 'frontFile' | 'frontPreview' | 'backFile' | 'backPreview'>;
+
+const SESSION_KEY = (shop: string) => `dress-model-items-${shop}`;
+
 const MAX_BATCH = 10;
 
 const STATUS_LABEL: Record<ItemStatus, string> = {
@@ -290,10 +296,20 @@ export default function DressModel() {
   const { shop, stylingDirectionId, customModels } = useLoaderData<typeof loader>();
   const shopify = useAppBridge();
   const authenticatedFetch = useAuthenticatedFetch();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [presetModels, setPresetModels] = useState<PresetModelEntry[]>([]);
-  const [selectedModelId, setSelectedModelId] = useState<string | null>(customModels[0]?.id ?? null);
+  // URL param takes priority so selection survives navigation and hard refresh
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(
+    searchParams.get('model') ?? customModels[0]?.id ?? null,
+  );
   const [modelTab, setModelTab] = useState<'mine' | 'presets'>(customModels.length > 0 ? 'mine' : 'presets');
+
+  // Updates both React state and the URL param so selection is bookmarkable
+  const selectModel = useCallback((id: string) => {
+    setSelectedModelId(id);
+    setSearchParams(prev => { prev.set('model', id); return prev; }, { replace: true });
+  }, [setSearchParams]);
   const [previewModel, setPreviewModel] = useState<PresetModelEntry | null>(null);
   const [items, setItems] = useState<BatchItem[]>([]);
   const [isRunning, setIsRunning] = useState(false);
@@ -315,15 +331,61 @@ export default function DressModel() {
       .then(r => r.json())
       .then((data: PresetModelEntry[]) => {
         setPresetModels(data);
-        if (data[0] && !customModels.length) setSelectedModelId(data[0].id);
+        // Only default to first preset if nothing is already selected (no custom models, no URL param)
+        if (data[0] && !customModels.length && !searchParams.get('model')) selectModel(data[0].id);
       })
       .catch(() => {});
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scroll the selected model card into view when selection changes
   useEffect(() => {
     selectedCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
   }, [selectedModelId]);
+
+  // ── Session persistence ───────────────────────────────────────────────────────
+
+  // Restore items from sessionStorage on mount.
+  // Only items that have a savedOutfitId are restored — those can resume polling
+  // without needing the original File object. Pending-only items (no outfitId) are
+  // intentionally skipped because the file data is gone.
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(SESSION_KEY(shop));
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as PersistedItem[];
+      if (!Array.isArray(parsed) || parsed.length === 0) return;
+      setItems(parsed.map(item => ({
+        ...item,
+        frontFile: new File([], item.skuName),   // dummy — never read after savedOutfitId exists
+        frontPreview: item.cleanPreview ?? '',    // CDN URL for done items; blank for in-progress
+        backFile: null,
+        backPreview: null,
+      })));
+    } catch {
+      // corrupt storage, ignore
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync serializable items to sessionStorage whenever items change.
+  // The `hasSyncedRef` guard skips the first call so we don't clear storage
+  // before the restore effect above has a chance to run setItems.
+  const hasSyncedRef = useRef(false);
+  useEffect(() => {
+    if (!hasSyncedRef.current) {
+      hasSyncedRef.current = true;
+      return;
+    }
+    const toSave = items
+      .filter(i => i.savedOutfitId !== null)
+      .map(({ id, skuName, status, cleanPreview, results, error, savedOutfitId, savedShopId, quality }): PersistedItem => ({
+        id, skuName, status, cleanPreview, results, error, savedOutfitId, savedShopId, quality,
+      }));
+    if (toSave.length > 0) {
+      sessionStorage.setItem(SESSION_KEY(shop), JSON.stringify(toSave));
+    } else {
+      sessionStorage.removeItem(SESSION_KEY(shop));
+    }
+  }, [items, shop]);
 
   const addFiles = useCallback((files: FileList | File[]) => {
     const arr = Array.from(files).filter(f => f.type.startsWith('image/'));
@@ -1066,7 +1128,7 @@ export default function DressModel() {
               <div className="flex flex-col gap-2">
                 <button
                   type="button"
-                  onClick={() => { setSelectedModelId(previewModel.id); setPreviewModel(null); }}
+                  onClick={() => { selectModel(previewModel.id); setPreviewModel(null); }}
                   className="krea-button text-sm"
                 >
                   {selectedModelId === previewModel.id ? 'Selected ✓' : 'Select model'}
