@@ -258,12 +258,9 @@ export async function handleRegenerateOutfit(
     const model = await resolveModelForRegenerate(outfit.modelId);
     const brandStyle = await prisma.brandStyle.findUnique({
       where: { shopId },
-      select: { styleIds: true, angleIds: true },
+      select: { angleIds: true },
     });
-    const styleId =
-      brandStyle?.styleIds?.length ?
-        brandStyle.styleIds[0]
-      : "white-studio";
+    const styleId = "white-studio";
     const effectiveAngleIds =
       brandStyle?.angleIds?.length ?
         brandStyle.angleIds
