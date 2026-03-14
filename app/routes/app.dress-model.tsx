@@ -19,9 +19,6 @@ import {
 import { handleTriggerGeneration } from '../lib/triggerGeneration.server';
 import posthog from 'posthog-js';
 
-// Short timeout — action only creates outfit, uploads raw images, enqueues job
-export const config = { maxDuration: 30 };
-
 // ── Loader ────────────────────────────────────────────────────────────────────
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
