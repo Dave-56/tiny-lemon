@@ -23,7 +23,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (brandStyle?.onboardingCompleted) {
     return shopifyRedirect(request, '/app/dress-model');
   }
-  return {};
+  return { ready: true };
 };
 
 // ── Action ────────────────────────────────────────────────────────────────────
@@ -42,7 +42,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     update: { brandEnergy, primaryCategory, stylingDirectionId, onboardingCompleted: true },
     create: {
       shopId,
-      styleIds: ['white-studio'],
       angleIds: ['front'],
       stylingDirectionId,
       brandEnergy,
@@ -136,7 +135,7 @@ export default function Onboarding() {
           <div className="space-y-4">
             <div>
               <h1 className="text-lg font-semibold text-krea-text">How should your brand feel?</h1>
-              <p className="text-xs text-krea-muted mt-1">Pick the energy that best fits your brand.</p>
+              <p className="text-xs text-krea-muted mt-1">Pick the aesthetic that best fits your brand.</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               {BRAND_ENERGIES.map((energy) => {

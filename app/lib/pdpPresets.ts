@@ -59,6 +59,7 @@ export const STYLING_DIRECTION_PRESETS: StylingDirectionPreset[] = [
     energyCue: 'Same contrapposto stance, same composed neutral energy.',
     frontSnippetMale: 'Standing facing camera, weight slightly on one leg, arms relaxed at sides. Shoulders level, direct gaze into camera, neutral closed-mouth expression, still and composed.',
     energyCueMale: 'Same composed neutral energy, arms relaxed at sides.',
+    backdropSnippet: 'Background: neutral light grey seamless studio sweep (#E0E0E0). Flat, even grey tone — no gradient, no vignette, no color shift. Seamless grey sweep floor and wall with no visible horizon line. Soft contact shadow under feet only. Soft, even studio lighting.',
   },
   {
     id: 'accessible',
@@ -69,16 +70,18 @@ export const STYLING_DIRECTION_PRESETS: StylingDirectionPreset[] = [
     energyCue: 'Same warm approachable energy, soft smile.',
     frontSnippetMale: 'Standing facing camera, weight slightly on one leg, arms relaxed at sides. Direct gaze into camera, genuine soft smile, warm and approachable energy, natural and unpretentious.',
     energyCueMale: 'Same warm approachable energy, soft smile.',
+    backdropSnippet: 'Background: pure white seamless studio backdrop (#FFFFFF). Completely flat white — no gradient, no vignette, no grey tones. Seamless white sweep floor and wall with no visible horizon line. Soft contact shadow under feet only. Soft, warm studio lighting.',
   },
   {
     id: 'editorial',
     label: 'Editorial Cool',
     imageUrl: '/presets/styling/editorial.png',
     description: 'Effortless cool, movement-implied, slightly unposed. Gaze slightly off-lens. Brands like Zara, Mango, Reformation.',
-    frontSnippet: 'Slightly asymmetric stance with pronounced hip shift, torso angled 15 degrees away from camera, face turning back toward lens, one hand loosely adjusting the neckline or at the waist, gaze 5 degrees off-lens to the left, editorial fashion energy, effortlessly cool and slightly unposed, neutral-to-serious expression.',
+    frontSnippet: 'Pronounced weight on right leg, left hip dropped, left foot angled outward with knee softly bent. Right hand loosely hooked at hip or tucked lightly at waistband. Left arm hanging fully relaxed at side, hand loose. Torso rotated slightly away from camera. Face turned back toward lens, gaze directed 15–20 degrees to the left of camera, chin level or slightly elevated, not looking directly at lens. Neutral-to-serious expression, effortlessly cool.',
     energyCue: 'Same editorial energy, slightly off-axis posture.',
-    frontSnippetMale: 'Slightly asymmetric stance, torso angled 15 degrees away from camera, face turning back toward lens. Arms relaxed at sides or one hand in pocket. Gaze slightly off-lens, editorial fashion energy, effortlessly cool, neutral-to-serious expression.',
+    frontSnippetMale: 'Pronounced weight on right leg, left hip dropped slightly. Right hand deep in trouser pocket, thumb hooked at edge. Left arm hanging fully relaxed at side, hand loose. Torso rotated slightly away from camera. Face turned back toward lens, gaze directed 15–20 degrees to the left of camera, chin level or slightly elevated, not looking directly at lens. Neutral-to-serious expression, effortlessly cool.',
     energyCueMale: 'Same editorial energy, slightly off-axis posture.',
+    backdropSnippet: 'Background: cool grey seamless studio sweep (#D8D8D8 at top fading to #E6E6E6 at bottom), very subtle top-to-bottom gradient — the ONLY direction that uses a gradient. Seamless grey sweep with no visible horizon line. Soft directional studio lighting with a slightly cooler tone.',
   },
   {
     id: 'premium',
@@ -89,14 +92,16 @@ export const STYLING_DIRECTION_PRESETS: StylingDirectionPreset[] = [
     energyCue: 'Same premium poise, controlled stillness.',
     frontSnippetMale: 'Upright elongated stance, weight slightly on one leg, arms relaxed at sides. Gaze slightly off-lens with composed bearing, neutral closed-mouth expression, premium fashion editorial energy, quiet confidence and stillness.',
     energyCueMale: 'Same premium poise, controlled stillness.',
+    backdropSnippet: 'Background: warm off-white seamless studio sweep (#EDE8DF). Flat, even warm tone — no gradient, no vignette. Seamless warm sweep floor and wall with no visible horizon line. Soft contact shadow under feet only. Soft diffused lighting with a warm cast.',
   },
   {
     id: 'street',
-    label: 'Street Energy',
+    label: 'Street Aesthetic',
     imageUrl: '/presets/styling/street.png',
     description: 'Loose, casual, self-expressive. Hands in pockets or at sides, relaxed asymmetric stance. Brands like Urban Outfitters, Carhartt, Weekday.',
     frontSnippet: 'Relaxed asymmetric stance, hands loosely in pockets with thumbs out or casually at sides, gaze directed slightly away from camera or a natural unstudied look into lens, natural unstudied expression — deadpan cool or natural, casual street energy, urban fashion editorial.',
     energyCue: 'Same street energy, casual unstudied posture.',
+    backdropSnippet: 'Background: cool mid-grey seamless studio backdrop (#C8C8C8). Flat, even cool grey tone — no gradient, no vignette. Seamless grey sweep with no visible horizon line. Subtle directional lighting with a cool tone.',
   },
   {
     id: 'athletic',
@@ -105,6 +110,7 @@ export const STYLING_DIRECTION_PRESETS: StylingDirectionPreset[] = [
     description: 'Strong, functional, embodied. Athletic ready position or dynamic stance. Brands like Lululemon, Gymshark, Alo Yoga.',
     frontSnippet: 'Athletic stance with feet hip-width apart, slight bend at knees, core engaged, arms in a dynamic stride or power position with one arm slightly forward, forward-focused determined gaze slightly upward, strong performance energy, activewear photography, determined neutral expression.',
     energyCue: 'Same athletic energy, strong engaged posture.',
+    backdropSnippet: 'Background: pure white seamless studio backdrop (#FFFFFF). Completely flat white — no gradient, no vignette. Seamless white sweep floor and wall with no visible horizon line. Soft contact shadow under feet only. Bright, even studio lighting.',
   },
 ];
 

@@ -5,12 +5,12 @@ import { boundary } from '@shopify/shopify-app-react-router/server';
 import { Check } from 'lucide-react';
 import { authenticate } from '../shopify.server';
 import prisma, { ensureShop } from '../db.server';
-import { PDP_STYLE_PRESETS, ANGLE_PRESETS, STYLING_DIRECTION_PRESETS } from '../lib/pdpPresets';
+import { ANGLE_PRESETS, STYLING_DIRECTION_PRESETS } from '../lib/pdpPresets';
 import { getPlanForShop, PLAN_ANGLES } from '../lib/billing.server';
 import { getRecommendedDirections } from '../lib/brandProfileMapping';
 import posthog from 'posthog-js';
 
-// ── Shared preset card (Background, Poses, Styling Direction) ─────────────────
+// ── Shared preset card ────────────────────────────────────────────────────────
 
 type PresetItem = { id: string; label: string; imageUrl?: string };
 
@@ -85,7 +85,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   ]);
   return {
     shop: session.shop,
-    styleIds: brandStyle?.styleIds ?? [PDP_STYLE_PRESETS[0].id],
     angleIds: brandStyle?.angleIds ?? ANGLE_PRESETS.map((p) => p.id),
     stylingDirectionId: brandStyle?.stylingDirectionId ?? STYLING_DIRECTION_PRESETS[0].id,
     allowedAngleIds: PLAN_ANGLES[plan] ?? PLAN_ANGLES.free,
@@ -101,15 +100,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const shopId = session.shop;
   const fd = await request.formData();
 
-  const styleIds = fd.getAll('styleIds') as string[];
   const angleIds = fd.getAll('angleIds') as string[];
   const stylingDirectionId = fd.get('stylingDirectionId') as string;
 
   await ensureShop(shopId);
   await prisma.brandStyle.upsert({
     where: { shopId },
-    update: { styleIds, angleIds, stylingDirectionId },
-    create: { shopId, styleIds, angleIds, stylingDirectionId },
+    update: { angleIds, stylingDirectionId },
+    create: { shopId, angleIds, stylingDirectionId },
   });
 
   return { ok: true };
@@ -118,7 +116,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function BrandStyle() {
-  const { shop, styleIds: savedStyleIds, angleIds: savedAngleIds, stylingDirectionId: savedStylingId, allowedAngleIds, brandEnergy, primaryCategory } =
+  const { shop, angleIds: savedAngleIds, stylingDirectionId: savedStylingId, allowedAngleIds, brandEnergy, primaryCategory } =
     useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
 
@@ -127,7 +125,6 @@ export default function BrandStyle() {
   // Auto-expand if the saved direction is not in the recommended list
   const savedIsRecommended = recommendedIds.includes(savedStylingId as never);
 
-  const [selectedStyleIds, setSelectedStyleIds] = useState<string[]>(savedStyleIds);
   const [selectedAngleIds, setSelectedAngleIds] = useState<string[]>(savedAngleIds);
   const [stylingDirectionId, setStylingDirectionId] = useState<string>(savedStylingId);
   const [showAllDirections, setShowAllDirections] = useState(!hasBrandProfile || !savedIsRecommended);
@@ -148,10 +145,6 @@ export default function BrandStyle() {
     }
   }, [fetcher.state, fetcher.data]);
 
-  const toggleStyleId = (id: string) => {
-    setSelectedStyleIds([id]);
-  };
-
   const toggleAngleId = (id: string) => {
     setSelectedAngleIds((prev) => {
       const next = prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id];
@@ -161,7 +154,6 @@ export default function BrandStyle() {
 
   function handleSave() {
     const fd = new FormData();
-    selectedStyleIds.forEach((id) => fd.append('styleIds', id));
     selectedAngleIds.forEach((id) => fd.append('angleIds', id));
     fd.set('stylingDirectionId', stylingDirectionId);
     fetcher.submit(fd, { method: 'post' });
@@ -174,26 +166,6 @@ export default function BrandStyle() {
   return (
     <div className="min-h-screen bg-krea-bg p-6">
       <div className="max-w-lg space-y-8">
-
-        {/* Background — same card pattern as Poses and Styling */}
-        <section className="space-y-2">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-krea-muted">Background</p>
-          <div className="grid grid-cols-2 gap-3">
-            {PDP_STYLE_PRESETS.map((p) => (
-              <PresetCard
-                key={p.id}
-                preset={p}
-                selected={selectedStyleIds.includes(p.id)}
-                onSelect={() => toggleStyleId(p.id)}
-              />
-            ))}
-          </div>
-          {PDP_STYLE_PRESETS.filter((p) => selectedStyleIds.includes(p.id)).map((p) =>
-            p.description ? (
-              <p key={p.id} className="text-xs text-krea-muted leading-relaxed">{p.description}</p>
-            ) : null,
-          )}
-        </section>
 
         {/* Poses — only shown to paid plans with multiple options to configure */}
         {allowedAnglePresets.length > 1 && (
@@ -216,7 +188,7 @@ export default function BrandStyle() {
         {/* Styling Direction */}
         <section className="space-y-2">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-krea-muted">Styling Direction</p>
-          <p className="text-xs text-krea-muted">The energy your model projects. Set once for your brand.</p>
+          <p className="text-xs text-krea-muted">The aesthetic your model projects. Set once for your brand.</p>
           <div className="grid grid-cols-3 gap-3">
             {(showAllDirections ? STYLING_DIRECTION_PRESETS : STYLING_DIRECTION_PRESETS.filter((p) => recommendedIds.includes(p.id as never))).map((p) => (
               <PresetCard

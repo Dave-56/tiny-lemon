@@ -7,7 +7,7 @@ import { useAuthenticatedFetch } from '../contexts/AuthenticatedFetchContext';
 import { X, Download, Loader2, Plus, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
 import { zipSync } from 'fflate';
 import type { PresetModelEntry } from '../lib/types';
-import { PDP_STYLE_PRESETS, STYLING_DIRECTION_PRESETS } from '../lib/pdpPresets';
+import { STYLING_DIRECTION_PRESETS } from '../lib/pdpPresets';
 import { authenticate } from '../shopify.server';
 import prisma, { ensureShop } from '../db.server';
 import {
@@ -43,7 +43,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   return {
     shop,
-    styleIds: brandStyle?.styleIds ?? [PDP_STYLE_PRESETS[0].id],
     stylingDirectionId: brandStyle?.stylingDirectionId ?? STYLING_DIRECTION_PRESETS[0].id,
     plan,
     used,
@@ -291,7 +290,7 @@ const ACTIVE_STATUSES: ItemStatus[] = [
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function DressModel() {
-  const { shop, styleIds, stylingDirectionId, customModels } = useLoaderData<typeof loader>();
+  const { shop, stylingDirectionId, customModels } = useLoaderData<typeof loader>();
   const shopify = useAppBridge();
   const authenticatedFetch = useAuthenticatedFetch();
 
@@ -508,7 +507,7 @@ export default function DressModel() {
             modelImageUrl: selectedModel.imageUrl,
             modelHeight: selectedModel.height,
             modelGender: selectedModel.gender,
-            styleId: styleIds[0] ?? 'white-studio',
+            styleId: 'white-studio',
             stylingDirectionId,
             frontB64,
             frontMime,
@@ -591,8 +590,6 @@ export default function DressModel() {
   const buttonStateLabel = activeItem
     ? (STATUS_LABEL[activeItem.status as ItemStatus] ?? 'Generating…')
     : null;
-  const activeBackground =
-    PDP_STYLE_PRESETS.find(p => p.id === styleIds[0]) ?? PDP_STYLE_PRESETS[0];
   const activeStyle =
     STYLING_DIRECTION_PRESETS.find(p => p.id === stylingDirectionId) ??
     STYLING_DIRECTION_PRESETS[0];
@@ -758,7 +755,7 @@ export default function DressModel() {
       <div className="space-y-4">
         <div className="flex items-center gap-2 text-sm text-krea-muted">
           <span>Style:</span>
-          <span className="font-medium text-krea-text">{activeBackground.label} · {activeStyle.label}</span>
+          <span className="font-medium text-krea-text">{activeStyle.label}</span>
           <Link to="/app/brand-style" className="text-xs text-krea-accent underline underline-offset-2">Edit</Link>
         </div>
 

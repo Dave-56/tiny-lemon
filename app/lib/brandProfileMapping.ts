@@ -20,7 +20,7 @@ export const BRAND_ENERGIES: { id: BrandEnergy; label: string; description: stri
   { id: 'accessible', label: 'Accessible Warmth',      description: 'Approachable, friendly, non-intimidating. H&M, ASOS, Next.' },
   { id: 'editorial',  label: 'Editorial Cool',         description: 'Effortless cool, slightly unposed. Zara, Mango, Reformation.' },
   { id: 'premium',    label: 'Premium Poise',          description: 'Quiet confidence, elevated bearing. Sandro, Reiss, Ted Baker.' },
-  { id: 'street',     label: 'Street Energy',          description: 'Casual, self-expressive, urban. Urban Outfitters, Carhartt, Weekday.' },
+  { id: 'street',     label: 'Street Aesthetic',          description: 'Casual, self-expressive, urban. Urban Outfitters, Carhartt, Weekday.' },
   { id: 'athletic',   label: 'Athletic Performance',   description: 'Strong, functional, activewear-first. Lululemon, Gymshark, Alo Yoga.' },
 ];
 

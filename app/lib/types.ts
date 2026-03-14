@@ -52,6 +52,8 @@ export interface StylingDirectionPreset {
   frontSnippetMale?: string;
   /** When modelGender is 'Male', use this for 3/4 and back if present; else use energyCue. */
   energyCueMale?: string;
+  /** Backdrop/background prompt snippet — drives the studio background for this direction. */
+  backdropSnippet: string;
 }
 
 export interface PdpStylePreset {

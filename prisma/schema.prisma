@@ -44,7 +44,6 @@ model Shop {
 
 model BrandStyle {
   shopId              String   @id
-  styleIds            String[]
   angleIds            String[]
   stylingDirectionId  String   @default("minimal")
   brandEnergy         String?  // minimal | accessible | editorial | premium | street | athletic

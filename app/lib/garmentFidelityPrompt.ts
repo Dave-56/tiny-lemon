@@ -199,14 +199,13 @@ const FRAMING_BLOCK =
   'Full body from head to toe. Do not crop the head or feet; the entire body must be visible. 2:3 portrait framing. Center the model with even margins on all sides.';
 
 /** Length + lighting rules: front flat lay is source of truth for hem; match reference lighting. */
-function lengthAndLightingBlock(spec: GarmentSpec, hasBackFlatLay: boolean, pose: SpecPose): string {
+function lengthAndLightingBlock(spec: GarmentSpec, hasBackFlatLay: boolean, pose: SpecPose, backdropSnippet: string): string {
   const lengthLine = `Hem length (source of truth): ${spec.hem_length}, from the front flat lay only. Use this exact length for this pose.`;
   const backNote =
     pose === 'back' && hasBackFlatLay
       ? ' If a back flat lay is provided, use it only for back design details (e.g. neckline, zipper); do not use it for garment length.'
       : '';
-  const lightingLine =
-    'Lighting and background: match the model reference image exactly — same background, same soft even lighting. Keep lighting identical across all poses.';
+  const lightingLine = `${backdropSnippet} Keep lighting identical across all poses.`;
   return `${lengthLine}${backNote} ${lightingLine}`;
 }
 
@@ -240,12 +239,13 @@ export function buildPromptFromSpec(
   const colors = spec.primary_colors.length ? spec.primary_colors.join(' ') : 'neutral';
   const heightNote = modelHeight ? ` The model is ${modelHeight} tall.` : '';
   const base = `Photo of the person in the reference image wearing a ${colors} ${spec.fit}-fit ${spec.silhouette} ${spec.garment_type}, ${spec.sleeve_length} sleeves, hem ${spec.hem_length}${spec.notable_details ? `, ${spec.notable_details}` : ''}.${heightNote}`;
-  const tail = lengthAndLightingBlock(spec, hasBackFlatLay, pose);
+  const effectiveBackdrop = stylingDirection?.backdropSnippet ?? styleSnippet;
+  const tail = lengthAndLightingBlock(spec, hasBackFlatLay, pose, effectiveBackdrop);
 
   if (pose === 'front') {
     const poseInstruction = effectiveFrontSnippet ?? 'Standing facing camera, neutral pose, arms relaxed at sides.';
     const styling = buildStylingBlock(resolveStyling(spec));
-    return `${base} ${poseInstruction} Full body, ${styleSnippet}. ${FRAMING_BLOCK} ${tail}\n\n${styling}`;
+    return `${base} ${poseInstruction} Full body, ${effectiveBackdrop}. ${FRAMING_BLOCK} ${tail}\n\n${styling}`;
   }
 
   // For turns 2/3, prepend an image enumeration header when a length anchor is provided

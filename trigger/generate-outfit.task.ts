@@ -34,8 +34,8 @@ interface GenerateOutfitPayload {
 
 export const generateOutfitTask = task({
   id: 'generate-outfit',
-  /** Generous ceiling: 3 Gemini image calls + sharp crops + blob uploads ≈ 60–120s */
-  maxDuration: 300,
+  /** Generous ceiling: 3 Gemini image calls + sharp crops + blob uploads ≈ 60–120s each */
+  maxDuration: 600,
   /** Cap at 3 concurrent jobs to stay within Gemini rate limits */
   queue: { concurrencyLimit: 3 },
   retry: { maxAttempts: 2 },
@@ -134,8 +134,10 @@ export const generateOutfitTask = task({
     const completedPoses = new Set(existingImages.map((img) => img.pose));
 
     // ── 4. Style presets ──────────────────────────────────────────────────────
-    const stylePreset = PDP_STYLE_PRESETS.find(p => p.id === styleId) ?? PDP_STYLE_PRESETS[0];
     const stylingDir = STYLING_DIRECTION_PRESETS.find(p => p.id === stylingDirectionId) ?? STYLING_DIRECTION_PRESETS[0];
+    // backdropSnippet is now driven by the styling direction; stylePreset kept as fallback only
+    const stylePreset = PDP_STYLE_PRESETS.find(p => p.id === styleId) ?? PDP_STYLE_PRESETS[0];
+    const backdropSnippet = stylingDir.backdropSnippet ?? stylePreset.promptSnippet;
 
     // ── 5. Init Gemini chat — ThinkingLevel.NONE for demo, HIGH for paid ──────
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
@@ -158,7 +160,7 @@ export const generateOutfitTask = task({
       await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_front' } });
       const frontPrompt = isDemo
         ? buildTryDemoPrompt(garmentSpec, modelGender, modelHeight)
-        : buildPromptFromSpec(garmentSpec, 'front', stylePreset.promptSnippet, hasBack, false, modelHeight, stylingDir, modelGender);
+        : buildPromptFromSpec(garmentSpec, 'front', backdropSnippet, hasBack, false, modelHeight, stylingDir, modelGender);
       const frontResp = await chat.sendMessage({
         message: [
           { inlineData: { data: cleanFlatLayB64, mimeType: cleanMime } },
@@ -180,7 +182,7 @@ export const generateOutfitTask = task({
     if (poses.includes('three-quarter') && !completedPoses.has('three-quarter')) {
       await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_tq' } });
       const tqPrompt = buildPromptFromSpec(
-        garmentSpec, 'three-quarter', stylePreset.promptSnippet, hasBack, true, modelHeight, stylingDir, modelGender,
+        garmentSpec, 'three-quarter', backdropSnippet, hasBack, true, modelHeight, stylingDir, modelGender,
       );
       const tqResp = await chat.sendMessage({
         message: [
@@ -204,7 +206,7 @@ export const generateOutfitTask = task({
     if (poses.includes('back') && !completedPoses.has('back')) {
       await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_back' } });
       const backPrompt = buildPromptFromSpec(
-        garmentSpec, 'back', stylePreset.promptSnippet, hasBack, true, modelHeight, stylingDir, modelGender,
+        garmentSpec, 'back', backdropSnippet, hasBack, true, modelHeight, stylingDir, modelGender,
       );
       const backResp = await chat.sendMessage({
         message: [

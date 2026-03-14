@@ -60,7 +60,7 @@ function appendUserDirection(prompt: string, userDirection: string | undefined):
 
 export const regenerateOutfitTask = task({
   id: 'regenerate-outfit',
-  maxDuration: 300,
+  maxDuration: 600,
   queue: { concurrencyLimit: 3 },
   retry: { maxAttempts: 2 },
 
@@ -119,10 +119,12 @@ export const regenerateOutfitTask = task({
     const normalizedModelBuffer = await normalizeReferenceImageServer(modelBuffer);
     const normalizedModelB64 = normalizedModelBuffer.toString('base64');
 
-    const stylePreset = PDP_STYLE_PRESETS.find((p) => p.id === styleId) ?? PDP_STYLE_PRESETS[0];
     const stylingDir =
       STYLING_DIRECTION_PRESETS.find((p) => p.id === outfit.stylingDirectionId) ??
       STYLING_DIRECTION_PRESETS[0];
+    // backdropSnippet is now driven by the styling direction; stylePreset kept as fallback only
+    const stylePreset = PDP_STYLE_PRESETS.find((p) => p.id === styleId) ?? PDP_STYLE_PRESETS[0];
+    const backdropSnippet = stylingDir.backdropSnippet ?? stylePreset.promptSnippet;
 
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
     const genConfig = {
@@ -141,7 +143,7 @@ export const regenerateOutfitTask = task({
       buildPromptFromSpec(
         garmentSpec,
         'front',
-        stylePreset.promptSnippet,
+        backdropSnippet,
         hasBack,
         false,
         modelHeight,
@@ -175,7 +177,7 @@ export const regenerateOutfitTask = task({
         buildPromptFromSpec(
           garmentSpec,
           'three-quarter',
-          stylePreset.promptSnippet,
+          backdropSnippet,
           hasBack,
           true,
           modelHeight,
@@ -211,7 +213,7 @@ export const regenerateOutfitTask = task({
         buildPromptFromSpec(
           garmentSpec,
           'back',
-          stylePreset.promptSnippet,
+          backdropSnippet,
           hasBack,
           true,
           modelHeight,
