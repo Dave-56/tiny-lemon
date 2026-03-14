@@ -15,7 +15,7 @@ const LANDING_2 = {
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const title = "Tiny Lemon: Studio shots from flat-lays in 60 seconds";
   const description =
-    "Turn flat-lays into studio shots in 60 seconds. No photographer, no $15K shoot. Every on-model view your customers need, for your Shopify fashion store.";
+    "Turn flat-lays into studio shots in 60 seconds. Upload from your factory or your own shoot — get professional on-model photos, ready for your Shopify store.";
   const ogImage = data?.origin ? `${data.origin}/app-icon-1200x1200.png` : undefined;
   return [
     { title },
@@ -100,14 +100,14 @@ export default function LandingPage() {
 
       <main>
         <section className={styles.hero}>
-          <p className={styles.heroLabel}>For Shopify fashion brands</p>
+          <p className={styles.heroLabel}>For indie fashion brands on Shopify</p>
           <h1 className={styles.heroHeadline}>
             Studio shots in 60 seconds. No shoot.
           </h1>
           <p className={styles.heroSubhead}>
-            Turn flat-lays into consistent, on-model photos. Same look every
-            time, built for your Shopify store. No photographer, no $15K
-            photoshoot.
+            Upload a flat-lay from your factory or your own shoot. Get
+            professional on-model photos, ready to publish on Shopify. No
+            photographer, no shoot budget.
           </p>
           <div className={styles.heroCtas}>
             <Link to="/try" className={styles.heroCta}>
@@ -150,7 +150,7 @@ export default function LandingPage() {
           <ol className={styles.howItWorksList}>
             <li className={styles.howItWorksItem}>
               <span className={styles.howItWorksStep}>1</span>
-              <span>Upload your flat-lay product images</span>
+              <span>Upload your flat-lay — from your factory, supplier, or your own shoot</span>
             </li>
             <li className={styles.howItWorksItem}>
               <span className={styles.howItWorksStep}>2</span>
@@ -216,7 +216,7 @@ export default function LandingPage() {
               </div>
               <h3 className={styles.featureCardTitle}>Your model, your style</h3>
               <p className={styles.featureCardDesc}>
-                Create custom models and brand style profiles so every shot matches your aesthetic. Studio backgrounds and styling based on the Fashion PDP framework.
+                Pick a styling direction that matches your brand — Editorial Cool (Zara, Reformation), Minimal Clarity (COS, Arket), Street Aesthetic (Urban Outfitters, Carhartt), and more. Every shot reflects your brand identity, not a generic template.
               </p>
             </div>
             <div className={styles.featureCardGrid}>

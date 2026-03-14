@@ -9,7 +9,7 @@ import styles from "../styles/features.module.css";
 export const meta: MetaFunction = () => {
   const title = "Features — TinyLemon";
   const description =
-    "Turn flat-lays into studio shots in minutes. Front, 3/4, and back angles. Built for Shopify fashion brands. No photographer, no shoot.";
+    "Turn flat-lays into studio shots in minutes — upload from your factory or DIY shoot. On-model photos ready for your Shopify store. No photographer, no shoot day.";
   return [
     { title },
     { name: "description", content: description },
@@ -79,7 +79,7 @@ export default function FeaturesPage() {
             <ol className={styles.howItWorksList}>
               <li className={styles.howItWorksItem}>
                 <span className={styles.howItWorksStep}>1</span>
-                <span>Upload your flat-lay product images</span>
+                <span>Upload your flat-lay — from your factory, supplier, or your own shoot</span>
               </li>
               <li className={styles.howItWorksItem}>
                 <span className={styles.howItWorksStep}>2</span>
@@ -127,14 +127,15 @@ export default function FeaturesPage() {
             <div className={styles.featureCard}>
               <h2 className={styles.featureTitle}>Your model, your style</h2>
               <p className={styles.featureDesc}>
-                Create custom models in the Model Builder and pick a brand style
-                so every shot matches your aesthetic. Choose from studio
-                backgrounds (white, grey) and styling directions based on the
-                Fashion PDP Visual Framework.
+                Pick a styling direction that matches how your brand actually
+                feels — Editorial Cool (Zara, Reformation), Minimal Clarity
+                (COS, Arket), Street Aesthetic (Urban Outfitters, Carhartt),
+                Premium Poise (Sandro, Reiss). Set it once, every shot
+                reflects it.
               </p>
               <ul className={styles.featureList}>
                 <li>Custom models — build and save models that represent your brand</li>
-                <li>Brand style profiles — Minimal, Accessible, Editorial, Premium, Street, Athletic</li>
+                <li>Styling directions — Minimal Clarity, Editorial Cool, Street Aesthetic, Premium Poise, Accessible Warmth, Athletic Performance</li>
                 <li>White and grey studio backgrounds (more at higher tiers)</li>
                 <li>Regenerate with custom direction when you want a tweak</li>
               </ul>

@@ -110,8 +110,8 @@ export default function PricingPage() {
                 <h2 className={styles.tierName}>Starter</h2>
               </div>
               <p className={styles.tierTagline}>
-                For brands launching their first collection or testing the
-                workflow.
+                For indie brands launching their first collection or adding new
+                SKUs without a shoot.
               </p>
               <p className={styles.tierPriceAmount}>
                 ~$39<span className={styles.unit}>/mo</span>
@@ -309,11 +309,13 @@ export default function PricingPage() {
           </div>
 
           <div className={styles.savings}>
-            <strong>Savings vs. traditional shoot:</strong> A traditional
-            photoshoot day runs $500–$2,000 (studio + photographer + model +
-            retouching). For 50 SKUs/season at 8 images each, that&apos;s
-            $12,000–$18,000/year. Scale tier annual cost: $2,988 — roughly
-            $10,000–$15,000 saved per year.
+            <strong>Savings vs. traditional shoot:</strong> For a small brand
+            with 10 new SKUs per drop, a typical shoot runs $800–$1,500 per
+            session. At Starter tier, that&apos;s ~$39/month vs $800+ per shoot.
+            At scale, a traditional shoot day runs $500–$2,000 (studio +
+            photographer + model + retouching). For 50 SKUs/season at 8 images
+            each, that&apos;s $12,000–$18,000/year. Scale tier annual cost:
+            $2,988 — roughly $10,000–$15,000 saved per year.
           </div>
         </section>
       </main>
