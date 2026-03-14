@@ -262,17 +262,20 @@ export function buildPromptFromSpec(
     anchorHeader =
       `You are given 3 images:\n` +
       `1) ${img1Desc}\n` +
-      `2) The model reference photo — source for identity and pose.\n` +
-      `3) A front-view result of this model already wearing this garment — use STRICTLY as a length and fit reference. The garment hem MUST end at the EXACT same point on the legs as shown in image 3. Match the garment's tightness/looseness of fit. Do NOT copy the pose or angle from image 3.\n\n`;
+      `2) The model reference photo — source for identity only.\n` +
+      `3) A front-view result of this model already wearing this garment — STRICTLY a length and fit reference. The garment hem MUST end at the EXACT same point on the legs as shown in image 3. Match the garment's tightness/looseness of fit. Do NOT copy the pose, body angle, arm positions, or gaze from image 3.\n\n`;
   }
 
   const energyCue = effectiveEnergyCue ? ` ${effectiveEnergyCue}` : '';
   const footwearCue = ` The model is wearing ${resolveFootwear(spec)}.`;
 
   if (pose === 'three-quarter') {
+    const threeQtrConstraint = hasLengthAnchor
+      ? 'For this step the body MUST be rotated approximately 45° away from camera with the left shoulder closer to lens. Do not face the camera directly.\n\n'
+      : '';
     const threeQtrPose = effectiveThreeQuarterSnippet
       ?? `45° body turn, face to camera.${energyCue}`;
-    return `${anchorHeader}Same person, same garment. ${threeQtrPose} Same length and fit.${footwearCue} ${FRAMING_BLOCK} ${tail}`;
+    return `${anchorHeader}${threeQtrConstraint}Same person, same garment. ${threeQtrPose} Same length and fit.${footwearCue} ${FRAMING_BLOCK} ${tail}`;
   }
   return `${anchorHeader}Same person, same garment. Back to camera. Head MUST be turned to one side looking over shoulder (angled, profile visible) — do NOT have head facing straight forward. Same length and fit.${energyCue}${footwearCue} ${FRAMING_BLOCK} ${tail}`;
 }
