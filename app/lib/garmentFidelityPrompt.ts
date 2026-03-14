@@ -235,6 +235,10 @@ export function buildPromptFromSpec(
     modelGender === 'Male' && preset?.energyCueMale
       ? preset.energyCueMale
       : preset?.energyCue;
+  const effectiveThreeQuarterSnippet =
+    modelGender === 'Male' && preset?.threeQuarterSnippetMale
+      ? preset.threeQuarterSnippetMale
+      : preset?.threeQuarterSnippet;
 
   const colors = spec.primary_colors.length ? spec.primary_colors.join(' ') : 'neutral';
   const heightNote = modelHeight ? ` The model is ${modelHeight} tall.` : '';
@@ -266,7 +270,9 @@ export function buildPromptFromSpec(
   const footwearCue = ` The model is wearing ${resolveFootwear(spec)}.`;
 
   if (pose === 'three-quarter') {
-    return `${anchorHeader}Same person, same garment. 45° body turn, face to camera. Same length and fit.${energyCue}${footwearCue} ${FRAMING_BLOCK} ${tail}`;
+    const threeQtrPose = effectiveThreeQuarterSnippet
+      ?? `45° body turn, face to camera.${energyCue}`;
+    return `${anchorHeader}Same person, same garment. ${threeQtrPose} Same length and fit.${footwearCue} ${FRAMING_BLOCK} ${tail}`;
   }
   return `${anchorHeader}Same person, same garment. Back to camera. Head MUST be turned to one side looking over shoulder (angled, profile visible) — do NOT have head facing straight forward. Same length and fit.${energyCue}${footwearCue} ${FRAMING_BLOCK} ${tail}`;
 }

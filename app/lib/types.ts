@@ -52,6 +52,10 @@ export interface StylingDirectionPreset {
   frontSnippetMale?: string;
   /** When modelGender is 'Male', use this for 3/4 and back if present; else use energyCue. */
   energyCueMale?: string;
+  /** Full three-quarter pose instruction. When present, replaces the generic "45° body turn" line. */
+  threeQuarterSnippet?: string;
+  /** When modelGender is 'Male', use this for 3/4 pose if present; else use threeQuarterSnippet. */
+  threeQuarterSnippetMale?: string;
   /** Backdrop/background prompt snippet — drives the studio background for this direction. */
   backdropSnippet: string;
 }
