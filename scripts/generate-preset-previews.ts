@@ -115,12 +115,16 @@ async function main(): Promise<void> {
     thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH as const },
   };
 
+  const stylingIds = process.env.SEED_STYLING_IDS
+    ? process.env.SEED_STYLING_IDS.split(',').map((s) => s.trim())
+    : null;
+
   const minimalStyling = STYLING_DIRECTION_PRESETS[0];
   const whiteStudio = PDP_STYLE_PRESETS[0];
   const hasBack = false;
 
   // ── Backgrounds: one image per PDP style preset (front pose, minimal styling)
-  for (const stylePreset of PDP_STYLE_PRESETS) {
+  if (!stylingIds) for (const stylePreset of PDP_STYLE_PRESETS) {
     console.log(`Background: ${stylePreset.id}...`);
     const chat = ai.chats.create({
       model: 'gemini-3.1-flash-image-preview',
@@ -158,7 +162,7 @@ async function main(): Promise<void> {
   const poseOrder: SpecPose[] = ['front', 'three-quarter', 'back'];
   let frontB64: string | null = null;
 
-  for (const pose of poseOrder) {
+  if (!stylingIds) for (const pose of poseOrder) {
     const anglePreset = ANGLE_PRESETS.find((p) => p.id === pose);
     if (!anglePreset) continue;
     console.log(`Pose: ${anglePreset.id}...`);
@@ -201,17 +205,43 @@ async function main(): Promise<void> {
     console.log(`  wrote ${outPath}`);
   }
 
-  // ── Styling directions: one image per styling preset (front pose, white studio)
-  for (const stylingPreset of STYLING_DIRECTION_PRESETS) {
+  // ── Styling directions: one image per styling preset, per-direction flat-lay + backdrop
+  const stylingPresetsToRun = stylingIds
+    ? STYLING_DIRECTION_PRESETS.filter((p) => stylingIds.includes(p.id))
+    : STYLING_DIRECTION_PRESETS;
+
+  if (stylingIds) console.log(`Regenerating styling only: ${stylingIds.join(', ')}`);
+
+  for (const stylingPreset of stylingPresetsToRun) {
     console.log(`Styling: ${stylingPreset.id}...`);
+
+    // Load per-direction flat-lay, fall back to the shared one
+    const dirFlatLayBase = join(SEED_ASSETS, 'styling', stylingPreset.id);
+    const dirFlatLayPath =
+      existsSync(`${dirFlatLayBase}.png`) ? `${dirFlatLayBase}.png` :
+      existsSync(`${dirFlatLayBase}.jpg`) ? `${dirFlatLayBase}.jpg` :
+      existsSync(join(dirFlatLayBase, 'flatlay.png')) ? join(dirFlatLayBase, 'flatlay.png') :
+      existsSync(join(dirFlatLayBase, 'flatlay.jpg')) ? join(dirFlatLayBase, 'flatlay.jpg') :
+      flatLayPath;
+    const dirMime = dirFlatLayPath.toLowerCase().endsWith('.jpg') ? 'image/jpeg' : 'image/png';
+    const dirFlatLayB64 = dirFlatLayPath === flatLayPath ? flatLayB64 : readFileSync(dirFlatLayPath).toString('base64');
+    if (dirFlatLayPath !== flatLayPath) {
+      console.log(`  using per-direction flat-lay: ${dirFlatLayPath}`);
+    }
+
+    // Extract garment spec for this flat-lay
+    const dirSpec: GarmentSpec = dirFlatLayPath === flatLayPath
+      ? garmentSpec
+      : await extractGarmentSpec(dirFlatLayB64, dirMime, apiKey);
+
     const chat = ai.chats.create({
       model: 'gemini-3.1-flash-image-preview',
       config: genConfig,
     });
     const prompt = buildPromptFromSpec(
-      garmentSpec,
+      dirSpec,
       'front',
-      whiteStudio.promptSnippet,
+      stylingPreset.backdropSnippet,
       hasBack,
       false,
       undefined,
@@ -220,7 +250,7 @@ async function main(): Promise<void> {
     );
     const resp = await chat.sendMessage({
       message: [
-        { inlineData: { data: flatLayB64, mimeType: cleanMime } },
+        { inlineData: { data: dirFlatLayB64, mimeType: dirMime } },
         { inlineData: { data: normalizedModelB64, mimeType: 'image/png' } },
         { text: prompt },
       ],
