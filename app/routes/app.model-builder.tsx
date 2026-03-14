@@ -12,9 +12,6 @@ import { OPTIONS, SKIN_TONE_COLORS, ETHNICITY_PRESETS } from '../lib/modelOption
 import posthog from 'posthog-js';
 import type { ModelAttributes } from '../lib/types';
 
-// Extend Vercel function timeout — generation + crop + upload can take up to ~45s
-export const config = { maxDuration: 60 };
-
 // ── Loader ────────────────────────────────────────────────────────────────────
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
