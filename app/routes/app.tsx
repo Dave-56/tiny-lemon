@@ -4,6 +4,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 
 import { AuthenticatedFetchProvider } from "../contexts/AuthenticatedFetchContext";
+import { PendingItemsProvider } from "../contexts/PendingItemsContext";
 import { PostHogProvider } from "../components/PostHogProvider";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -30,6 +31,7 @@ export default function App() {
   return (
     <AppProvider embedded apiKey={apiKey}>
       <AuthenticatedFetchProvider>
+      <PendingItemsProvider>
       <s-app-nav>
         <s-link href="/app/dress-model">Dress model</s-link>
         <s-link href="/app/outfits">Outfits</s-link>
@@ -50,6 +52,7 @@ export default function App() {
 
       <PostHogProvider shop={shop} plan={plan} />
       <Outlet />
+      </PendingItemsProvider>
       </AuthenticatedFetchProvider>
     </AppProvider>
   );

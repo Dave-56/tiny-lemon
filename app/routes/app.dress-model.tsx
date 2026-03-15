@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from 'react-router';
-import { useLoaderData, useRouteError, useSearchParams, Link } from 'react-router';
+import { useLoaderData, useRouteError, useSearchParams, useLocation, useNavigate, useBlocker, useBeforeUnload, Link } from 'react-router';
+import { usePendingItems } from '../contexts/PendingItemsContext';
 import { boundary } from '@shopify/shopify-app-react-router/server';
 import { useAppBridge } from '@shopify/app-bridge-react';
 import { useAuthenticatedFetch } from '../contexts/AuthenticatedFetchContext';
@@ -251,7 +252,7 @@ const SESSION_KEY = (shop: string) => `dress-model-items-${shop}`;
 const MAX_BATCH = 10;
 
 const STATUS_LABEL: Record<ItemStatus, string> = {
-  pending: 'Pending',
+  pending: 'Uploaded',
   creating: 'Creating outfit…',
   processing: 'Starting…',
   generating_front: 'Generating front',
@@ -297,11 +298,16 @@ export default function DressModel() {
   const shopify = useAppBridge();
   const authenticatedFetch = useAuthenticatedFetch();
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const pendingItemsCtx = usePendingItems();
 
   const [presetModels, setPresetModels] = useState<PresetModelEntry[]>([]);
-  // URL param takes priority so selection survives navigation and hard refresh
+  // Priority: URL param > router state (passed from brand-style) > first custom model
   const [selectedModelId, setSelectedModelId] = useState<string | null>(
-    searchParams.get('model') ?? customModels[0]?.id ?? null,
+    searchParams.get('model') ??
+    (location.state as { model?: string } | null)?.model ??
+    customModels[0]?.id ?? null,
   );
   const [modelTab, setModelTab] = useState<'mine' | 'presets'>(customModels.length > 0 ? 'mine' : 'presets');
 
@@ -344,48 +350,108 @@ export default function DressModel() {
 
   // ── Session persistence ───────────────────────────────────────────────────────
 
-  // Restore items from sessionStorage on mount.
-  // Only items that have a savedOutfitId are restored — those can resume polling
-  // without needing the original File object. Pending-only items (no outfitId) are
-  // intentionally skipped because the file data is gone.
+  // On mount: normalize location.state.model → URL param and clear state.
+  // URL param wins if both are present (deep link / back-forward takes priority).
   useEffect(() => {
+    const stateModel = (location.state as { model?: string } | null)?.model;
+    if (!stateModel) return;
+    const params = new URLSearchParams(location.search);
+    if (!params.get('model')) params.set('model', stateModel);
+    navigate(`${location.pathname}?${params.toString()}`, { replace: true, state: null });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // On mount: merge pending entries (from context, survived route change) with the
+  // most recently submitted item (from sessionStorage). Called once; both sources
+  // are read synchronously so a single setItems avoids a double-render.
+  useEffect(() => {
+    const merged: BatchItem[] = [];
+    const seenIds = new Set<string>();
+
+    // 1. Pending entries (uploaded files kept alive in the layout-level context)
+    for (const entry of pendingItemsCtx.entries) {
+      if (seenIds.has(entry.id)) continue;
+      seenIds.add(entry.id);
+      merged.push({
+        id: entry.id,
+        frontFile: entry.file,
+        frontPreview: URL.createObjectURL(entry.file),
+        backFile: entry.backFile,
+        backPreview: entry.backFile ? URL.createObjectURL(entry.backFile) : null,
+        skuName: entry.skuName,
+        status: 'pending',
+        cleanPreview: null,
+        results: [],
+        error: null,
+        savedOutfitId: null,
+        savedShopId: null,
+        quality: entry.quality,
+      });
+    }
+
+    // 2. Most recently submitted item (generating or done) from sessionStorage
     try {
       const raw = sessionStorage.getItem(SESSION_KEY(shop));
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as PersistedItem[];
-      if (!Array.isArray(parsed) || parsed.length === 0) return;
-      setItems(parsed.map(item => ({
-        ...item,
-        frontFile: new File([], item.skuName),   // dummy — never read after savedOutfitId exists
-        frontPreview: item.cleanPreview ?? '',    // CDN URL for done items; blank for in-progress
-        backFile: null,
-        backPreview: null,
-      })));
+      if (raw) {
+        const stored = JSON.parse(raw) as PersistedItem;
+        if (stored?.savedOutfitId && !seenIds.has(stored.id)) {
+          merged.push({
+            ...stored,
+            frontFile: new File([], stored.skuName), // dummy — never read after savedOutfitId exists
+            frontPreview: stored.cleanPreview ?? '',  // CDN URL for done items; blank for in-progress
+            backFile: null,
+            backPreview: null,
+          });
+        }
+      }
     } catch {
       // corrupt storage, ignore
     }
+
+    if (merged.length > 0) setItems(merged);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync serializable items to sessionStorage whenever items change.
-  // The `hasSyncedRef` guard skips the first call so we don't clear storage
-  // before the restore effect above has a chance to run setItems.
-  const hasSyncedRef = useRef(false);
+  // Sync pending items (real files, not dummy-restored ones) to the layout context
+  // whenever items change, so they survive navigation to other routes.
+  // Skip the first call to avoid clearing the context before the restore runs.
+  const hasSyncedCtxRef = useRef(false);
   useEffect(() => {
-    if (!hasSyncedRef.current) {
-      hasSyncedRef.current = true;
+    if (!hasSyncedCtxRef.current) {
+      hasSyncedCtxRef.current = true;
       return;
     }
-    const toSave = items
-      .filter(i => i.savedOutfitId !== null)
-      .map(({ id, skuName, status, cleanPreview, results, error, savedOutfitId, savedShopId, quality }): PersistedItem => ({
-        id, skuName, status, cleanPreview, results, error, savedOutfitId, savedShopId, quality,
-      }));
-    if (toSave.length > 0) {
-      sessionStorage.setItem(SESSION_KEY(shop), JSON.stringify(toSave));
+    // Only items with a real File (size > 0) are pending entries — dummies from
+    // sessionStorage restore have size 0 and must not overwrite the context.
+    const realPending = items.filter(
+      i => i.status === 'pending' && i.savedOutfitId === null && i.frontFile.size > 0,
+    );
+    const pendingIds = new Set(realPending.map(i => i.id));
+    realPending.forEach(item =>
+      pendingItemsCtx.upsert({ id: item.id, file: item.frontFile, backFile: item.backFile, skuName: item.skuName, quality: item.quality }),
+    );
+    // Remove context entries that no longer exist in items (user removed them)
+    pendingItemsCtx.entries.forEach(e => {
+      if (!pendingIds.has(e.id)) pendingItemsCtx.remove(e.id);
+    });
+  }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync the single most-recently-submitted item to sessionStorage.
+  // Excludes failed items. Keeps only 1 — completed items live in the Outfits route.
+  const hasSyncedStorageRef = useRef(false);
+  useEffect(() => {
+    if (!hasSyncedStorageRef.current) {
+      hasSyncedStorageRef.current = true;
+      return;
+    }
+    const latest = [...items].reverse().find(i => i.savedOutfitId !== null && i.status !== 'error');
+    if (latest) {
+      const { id, skuName, status, cleanPreview, results, error, savedOutfitId, savedShopId, quality } = latest;
+      sessionStorage.setItem(SESSION_KEY(shop), JSON.stringify(
+        { id, skuName, status, cleanPreview, results, error, savedOutfitId, savedShopId, quality },
+      ));
     } else {
       sessionStorage.removeItem(SESSION_KEY(shop));
     }
-  }, [items, shop]);
+  }, [items, shop]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addFiles = useCallback((files: FileList | File[]) => {
     const arr = Array.from(files).filter(f => f.type.startsWith('image/'));
@@ -433,6 +499,21 @@ export default function DressModel() {
     setIsDragging(false);
     if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
   };
+
+  // ── Nav guard ────────────────────────────────────────────────────────────────
+  // Block internal navigation when pending uploads exist or a generation is in-flight.
+  // Pending items survive SPA navigation via the context, but the user should still
+  // be warned when generating so they know results are running server-side.
+
+  const hasPending = pendingItemsCtx.entries.length > 0;
+
+  const blocker = useBlocker(hasPending || isRunning);
+
+  useBeforeUnload(
+    useCallback((e: BeforeUnloadEvent) => {
+      if (hasPending || isRunning) e.preventDefault();
+    }, [hasPending, isRunning]),
+  );
 
   // ── Polling ──────────────────────────────────────────────────────────────────
 
@@ -654,6 +735,7 @@ export default function DressModel() {
     STYLING_DIRECTION_PRESETS[0];
 
   return (
+    <>
     <div className="min-h-screen bg-krea-bg flex gap-6 p-6">
 
       {/* ── Left column ── */}
@@ -815,7 +897,7 @@ export default function DressModel() {
         <div className="flex items-center gap-2 text-sm text-krea-muted">
           <span>Style:</span>
           <span className="font-medium text-krea-text">{activeStyle.label}</span>
-          <Link to="/app/brand-style" className="text-xs text-krea-accent underline underline-offset-2">Edit</Link>
+          <Link to="/app/brand-style" state={{ model: selectedModelId }} className="text-xs text-krea-accent underline underline-offset-2">Edit</Link>
         </div>
 
         <button
@@ -1140,6 +1222,39 @@ export default function DressModel() {
       )}
 
     </div>
+
+      {/* ── Nav guard confirm modal ── */}
+      {blocker.state === 'blocked' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-white rounded-xl p-6 max-w-sm w-full mx-4 space-y-4 shadow-xl">
+            <p className="text-sm font-semibold text-krea-text">
+              {isRunning ? 'Generation in progress' : 'Leave without generating?'}
+            </p>
+            <p className="text-xs text-krea-muted leading-relaxed">
+              {isRunning
+                ? 'Your generation will continue running in the background. Come back to see the results — or leave and check the Outfits page later.'
+                : 'Your uploaded outfits will still be here when you come back. No need to re-upload.'}
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => blocker.reset()}
+                className="h-8 px-4 text-xs rounded-md border border-krea-border text-krea-text hover:bg-krea-bg transition-colors"
+              >
+                Stay
+              </button>
+              <button
+                type="button"
+                onClick={() => blocker.proceed()}
+                className="h-8 px-4 text-xs rounded-md bg-krea-accent text-white hover:opacity-90 transition-opacity"
+              >
+                Leave
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

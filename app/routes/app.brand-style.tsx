@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from 'react-router';
-import { useFetcher, useLoaderData, useNavigate, useRouteError } from 'react-router';
+import { useFetcher, useLoaderData, useLocation, useNavigate, useRouteError } from 'react-router';
 import { boundary } from '@shopify/shopify-app-react-router/server';
 import { Check } from 'lucide-react';
 import { authenticate } from '../shopify.server';
@@ -120,6 +120,8 @@ export default function BrandStyle() {
     useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const returnModel = (location.state as { model?: string } | null)?.model;
 
   const recommendedIds = getRecommendedDirections(brandEnergy, primaryCategory);
   const hasBrandProfile = Boolean(brandEnergy && primaryCategory);
@@ -137,7 +139,7 @@ export default function BrandStyle() {
     if (fetcher.state !== 'idle') return;
     if ((fetcher.data as { ok?: boolean } | undefined)?.ok) {
       posthog.capture('brand_style_saved', { shop });
-      navigate('/app/dress-model');
+      navigate('/app/dress-model', { state: returnModel ? { model: returnModel } : null });
       return;
     }
     if (fetcher.data && !(fetcher.data as { ok?: boolean }).ok) {
