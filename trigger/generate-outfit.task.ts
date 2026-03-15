@@ -139,12 +139,12 @@ export const generateOutfitTask = task({
     const stylePreset = PDP_STYLE_PRESETS.find(p => p.id === styleId) ?? PDP_STYLE_PRESETS[0];
     const backdropSnippet = stylingDir.backdropSnippet ?? stylePreset.promptSnippet;
 
-    // ── 5. Init Gemini chat — ThinkingLevel.NONE for demo, HIGH for paid ──────
+    // ── 5. Init Gemini chat ───────────────────────────────────────────────────
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
     const genConfig = {
       temperature: 0.2,
       imageConfig: { aspectRatio: '2:3' as const, imageSize: '1K' as const },
-      thinkingConfig: { thinkingLevel: isDemo ? ThinkingLevel.MINIMAL : ThinkingLevel.HIGH },
+      thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
     };
     const chat = ai.chats.create({ model: 'gemini-3.1-flash-image-preview', config: genConfig });
     const sharp = (await import('sharp')).default;
