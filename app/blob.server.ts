@@ -8,12 +8,16 @@ export async function uploadBufferToBlob(
   buffer: Buffer,
   pathname: string,
   contentType: string = 'image/png',
+  opts?: { cacheControlMaxAge?: number; contentDisposition?: 'inline' | 'attachment' },
 ): Promise<string> {
   const { url } = await put(pathname, buffer, {
     access: 'public',
     contentType,
     token: process.env.BLOB_READ_WRITE_TOKEN!,
-  });
+    // Long-lived caching for immutable assets when provided
+    cacheControlMaxAge: opts?.cacheControlMaxAge,
+    contentDisposition: opts?.contentDisposition,
+  } as any);
   return url;
 }
 
@@ -23,6 +27,24 @@ export async function uploadBufferToBlob(
  * @param pathname Storage path e.g. "models/my-store.myshopify.com/clxyz.png"
  * @returns Public Blob URL
  */
-export async function uploadImageToBlob(buffer: Buffer, pathname: string): Promise<string> {
-  return uploadBufferToBlob(buffer, pathname, 'image/png');
+export async function uploadImageToBlob(
+  buffer: Buffer,
+  pathname: string,
+  contentType: string = 'image/png',
+  cacheControlMaxAge?: number,
+  contentDisposition: 'inline' | 'attachment' = 'inline',
+): Promise<string> {
+  return uploadBufferToBlob(buffer, pathname, contentType, { cacheControlMaxAge, contentDisposition });
+}
+
+export async function uploadImageVariant(
+  buffer: Buffer,
+  pathname: string,
+  contentType: 'image/avif' | 'image/webp' | 'image/png' | 'image/jpeg',
+  cacheSeconds: number,
+): Promise<string> {
+  return uploadBufferToBlob(buffer, pathname, contentType, {
+    cacheControlMaxAge: cacheSeconds,
+    contentDisposition: 'inline',
+  });
 }
