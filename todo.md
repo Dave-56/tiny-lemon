@@ -13,20 +13,33 @@
 
 ## Bugs
 
-### 1. Fix onboarding
+### 1. Fix onboarding (Already been fixed)
 - **Status:** Open
 - **Priority:** High
 - **Description:** Onboarding flow is broken — needs investigation.
 
-### 2. Regeneration does not work
+### 2. Regeneration does not work (Already been fixed)
 - **Status:** Open
 - **Priority:** High
 - **Description:** Regeneration feature is non-functional.
 
 ### 3. Blobs loading slowly on page load
-- **Status:** Open
+- **Status:** Done
 - **Priority:** Medium
 - **Description:** Blob assets load slowly on initial page load.
+- **Phase 1 — UI hardening (Done):**
+  - Added lazy loading and async decoding to non‑LCP images.
+  - Prioritized the first visible image with `fetchpriority="high"` (no `decoding` on LCP).
+  - Set explicit `width`/`height`, `aspect-ratio: 2 / 3`, and `display: block` to prevent CLS.
+  - Added lightweight error fallback for broken images.
+  - Files: `app/routes/app.outfits.tsx`, `app/routes/app.dress-model.tsx`.
+- **Phase 2 — Variants, formats, caching (Done):**
+  - Pre-generated AVIF/WebP variants (320/640/800) for each pose with immutable, hashed filenames.
+  - Frontend renders via `<picture>` + `srcset`/`sizes` with PNG fallback.
+  - Set long-lived cache on variants (`max-age=31536000, immutable`); originals short-cached and versioned.
+  - Updated helpers in `blob.server.ts` for `Content-Type`, cache headers, and disposition.
+  - Files: `trigger/generate-outfit.task.ts`, `trigger/regenerate-outfit.task.ts`, `app/blob.server.ts`, `app/lib/imageVariants.ts`, `app/routes/app.outfits.tsx`, `app/routes/app.dress-model.tsx`.
+  - Optional (not yet): add preconnect to Blob host.
 
 ### 4. Brand profile data not reaching Gemini
 - **Status:** Done
@@ -76,4 +89,32 @@
   - [ ] **Remove/relax pose validation** — `validatePose()` adds ~2-4s on happy path; on failure triggers a full retry (+25-35s).
   - [ ] Measure app → Trigger.dev latency separately
 
+### 7. Gender lock + follow-ups (post-MVP)
+- Status: Planned
+- Priority: High (lightweight)
+- Description: We added a zero-latency prompt gender lock for Male/Female. Track small follow-ups and guardrails.
+- Tasks:
+  - [ ] Normalize gender inputs: use `normalizeModelGender()` at task entry points to avoid stray values (treat only literal 'Male' | 'Female' as locked).
+  - [ ] Observability: add a debug log when `genderLock` is applied (pose + gender) to help triage if issues surface.
+  - [ ] Scripts parity: ensure preview/generation scripts pass `modelGender` so the lock is effective in tooling.
+  - [ ] Resume edge: when resuming a partially completed job that already has a front image, consider warning if lock would have applied but front was generated pre-lock (non-blocking).
+  - [ ] Documentation: note gender-lock behavior in developer docs so future prompt edits keep the insertion points intact.
+
+### 8. Regenerate blob overwrite (collision risk)
+- Status: Open
+- Priority: Medium
+- Description: Regeneration uploads use fixed keys like `.../regenerate-front.png`, which can collide on retries or rapid successive regens.
+- Tasks:
+  - [ ] Switch to versioned filenames (e.g., `regenerate-front-v2.png`) or timestamps.
+  - [ ] Alternatively, use an explicit overwrite flag where intended and ensure CDN invalidation if needed.
+
+### 9. Optional validator (fast follow, only if needed)
+- Status: Deferred
+- Priority: Medium
+- Description: If gender slips are observed in production, add a thumbnail validator with one retry, pipelined with cropping to minimize latency.
+- Tasks:
+  - [ ] Add `validateGender()` (Gemini 2.0 Flash, temp 0, yes/no; trim/lowercase; return true on error) to both generate/regenerate tasks.
+  - [ ] Validate/crop pipeline: create 256x384 JPEG Q70 for validation; run crop in parallel; upload only after pass/retry decision.
+  - [ ] Gate strictly for 'Male' | 'Female'; keep non-fatal `console.warn` after second miss.
+  - [ ] Per-run toggle: wire through request body (no env var) if you want runtime control; default off.
 ---
