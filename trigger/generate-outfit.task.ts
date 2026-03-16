@@ -1,7 +1,7 @@
 import { task } from '@trigger.dev/sdk/v3';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import prisma from '../app/db.server';
-import { uploadImageToBlob } from '../app/blob.server';
+import { uploadImageToBlob, uploadImageVariant } from '../app/blob.server';
 import { cleanFlatLay, cleanFlatLayForDemo } from '../app/lib/flatLayCleanup';
 import { extractGarmentSpec } from '../app/lib/garmentSpec';
 import { buildPromptFromSpec } from '../app/lib/garmentFidelityPrompt';
@@ -193,9 +193,24 @@ export const generateOutfitTask = task({
       frontB64 = extractBase64(frontResp);
       const frontCropped = await sharp(Buffer.from(frontB64, 'base64'))
         .resize({ width: 800, height: 1200, fit: 'cover', position: 'top' })
-        .png()
+        .png({ progressive: true })
         .toBuffer();
-      const frontUrl = await uploadImageToBlob(frontCropped, `outfits/${shopId}/${outfitId}/front.png`);
+      const crypto = await import('crypto');
+      const hash = crypto.createHash('sha256').update(frontCropped).digest('hex').slice(0, 8);
+      const baseNameFront = `outfits/${shopId}/${outfitId}/front.${hash}`;
+      const frontUrl = await uploadImageToBlob(
+        frontCropped,
+        `${baseNameFront}.png`,
+        'image/png',
+        86400,
+        'inline',
+      );
+      for (const w of [320, 640, 800]) {
+        const avif = await sharp(frontCropped).resize({ width: w }).avif({ quality: 50, effort: 4 }).toBuffer();
+        await uploadImageVariant(avif, `${baseNameFront}-${w}w.avif`, 'image/avif', 31536000);
+        const webp = await sharp(frontCropped).resize({ width: w }).webp({ quality: 60 }).toBuffer();
+        await uploadImageVariant(webp, `${baseNameFront}-${w}w.webp`, 'image/webp', 31536000);
+      }
       await prisma.generatedImage.create({ data: { shopId, outfitId, imageUrl: frontUrl, pose: 'front', styleId } });
     }
 
@@ -243,9 +258,18 @@ export const generateOutfitTask = task({
       }
       const tqCropped = await sharp(Buffer.from(tqB64, 'base64'))
         .resize({ width: 800, height: 1200, fit: 'cover', position: 'attention' })
-        .png()
+        .png({ progressive: true })
         .toBuffer();
-      const tqUrl = await uploadImageToBlob(tqCropped, `outfits/${shopId}/${outfitId}/three-quarter.png`);
+      const cryptoTq = await import('crypto');
+      const hashTq = cryptoTq.createHash('sha256').update(tqCropped).digest('hex').slice(0, 8);
+      const baseNameTq = `outfits/${shopId}/${outfitId}/three-quarter.${hashTq}`;
+      const tqUrl = await uploadImageToBlob(tqCropped, `${baseNameTq}.png`, 'image/png', 86400, 'inline');
+      for (const w of [320, 640, 800]) {
+        const avif = await sharp(tqCropped).resize({ width: w }).avif({ quality: 50, effort: 4 }).toBuffer();
+        await uploadImageVariant(avif, `${baseNameTq}-${w}w.avif`, 'image/avif', 31536000);
+        const webp = await sharp(tqCropped).resize({ width: w }).webp({ quality: 60 }).toBuffer();
+        await uploadImageVariant(webp, `${baseNameTq}-${w}w.webp`, 'image/webp', 31536000);
+      }
       await prisma.generatedImage.create({ data: { shopId, outfitId, imageUrl: tqUrl, pose: 'three-quarter', styleId } });
     };
 
@@ -282,9 +306,18 @@ export const generateOutfitTask = task({
       }
       const backCropped = await sharp(Buffer.from(backB64, 'base64'))
         .resize({ width: 800, height: 1200, fit: 'cover', position: 'attention' })
-        .png()
+        .png({ progressive: true })
         .toBuffer();
-      const backUrl = await uploadImageToBlob(backCropped, `outfits/${shopId}/${outfitId}/back.png`);
+      const cryptoBack = await import('crypto');
+      const hashBack = cryptoBack.createHash('sha256').update(backCropped).digest('hex').slice(0, 8);
+      const baseNameBack = `outfits/${shopId}/${outfitId}/back.${hashBack}`;
+      const backUrl = await uploadImageToBlob(backCropped, `${baseNameBack}.png`, 'image/png', 86400, 'inline');
+      for (const w of [320, 640, 800]) {
+        const avif = await sharp(backCropped).resize({ width: w }).avif({ quality: 50, effort: 4 }).toBuffer();
+        await uploadImageVariant(avif, `${baseNameBack}-${w}w.avif`, 'image/avif', 31536000);
+        const webp = await sharp(backCropped).resize({ width: w }).webp({ quality: 60 }).toBuffer();
+        await uploadImageVariant(webp, `${baseNameBack}-${w}w.webp`, 'image/webp', 31536000);
+      }
       await prisma.generatedImage.create({ data: { shopId, outfitId, imageUrl: backUrl, pose: 'back', styleId } });
     };
 

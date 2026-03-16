@@ -1,7 +1,7 @@
 import { task } from '@trigger.dev/sdk/v3';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import prisma from '../app/db.server';
-import { uploadImageToBlob } from '../app/blob.server';
+import { uploadImageToBlob, uploadImageVariant } from '../app/blob.server';
 import { buildPromptFromSpec } from '../app/lib/garmentFidelityPrompt';
 import { normalizeReferenceImageServer } from '../app/lib/normalizeReferenceImage.server';
 import { PDP_STYLE_PRESETS, BRAND_STYLE_PRESETS } from '../app/lib/pdpPresets';
@@ -213,13 +213,20 @@ export const regenerateOutfitTask = task({
       config: frontGenConfig,
     });
     const frontB64 = extractBase64(frontResp);
-    const frontUrl = await uploadImageToBlob(
-      await sharp(Buffer.from(frontB64, 'base64'))
-        .resize({ width: 800, height: 1200, fit: 'cover', position: 'top' })
-        .png()
-        .toBuffer(),
-      `${blobPrefix}-front.png`,
-    );
+    const frontPng = await sharp(Buffer.from(frontB64, 'base64'))
+      .resize({ width: 800, height: 1200, fit: 'cover', position: 'top' })
+      .png({ progressive: true })
+      .toBuffer();
+    const crypto = await import('crypto');
+    const hashFront = crypto.createHash('sha256').update(frontPng).digest('hex').slice(0, 8);
+    const baseFront = `${blobPrefix}-front.${hashFront}`;
+    const frontUrl = await uploadImageToBlob(frontPng, `${baseFront}.png`, 'image/png', 86400, 'inline');
+    for (const w of [320, 640, 800]) {
+      const avif = await sharp(frontPng).resize({ width: w }).avif({ quality: 50, effort: 4 }).toBuffer();
+      await uploadImageVariant(avif, `${baseFront}-${w}w.avif`, 'image/avif', 31536000);
+      const webp = await sharp(frontPng).resize({ width: w }).webp({ quality: 60 }).toBuffer();
+      await uploadImageVariant(webp, `${baseFront}-${w}w.webp`, 'image/webp', 31536000);
+    }
 
     // ── Three-quarter + back (parallel) ───────────────────────────────────────
     // Both depend on frontB64 but NOT on each other — run in parallel to save ~25-35s.
@@ -275,13 +282,20 @@ export const regenerateOutfitTask = task({
         });
         tqB64 = extractBase64(retryResp);
       }
-      tqUrl = await uploadImageToBlob(
-        await sharp(Buffer.from(tqB64, 'base64'))
-          .resize({ width: 800, height: 1200, fit: 'cover', position: 'attention' })
-          .png()
-          .toBuffer(),
-        `${blobPrefix}-three-quarter.png`,
-      );
+      const tqPng = await sharp(Buffer.from(tqB64, 'base64'))
+        .resize({ width: 800, height: 1200, fit: 'cover', position: 'attention' })
+        .png({ progressive: true })
+        .toBuffer();
+      const cryptoTq = await import('crypto');
+      const hashTq = cryptoTq.createHash('sha256').update(tqPng).digest('hex').slice(0, 8);
+      const baseTq = `${blobPrefix}-three-quarter.${hashTq}`;
+      tqUrl = await uploadImageToBlob(tqPng, `${baseTq}.png`, 'image/png', 86400, 'inline');
+      for (const w of [320, 640, 800]) {
+        const avif = await sharp(tqPng).resize({ width: w }).avif({ quality: 50, effort: 4 }).toBuffer();
+        await uploadImageVariant(avif, `${baseTq}-${w}w.avif`, 'image/avif', 31536000);
+        const webp = await sharp(tqPng).resize({ width: w }).webp({ quality: 60 }).toBuffer();
+        await uploadImageVariant(webp, `${baseTq}-${w}w.webp`, 'image/webp', 31536000);
+      }
     };
 
     const generateBack = async () => {
@@ -327,13 +341,20 @@ export const regenerateOutfitTask = task({
         });
         backB64 = extractBase64(retryResp);
       }
-      backUrl = await uploadImageToBlob(
-        await sharp(Buffer.from(backB64, 'base64'))
-          .resize({ width: 800, height: 1200, fit: 'cover', position: 'attention' })
-          .png()
-          .toBuffer(),
-        `${blobPrefix}-back.png`,
-      );
+      const backPng = await sharp(Buffer.from(backB64, 'base64'))
+        .resize({ width: 800, height: 1200, fit: 'cover', position: 'attention' })
+        .png({ progressive: true })
+        .toBuffer();
+      const cryptoBack = await import('crypto');
+      const hashBack = cryptoBack.createHash('sha256').update(backPng).digest('hex').slice(0, 8);
+      const baseBack = `${blobPrefix}-back.${hashBack}`;
+      backUrl = await uploadImageToBlob(backPng, `${baseBack}.png`, 'image/png', 86400, 'inline');
+      for (const w of [320, 640, 800]) {
+        const avif = await sharp(backPng).resize({ width: w }).avif({ quality: 50, effort: 4 }).toBuffer();
+        await uploadImageVariant(avif, `${baseBack}-${w}w.avif`, 'image/avif', 31536000);
+        const webp = await sharp(backPng).resize({ width: w }).webp({ quality: 60 }).toBuffer();
+        await uploadImageVariant(webp, `${baseBack}-${w}w.webp`, 'image/webp', 31536000);
+      }
     };
 
     await Promise.all([generateThreeQuarter(), generateBack()]);
