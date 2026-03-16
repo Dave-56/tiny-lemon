@@ -11,6 +11,23 @@ interface StylingResolution {
   footwear: string;
 }
 
+// ── Gender Lock ───────────────────────────────────────────────────────────────
+
+/**
+ * Returns a terse gender lock sentence when modelGender is 'Male' or 'Female'.
+ * Else returns an empty string. Includes a trailing space so it can be inlined
+ * before camera geometry for the front pose.
+ */
+export function getGenderLock(modelGender?: string): string {
+  if (modelGender === 'Male') {
+    return 'The person is male; do not alter sex or gender presentation. Do not generate a female-presenting person. ';
+  }
+  if (modelGender === 'Female') {
+    return 'The person is female; do not alter sex or gender presentation. Do not generate a male-presenting person. ';
+  }
+  return '';
+}
+
 function resolveFootwear(spec: GarmentSpec, modelGender?: string): string {
   const isMale = modelGender === 'Male';
   const type = spec.garment_type.toLowerCase();
@@ -215,10 +232,13 @@ export function generateGarmentFidelityPrompt(
 ): string {
   const header = buildHeader(hasBackFlatLay, hasLengthAnchor);
   const anchor = hasLengthAnchor ? LENGTH_ANCHOR_SECTION : '';
+  const genderLock = getGenderLock(modelGender);
   const styling = spec
     ? buildStylingBlock(resolveStyling(spec, modelGender))
     : 'STYLING (fashion e-commerce standard):\nThis is a professional fashion ecommerce product photo. Add appropriate footwear and style the model for a premium retail brand shoot.';
-  return (header + GARMENT_FIDELITY_BODY + anchor)
+  // Inject genderLock immediately after the header so it scopes the whole prompt.
+  const prefix = genderLock ? header + genderLock + '\n' : header;
+  return (prefix + GARMENT_FIDELITY_BODY + anchor)
     .replace('{{ANGLE_SNIPPET}}', anglePreset.promptSnippet)
     .replace('{{STYLE_SNIPPET}}', stylePreset.promptSnippet)
     .replace('{{STYLING_SNIPPET}}', styling);
@@ -302,10 +322,12 @@ export function buildPromptFromSpec(
   const tail = lengthAndLightingBlock(spec, hasBackFlatLay, pose, effectiveBackdrop);
 
   const styling = resolveStyling(spec, modelGender);
+  const genderLock = getGenderLock(modelGender);
 
   if (pose === 'front') {
     const poseInstruction = effectiveFrontSnippet ?? 'Standing naturally, neutral pose, arms relaxed at sides.';
-    return `${base} ${POSE_GEOMETRY.front} ${poseInstruction} Full body, ${effectiveBackdrop}. ${FRAMING_BLOCK} ${tail}\n\n${buildStylingBlock(styling)}`;
+    // Inject gender lock after base and before camera geometry.
+    return `${base} ${genderLock}${POSE_GEOMETRY.front} ${poseInstruction} Full body, ${effectiveBackdrop}. ${FRAMING_BLOCK} ${tail}\n\n${buildStylingBlock(styling)}`;
   }
 
   // For turns 2/3, prepend an image enumeration header.
@@ -338,9 +360,12 @@ export function buildPromptFromSpec(
   if (pose === 'three-quarter') {
     const bodyLanguage = effectiveThreeQuarterSnippet
       ?? `Natural stance, face turned toward camera.${energyCue}`;
-    return `${imageHeader}Same person, same garment. ${POSE_GEOMETRY['three-quarter']} ${bodyLanguage} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
+    // Insert gender lock immediately after imageHeader so it scopes turns 2/3.
+    const headerWithLock = genderLock ? `${imageHeader}${genderLock}\n` : imageHeader;
+    return `${headerWithLock}Same person, same garment. ${POSE_GEOMETRY['three-quarter']} ${bodyLanguage} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
   }
   const bodyLanguage = effectiveBackSnippet
     ?? `Head turned to one side looking over shoulder, profile visible.${energyCue}`;
-  return `${imageHeader}Same person, same garment. ${POSE_GEOMETRY.back} ${bodyLanguage} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
+  const headerWithLock = genderLock ? `${imageHeader}${genderLock}\n` : imageHeader;
+  return `${headerWithLock}Same person, same garment. ${POSE_GEOMETRY.back} ${bodyLanguage} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
 }
