@@ -1,5 +1,9 @@
 # Tiny Lemon — Feature Roadmap
 
+## v2 Release Notes
+
+- Advisory flat‑lay validation (Gemini): Non‑blocking quality check on uploads with clear badges (good/warn/fail). Fast via client downscale + server caching; privacy‑first (hash only, no image storage). Kill switch and threshold tuning via env. No DB changes; does not affect Generate flow.
+
 ## Future Enhancements
 
 ### 1. Detail crop (zoomed-in 3/4)
