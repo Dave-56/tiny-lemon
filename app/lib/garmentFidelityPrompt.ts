@@ -1,15 +1,18 @@
 import type { PdpStylePreset, AnglePreset, StylingDirectionPreset } from './types';
 import type { GarmentSpec } from './garmentSpec';
+import { getProductionQualityCue } from './brandProfileMapping';
 
 // ── Styling Resolver ──────────────────────────────────────────────────────────
 
 interface StylingResolution {
   baseLayer?: string;
+  bottoms?: string;
   accessories?: string;
   footwear: string;
 }
 
-function resolveFootwear(spec: GarmentSpec): string {
+function resolveFootwear(spec: GarmentSpec, modelGender?: string): string {
+  const isMale = modelGender === 'Male';
   const type = spec.garment_type.toLowerCase();
   if (/evening dress|occasion dress|cocktail dress|gown/.test(type))
     return 'strappy heeled sandals in a neutral or matching color';
@@ -20,9 +23,9 @@ function resolveFootwear(spec: GarmentSpec): string {
   if (/dress/.test(type))
     return 'minimal heeled sandals or pointed-toe pumps';
   if (/blazer|suit|tailored trouser|trouser/.test(type))
-    return 'pointed-toe leather pumps or classic loafers';
+    return isMale ? 'leather loafers or minimal leather dress shoes' : 'pointed-toe leather pumps or classic loafers';
   if (/jacket|coat|bomber|outerwear/.test(type))
-    return 'heeled ankle boots or leather loafers';
+    return isMale ? 'leather boots or clean leather loafers' : 'heeled ankle boots or leather loafers';
   if (/skirt/.test(type))
     return 'minimal ankle-strap heels or pointed-toe mules';
   if (/jeans|denim/.test(type))
@@ -30,22 +33,26 @@ function resolveFootwear(spec: GarmentSpec): string {
   if (/activewear|leggings|sports/.test(type))
     return 'clean white or black athletic trainers';
   if (/top|blouse|shirt|tee|t-shirt/.test(type))
-    return 'clean white trainers or minimal leather sandals';
+    return isMale ? 'clean white trainers or leather loafers' : 'clean white trainers or minimal leather sandals';
   if (/knitwear|sweater|jumper|cardigan/.test(type))
     return 'clean white trainers or ankle boots';
   if (/shorts/.test(type))
     return 'clean white trainers or minimal sandals';
-  return 'neutral leather loafers or minimal heeled sandals';
+  return isMale ? 'neutral leather loafers or clean trainers' : 'neutral leather loafers or minimal heeled sandals';
 }
 
-function resolveStyling(spec: GarmentSpec): StylingResolution {
+function resolveStyling(spec: GarmentSpec, modelGender?: string): StylingResolution {
+  const isMale = modelGender === 'Male';
   const type = spec.garment_type.toLowerCase();
-  const footwear = resolveFootwear(spec);
+  const footwear = resolveFootwear(spec, modelGender);
   if (/jacket|coat|bomber|outerwear|blazer/.test(type)) {
     const baseColor = spec.primary_colors.some(c => /black/i.test(c)) ? 'white' : 'black';
     return {
       baseLayer: `a simple fitted ${baseColor} top underneath the ${spec.garment_type}`,
-      accessories: 'minimal delicate jewelry',
+      bottoms: isMale
+        ? 'slim-fit tailored dark trousers'
+        : 'tailored trousers in a neutral tone',
+      accessories: isMale ? undefined : 'minimal delicate jewelry',
       footwear,
     };
   }
@@ -55,6 +62,20 @@ function resolveStyling(spec: GarmentSpec): StylingResolution {
     return { accessories: 'minimal delicate gold or silver jewelry', footwear };
   if (/trouser|jeans|pants/.test(type))
     return { baseLayer: 'a fitted top tucked in or slightly cropped to show the waistband', footwear };
+  if (/top|blouse|shirt|tee|t-shirt/.test(type))
+    return {
+      bottoms: isMale
+        ? 'dark slim-fit jeans or chinos'
+        : 'high-waisted tailored trousers or slim-fit jeans',
+      footwear,
+    };
+  if (/knitwear|sweater|jumper|cardigan/.test(type))
+    return {
+      bottoms: isMale
+        ? 'dark slim-fit jeans or tailored trousers'
+        : 'high-waisted tailored trousers or slim-fit jeans',
+      footwear,
+    };
   return { footwear };
 }
 
@@ -65,10 +86,20 @@ function buildStylingBlock(styling: StylingResolution): string {
     'The hero garment is the sole focus. Complementary styling completes the look without distracting from it:',
   ];
   if (styling.baseLayer) lines.push(`- Base layer: ${styling.baseLayer}.`);
+  if (styling.bottoms) lines.push(`- Bottoms: The model is wearing ${styling.bottoms}. Must be visible and naturally styled.`);
   if (styling.accessories) lines.push(`- Accessories: ${styling.accessories}. Keep subtle.`);
   lines.push(`- Footwear: The model is wearing ${styling.footwear}. Shoes must be fully visible and naturally styled with the outfit.`);
   lines.push('- No bold colors or busy patterns in any complementary pieces. Everything supports the hero garment.');
   return lines.join('\n');
+}
+
+/** Condensed styling block for 3/4 and back poses — reinforces outfit consistency without re-describing the full look. */
+function buildOutfitConsistencyBlock(styling: StylingResolution): string {
+  const parts: string[] = [];
+  if (styling.bottoms) parts.push(`Bottoms: ${styling.bottoms}`);
+  if (styling.baseLayer) parts.push(`Base layer: ${styling.baseLayer}`);
+  parts.push(`Footwear: ${styling.footwear}`);
+  return `\nOUTFIT CONSISTENCY: ${parts.join('. ')}. Match these exactly from the front result — do not change or invent complementary pieces.`;
 }
 
 /**
@@ -180,11 +211,12 @@ export function generateGarmentFidelityPrompt(
   hasBackFlatLay = false,
   hasLengthAnchor = false,
   spec?: GarmentSpec,
+  modelGender?: string,
 ): string {
   const header = buildHeader(hasBackFlatLay, hasLengthAnchor);
   const anchor = hasLengthAnchor ? LENGTH_ANCHOR_SECTION : '';
   const styling = spec
-    ? buildStylingBlock(resolveStyling(spec))
+    ? buildStylingBlock(resolveStyling(spec, modelGender))
     : 'STYLING (fashion e-commerce standard):\nThis is a professional fashion ecommerce product photo. Add appropriate footwear and style the model for a premium retail brand shoot.';
   return (header + GARMENT_FIDELITY_BODY + anchor)
     .replace('{{ANGLE_SNIPPET}}', anglePreset.promptSnippet)
@@ -194,6 +226,17 @@ export function generateGarmentFidelityPrompt(
 
 /** Pose identifiers for the multi-turn chat flow (no anchor). */
 export type SpecPose = 'front' | 'three-quarter' | 'back';
+
+/**
+ * Camera geometry constants — defined once per angle, shared across all style directions.
+ * These describe WHERE the camera is, not how the model stands.
+ * Body language (stance, arms, expression) lives in StylingDirectionPreset snippets.
+ */
+export const POSE_GEOMETRY: Record<SpecPose, string> = {
+  front: 'Camera directly in front of the model, at eye level.',
+  'three-quarter': "Camera positioned 45° to the model's right, at eye level. Model stands naturally facing forward — camera captures left shoulder and left side of torso closest to lens.",
+  back: "Camera positioned directly behind the model, at eye level. Model's back fully visible.",
+};
 
 const FRAMING_BLOCK =
   'Full body from head to toe. Do not crop the head or feet; the entire body must be visible. 2:3 portrait framing. Center the model with even margins on all sides.';
@@ -225,6 +268,7 @@ export function buildPromptFromSpec(
   modelHeight?: string,
   stylingDirection?: StylingDirectionPreset,
   modelGender?: string,
+  pricePoint?: string,
 ): string {
   const preset = stylingDirection;
   const effectiveFrontSnippet =
@@ -239,43 +283,58 @@ export function buildPromptFromSpec(
     modelGender === 'Male' && preset?.threeQuarterSnippetMale
       ? preset.threeQuarterSnippetMale
       : preset?.threeQuarterSnippet;
+  const effectiveBackSnippet =
+    modelGender === 'Male' && preset?.backSnippetMale
+      ? preset.backSnippetMale
+      : preset?.backSnippet;
 
   const colors = spec.primary_colors.length ? spec.primary_colors.join(' ') : 'neutral';
   const heightNote = modelHeight ? ` The model is ${modelHeight} tall.` : '';
-  const base = `Photo of the person in the reference image wearing a ${colors} ${spec.fit}-fit ${spec.silhouette} ${spec.garment_type}, ${spec.sleeve_length} sleeves, hem ${spec.hem_length}${spec.notable_details ? `, ${spec.notable_details}` : ''}.${heightNote}`;
+  const qualityCue = getProductionQualityCue(pricePoint);
+  const base = `${qualityCue}\n\nPhoto of the person in the reference image wearing a ${colors} ${spec.fit}-fit ${spec.silhouette} ${spec.garment_type}, ${spec.sleeve_length} sleeves, hem ${spec.hem_length}${spec.notable_details ? `, ${spec.notable_details}` : ''}.${heightNote}`;
   const effectiveBackdrop = stylingDirection?.backdropSnippet ?? styleSnippet;
   const tail = lengthAndLightingBlock(spec, hasBackFlatLay, pose, effectiveBackdrop);
 
+  const styling = resolveStyling(spec, modelGender);
+
   if (pose === 'front') {
-    const poseInstruction = effectiveFrontSnippet ?? 'Standing facing camera, neutral pose, arms relaxed at sides.';
-    const styling = buildStylingBlock(resolveStyling(spec));
-    return `${base} ${poseInstruction} Full body, ${effectiveBackdrop}. ${FRAMING_BLOCK} ${tail}\n\n${styling}`;
+    const poseInstruction = effectiveFrontSnippet ?? 'Standing naturally, neutral pose, arms relaxed at sides.';
+    return `${base} ${POSE_GEOMETRY.front} ${poseInstruction} Full body, ${effectiveBackdrop}. ${FRAMING_BLOCK} ${tail}\n\n${buildStylingBlock(styling)}`;
   }
 
-  // For turns 2/3, prepend an image enumeration header when a length anchor is provided
-  let anchorHeader = '';
+  // For turns 2/3, prepend an image enumeration header.
+  // The front result is included as an OUTFIT CONSISTENCY anchor — it tells Gemini
+  // what complementary pieces (trousers, shoes, base layer) the model is wearing.
+  // Without it, Gemini invents the bottom half (shorts, wrong trousers, etc.).
+  // Pose bias is controlled by the text primer, camera-centric POSE_GEOMETRY, and
+  // the explicit "do NOT copy pose" instruction on the anchor image.
+  let imageHeader = '';
+  const isBackWithBackFlatLay = pose === 'back' && hasBackFlatLay;
+  const img1Desc = isBackWithBackFlatLay
+    ? 'The BACK flat lay garment photo — source for back garment details (neckline, zipper, back design). Do NOT use this for garment length.'
+    : 'The FRONT flat lay garment photo — source for garment details.';
   if (hasLengthAnchor) {
-    const isBackWithBackFlatLay = pose === 'back' && hasBackFlatLay;
-    const img1Desc = isBackWithBackFlatLay
-      ? 'The BACK flat lay garment photo — source for back garment details (neckline, zipper, back design). Do NOT use this for garment length.'
-      : 'The FRONT flat lay garment photo — source for garment details.';
-    anchorHeader =
+    imageHeader =
       `You are given 3 images:\n` +
       `1) ${img1Desc}\n` +
-      `2) The model reference photo — source for identity only.\n` +
-      `3) A front-view result of this model already wearing this garment — STRICTLY a length and fit reference. The garment hem MUST end at the EXACT same point on the legs as shown in image 3. Match the garment's tightness/looseness of fit. Do NOT copy the pose, body angle, arm positions, or gaze from image 3.\n\n`;
+      `2) A reference photo of the model — source for identity ONLY (face, skin tone, hair, body proportions). Do NOT copy the pose, stance, body angle, or arm positions from this image.\n` +
+      `3) A front-view result of this model already wearing this garment — use this STRICTLY for OUTFIT CONSISTENCY: match the exact same complementary pieces (trousers, shoes, base layer), garment length, and fit. The garment hem MUST end at the same point on the body. Do NOT copy the pose, body angle, arm positions, or camera angle from this image.\n\n`;
+  } else {
+    imageHeader =
+      `You are given 2 images:\n` +
+      `1) ${img1Desc}\n` +
+      `2) A reference photo of the model — source for identity ONLY (face, skin tone, hair, body proportions). Do NOT copy the pose, stance, body angle, or arm positions from this image.\n\n`;
   }
 
   const energyCue = effectiveEnergyCue ? ` ${effectiveEnergyCue}` : '';
-  const footwearCue = ` The model is wearing ${resolveFootwear(spec)}.`;
+  const outfitBlock = buildOutfitConsistencyBlock(styling);
 
   if (pose === 'three-quarter') {
-    const threeQtrConstraint = hasLengthAnchor
-      ? 'For this step the body MUST be rotated approximately 45° away from camera with the left shoulder closer to lens. Do not face the camera directly.\n\n'
-      : '';
-    const threeQtrPose = effectiveThreeQuarterSnippet
-      ?? `45° body turn, face to camera.${energyCue}`;
-    return `${anchorHeader}${threeQtrConstraint}Same person, same garment. ${threeQtrPose} Same length and fit.${footwearCue} ${FRAMING_BLOCK} ${tail}`;
+    const bodyLanguage = effectiveThreeQuarterSnippet
+      ?? `Natural stance, face turned toward camera.${energyCue}`;
+    return `${imageHeader}Same person, same garment. ${POSE_GEOMETRY['three-quarter']} ${bodyLanguage} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
   }
-  return `${anchorHeader}Same person, same garment. Back to camera. Head MUST be turned to one side looking over shoulder (angled, profile visible) — do NOT have head facing straight forward. Same length and fit.${energyCue}${footwearCue} ${FRAMING_BLOCK} ${tail}`;
+  const bodyLanguage = effectiveBackSnippet
+    ?? `Head turned to one side looking over shoulder, profile visible.${energyCue}`;
+  return `${imageHeader}Same person, same garment. ${POSE_GEOMETRY.back} ${bodyLanguage} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
 }

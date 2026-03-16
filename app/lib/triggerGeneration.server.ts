@@ -87,7 +87,7 @@ export async function handleTriggerGeneration(
 
     const brandStyleRecord = await prisma.brandStyle.findUnique({
       where: { shopId },
-      select: { angleIds: true },
+      select: { angleIds: true, pricePoint: true },
     });
     const effectiveAngleIds =
       brandStyleRecord?.angleIds?.length ?
@@ -139,6 +139,7 @@ export async function handleTriggerGeneration(
       modelGender,
       styleId,
       stylingDirectionId,
+      pricePoint: brandStyleRecord?.pricePoint ?? undefined,
       allowedPoses,
     });
 
@@ -258,7 +259,7 @@ export async function handleRegenerateOutfit(
     const model = await resolveModelForRegenerate(outfit.modelId);
     const brandStyle = await prisma.brandStyle.findUnique({
       where: { shopId },
-      select: { angleIds: true },
+      select: { angleIds: true, pricePoint: true },
     });
     const styleId = "white-studio";
     const effectiveAngleIds =
@@ -282,6 +283,7 @@ export async function handleRegenerateOutfit(
       modelHeight: model.modelHeight,
       modelGender: model.modelGender,
       styleId,
+      pricePoint: brandStyle?.pricePoint ?? undefined,
       allowedPoses,
     });
 

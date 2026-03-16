@@ -18,6 +18,8 @@ interface RegenerateOutfitPayload {
   modelHeight?: string;
   modelGender?: string;
   styleId: string;
+  /** Brand price point (value | mid-market | premium | luxury) — shapes production quality cue in prompt. */
+  pricePoint?: string;
   allowedPoses: string[];
 }
 
@@ -33,6 +35,38 @@ async function fetchAsBuffer(url: string): Promise<Buffer> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to fetch ${url}: HTTP ${res.status}`);
   return Buffer.from(await res.arrayBuffer());
+}
+
+/**
+ * Cheap text-only validation: did Gemini actually produce the requested pose?
+ * Uses a fast model to check the output image. Returns true if pose looks correct.
+ */
+async function validatePose(
+  ai: GoogleGenAI,
+  imageB64: string,
+  expectedPose: 'three-quarter' | 'back',
+): Promise<boolean> {
+  const question = expectedPose === 'three-quarter'
+    ? "Look at this fashion photo. Is the model's torso visibly rotated at least 30 degrees away from the camera, showing a clear three-quarter angle (not facing the camera straight on)? Answer ONLY 'yes' or 'no'."
+    : "Look at this fashion photo. Is the model facing away from the camera, showing their back? Answer ONLY 'yes' or 'no'.";
+  try {
+    const resp = await ai.models.generateContent({
+      model: 'gemini-2.0-flash',
+      contents: [{
+        role: 'user',
+        parts: [
+          { inlineData: { data: imageB64, mimeType: 'image/png' } },
+          { text: question },
+        ],
+      }],
+      config: { temperature: 0 },
+    });
+    const text = resp.candidates?.[0]?.content?.parts?.[0]?.text?.toLowerCase() ?? '';
+    return text.includes('yes');
+  } catch {
+    // If validation call fails, don't block generation — assume pose is OK
+    return true;
+  }
 }
 
 function extractBase64(response: {
@@ -85,6 +119,7 @@ export const regenerateOutfitTask = task({
       modelHeight,
       modelGender,
       styleId,
+      pricePoint,
       allowedPoses,
     } = payload;
     const poses = allowedPoses?.length ? allowedPoses : ['front'];
@@ -127,12 +162,16 @@ export const regenerateOutfitTask = task({
     const backdropSnippet = stylingDir.backdropSnippet ?? stylePreset.promptSnippet;
 
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-    const genConfig = {
-      temperature: 0.2,
+    const MODEL = 'gemini-3.1-flash-image-preview';
+    // Per-pose temperature: front is conservative (consistency), 3/4 and back
+    // need more creative latitude to commit to the rotation.
+    const baseGenConfig = {
       imageConfig: { aspectRatio: '2:3' as const, imageSize: '1K' as const },
       thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
     };
-    const chat = ai.chats.create({ model: 'gemini-3.1-flash-image-preview', config: genConfig });
+    const frontGenConfig = { ...baseGenConfig, temperature: 0.2 };
+    const threeQuarterGenConfig = { ...baseGenConfig, temperature: 0.35 };
+    const backGenConfig = { ...baseGenConfig, temperature: 0.3 };
     const sharp = (await import('sharp')).default;
 
     const blobPrefix = `outfits/${shopId}/${outfitId}/regenerate`;
@@ -149,18 +188,23 @@ export const regenerateOutfitTask = task({
         modelHeight,
         stylingDir,
         modelGender,
+        pricePoint,
       ),
       userDirection,
     );
-    const frontResp = await chat.sendMessage({
-      message: [
-        { inlineData: { data: cleanFlatLayB64, mimeType: 'image/png' as const } },
-        { inlineData: { data: normalizedModelB64, mimeType: 'image/png' as const } },
-        { text: frontPrompt },
-      ],
-      config: genConfig,
+    const frontResp = await ai.models.generateContent({
+      model: MODEL,
+      contents: [{
+        role: 'user',
+        parts: [
+          { inlineData: { data: cleanFlatLayB64, mimeType: 'image/png' as const } },
+          { inlineData: { data: normalizedModelB64, mimeType: 'image/png' as const } },
+          { text: frontPrompt },
+        ],
+      }],
+      config: frontGenConfig,
     });
-    let frontB64 = extractBase64(frontResp);
+    const frontB64 = extractBase64(frontResp);
     const frontUrl = await uploadImageToBlob(
       await sharp(Buffer.from(frontB64, 'base64'))
         .resize({ width: 800, height: 1200, fit: 'cover', position: 'top' })
@@ -183,22 +227,38 @@ export const regenerateOutfitTask = task({
           modelHeight,
           stylingDir,
           modelGender,
+          pricePoint,
         ),
         userDirection,
       );
-      const tqResp = await chat.sendMessage({
-        message: [
+      const tqContents = [{
+        role: 'user' as const,
+        parts: [
+          { text: 'THREE-QUARTER VIEW: camera positioned 45° to the model\'s right. Do NOT generate a front-facing pose.' },
           { inlineData: { data: cleanFlatLayB64, mimeType: 'image/png' as const } },
           { inlineData: { data: normalizedModelB64, mimeType: 'image/png' as const } },
           { inlineData: { data: frontB64, mimeType: 'image/png' as const } },
           { text: tqPrompt },
         ],
-        config: genConfig,
+      }];
+      const tqResp = await ai.models.generateContent({
+        model: MODEL,
+        contents: tqContents,
+        config: threeQuarterGenConfig,
       });
-      const tqB64 = extractBase64(tqResp);
+      let tqB64 = extractBase64(tqResp);
+      const tqValid = await validatePose(ai, tqB64, 'three-quarter');
+      if (!tqValid) {
+        const retryResp = await ai.models.generateContent({
+          model: MODEL,
+          contents: tqContents,
+          config: { ...threeQuarterGenConfig, temperature: 0.45 },
+        });
+        tqB64 = extractBase64(retryResp);
+      }
       tqUrl = await uploadImageToBlob(
         await sharp(Buffer.from(tqB64, 'base64'))
-          .resize({ width: 800, height: 1200, fit: 'cover', position: 'top' })
+          .resize({ width: 800, height: 1200, fit: 'cover', position: 'attention' })
           .png()
           .toBuffer(),
         `${blobPrefix}-three-quarter.png`,
@@ -219,27 +279,38 @@ export const regenerateOutfitTask = task({
           modelHeight,
           stylingDir,
           modelGender,
+          pricePoint,
         ),
         userDirection,
       );
-      const backResp = await chat.sendMessage({
-        message: [
-          {
-            inlineData: {
-              data: cleanBackFlatLayB64 ?? cleanFlatLayB64,
-              mimeType: 'image/png' as const,
-            },
-          },
+      const backContents = [{
+        role: 'user' as const,
+        parts: [
+          { text: 'BACK VIEW: camera directly behind the model. Do NOT generate a front-facing pose.' },
+          { inlineData: { data: cleanBackFlatLayB64 ?? cleanFlatLayB64, mimeType: 'image/png' as const } },
           { inlineData: { data: normalizedModelB64, mimeType: 'image/png' as const } },
           { inlineData: { data: frontB64, mimeType: 'image/png' as const } },
           { text: backPrompt },
         ],
-        config: genConfig,
+      }];
+      const backResp = await ai.models.generateContent({
+        model: MODEL,
+        contents: backContents,
+        config: backGenConfig,
       });
-      const backB64 = extractBase64(backResp);
+      let backB64 = extractBase64(backResp);
+      const backValid = await validatePose(ai, backB64, 'back');
+      if (!backValid) {
+        const retryResp = await ai.models.generateContent({
+          model: MODEL,
+          contents: backContents,
+          config: { ...backGenConfig, temperature: 0.4 },
+        });
+        backB64 = extractBase64(retryResp);
+      }
       backUrl = await uploadImageToBlob(
         await sharp(Buffer.from(backB64, 'base64'))
-          .resize({ width: 800, height: 1200, fit: 'cover', position: 'top' })
+          .resize({ width: 800, height: 1200, fit: 'cover', position: 'attention' })
           .png()
           .toBuffer(),
         `${blobPrefix}-back.png`,

@@ -56,6 +56,10 @@ export interface StylingDirectionPreset {
   threeQuarterSnippet?: string;
   /** When modelGender is 'Male', use this for 3/4 pose if present; else use threeQuarterSnippet. */
   threeQuarterSnippetMale?: string;
+  /** Full back pose instruction. When present, replaces the hardcoded back-to-camera line. */
+  backSnippet?: string;
+  /** When modelGender is 'Male', use this for back pose if present; else use backSnippet. */
+  backSnippetMale?: string;
   /** Backdrop/background prompt snippet — drives the studio background for this direction. */
   backdropSnippet: string;
 }

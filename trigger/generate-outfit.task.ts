@@ -27,6 +27,8 @@ interface GenerateOutfitPayload {
   modelGender?: string;
   styleId: string;
   stylingDirectionId: string;
+  /** Brand price point (value | mid-market | premium | luxury) — shapes production quality cue in prompt. */
+  pricePoint?: string;
   allowedPoses: string[];
 }
 
@@ -66,6 +68,7 @@ export const generateOutfitTask = task({
       modelGender,
       styleId,
       stylingDirectionId,
+      pricePoint,
       allowedPoses,
     } = payload;
     const poses = allowedPoses?.length ? allowedPoses : ['front'];
@@ -139,14 +142,22 @@ export const generateOutfitTask = task({
     const stylePreset = PDP_STYLE_PRESETS.find(p => p.id === styleId) ?? PDP_STYLE_PRESETS[0];
     const backdropSnippet = stylingDir.backdropSnippet ?? stylePreset.promptSnippet;
 
-    // ── 5. Init Gemini chat ───────────────────────────────────────────────────
+    // ── 5. Init Gemini ────────────────────────────────────────────────────────
+    // Each pose is an independent generateContent call — no shared chat session.
+    // A persistent chat causes the front image to appear twice in the 3/4 context
+    // (once as chat history, once as the length anchor), anchoring the model to
+    // the front pose and collapsing the 45° rotation.
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-    const genConfig = {
-      temperature: 0.2,
+    const MODEL = 'gemini-3.1-flash-image-preview';
+    // Per-pose temperature: front is conservative (consistency), 3/4 and back
+    // need more creative latitude to commit to the rotation.
+    const baseGenConfig = {
       imageConfig: { aspectRatio: '2:3' as const, imageSize: '1K' as const },
       thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
     };
-    const chat = ai.chats.create({ model: 'gemini-3.1-flash-image-preview', config: genConfig });
+    const frontGenConfig = { ...baseGenConfig, temperature: 0.2 };
+    const threeQuarterGenConfig = { ...baseGenConfig, temperature: 0.35 };
+    const backGenConfig = { ...baseGenConfig, temperature: 0.3 };
     const sharp = (await import('sharp')).default;
 
     const hasBack = !!cleanBackFlatLayB64;
@@ -160,14 +171,18 @@ export const generateOutfitTask = task({
       await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_front' } });
       const frontPrompt = isDemo
         ? buildTryDemoPrompt(garmentSpec, modelGender, modelHeight)
-        : buildPromptFromSpec(garmentSpec, 'front', backdropSnippet, hasBack, false, modelHeight, stylingDir, modelGender);
-      const frontResp = await chat.sendMessage({
-        message: [
-          { inlineData: { data: cleanFlatLayB64, mimeType: cleanMime } },
-          { inlineData: { data: normalizedModelB64, mimeType: 'image/png' as const } },
-          { text: frontPrompt },
-        ],
-        config: genConfig,
+        : buildPromptFromSpec(garmentSpec, 'front', backdropSnippet, hasBack, false, modelHeight, stylingDir, modelGender, pricePoint);
+      const frontResp = await ai.models.generateContent({
+        model: MODEL,
+        contents: [{
+          role: 'user',
+          parts: [
+            { inlineData: { data: cleanFlatLayB64, mimeType: cleanMime } },
+            { inlineData: { data: normalizedModelB64, mimeType: 'image/png' as const } },
+            { text: frontPrompt },
+          ],
+        }],
+        config: frontGenConfig,
       });
       frontB64 = extractBase64(frontResp);
       const frontCropped = await sharp(Buffer.from(frontB64, 'base64'))
@@ -179,23 +194,44 @@ export const generateOutfitTask = task({
     }
 
     // ── 7. Three-quarter pose ─────────────────────────────────────────────────
+    // Text primer before images primes Gemini for rotation before it processes
+    // front-oriented reference images. Front result is included as an OUTFIT
+    // CONSISTENCY anchor (complementary pieces, length, fit) — pose bias is
+    // controlled by the primer, camera-centric POSE_GEOMETRY, and the explicit
+    // "do NOT copy pose" instruction on the anchor.
     if (poses.includes('three-quarter') && !completedPoses.has('three-quarter')) {
       await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_tq' } });
       const tqPrompt = buildPromptFromSpec(
-        garmentSpec, 'three-quarter', backdropSnippet, hasBack, true, modelHeight, stylingDir, modelGender,
+        garmentSpec, 'three-quarter', backdropSnippet, hasBack, true, modelHeight, stylingDir, modelGender, pricePoint,
       );
-      const tqResp = await chat.sendMessage({
-        message: [
+      const tqContents = [{
+        role: 'user' as const,
+        parts: [
+          { text: 'THREE-QUARTER VIEW: camera positioned 45° to the model\'s right. Do NOT generate a front-facing pose.' },
           { inlineData: { data: cleanFlatLayB64, mimeType: cleanMime } },
           { inlineData: { data: normalizedModelB64, mimeType: 'image/png' as const } },
           { inlineData: { data: frontB64, mimeType: 'image/png' as const } },
           { text: tqPrompt },
         ],
-        config: genConfig,
+      }];
+      const tqResp = await ai.models.generateContent({
+        model: MODEL,
+        contents: tqContents,
+        config: threeQuarterGenConfig,
       });
-      const tqB64 = extractBase64(tqResp);
+      let tqB64 = extractBase64(tqResp);
+      // Validate pose — retry once with slightly higher temperature if 3/4 collapsed to front
+      const tqValid = await validatePose(ai, tqB64, 'three-quarter');
+      if (!tqValid) {
+        const retryResp = await ai.models.generateContent({
+          model: MODEL,
+          contents: tqContents,
+          config: { ...threeQuarterGenConfig, temperature: 0.45 },
+        });
+        tqB64 = extractBase64(retryResp);
+      }
       const tqCropped = await sharp(Buffer.from(tqB64, 'base64'))
-        .resize({ width: 800, height: 1200, fit: 'cover', position: 'top' })
+        .resize({ width: 800, height: 1200, fit: 'cover', position: 'attention' })
         .png()
         .toBuffer();
       const tqUrl = await uploadImageToBlob(tqCropped, `outfits/${shopId}/${outfitId}/three-quarter.png`);
@@ -203,23 +239,40 @@ export const generateOutfitTask = task({
     }
 
     // ── 8. Back pose ──────────────────────────────────────────────────────────
+    // Same strategy as 3/4: text primer, front anchor for outfit consistency, pose-tuned temperature.
     if (poses.includes('back') && !completedPoses.has('back')) {
       await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_back' } });
       const backPrompt = buildPromptFromSpec(
-        garmentSpec, 'back', backdropSnippet, hasBack, true, modelHeight, stylingDir, modelGender,
+        garmentSpec, 'back', backdropSnippet, hasBack, true, modelHeight, stylingDir, modelGender, pricePoint,
       );
-      const backResp = await chat.sendMessage({
-        message: [
+      const backContents = [{
+        role: 'user' as const,
+        parts: [
+          { text: 'BACK VIEW: camera directly behind the model. Do NOT generate a front-facing pose.' },
           { inlineData: { data: cleanBackFlatLayB64 ?? cleanFlatLayB64, mimeType: cleanMime } },
           { inlineData: { data: normalizedModelB64, mimeType: 'image/png' as const } },
           { inlineData: { data: frontB64, mimeType: 'image/png' as const } },
           { text: backPrompt },
         ],
-        config: genConfig,
+      }];
+      const backResp = await ai.models.generateContent({
+        model: MODEL,
+        contents: backContents,
+        config: backGenConfig,
       });
-      const backB64 = extractBase64(backResp);
+      let backB64 = extractBase64(backResp);
+      // Validate pose — retry once with slightly higher temperature if back collapsed
+      const backValid = await validatePose(ai, backB64, 'back');
+      if (!backValid) {
+        const retryResp = await ai.models.generateContent({
+          model: MODEL,
+          contents: backContents,
+          config: { ...backGenConfig, temperature: 0.4 },
+        });
+        backB64 = extractBase64(retryResp);
+      }
       const backCropped = await sharp(Buffer.from(backB64, 'base64'))
-        .resize({ width: 800, height: 1200, fit: 'cover', position: 'top' })
+        .resize({ width: 800, height: 1200, fit: 'cover', position: 'attention' })
         .png()
         .toBuffer();
       const backUrl = await uploadImageToBlob(backCropped, `outfits/${shopId}/${outfitId}/back.png`);
@@ -245,6 +298,38 @@ async function fetchAsBuffer(url: string): Promise<Buffer> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to fetch ${url}: HTTP ${res.status}`);
   return Buffer.from(await res.arrayBuffer());
+}
+
+/**
+ * Cheap text-only validation: did Gemini actually produce the requested pose?
+ * Uses a fast model to check the output image. Returns true if pose looks correct.
+ */
+async function validatePose(
+  ai: GoogleGenAI,
+  imageB64: string,
+  expectedPose: 'three-quarter' | 'back',
+): Promise<boolean> {
+  const question = expectedPose === 'three-quarter'
+    ? "Look at this fashion photo. Is the model's torso visibly rotated at least 30 degrees away from the camera, showing a clear three-quarter angle (not facing the camera straight on)? Answer ONLY 'yes' or 'no'."
+    : "Look at this fashion photo. Is the model facing away from the camera, showing their back? Answer ONLY 'yes' or 'no'.";
+  try {
+    const resp = await ai.models.generateContent({
+      model: 'gemini-2.0-flash',
+      contents: [{
+        role: 'user',
+        parts: [
+          { inlineData: { data: imageB64, mimeType: 'image/png' } },
+          { text: question },
+        ],
+      }],
+      config: { temperature: 0 },
+    });
+    const text = resp.candidates?.[0]?.content?.parts?.[0]?.text?.toLowerCase() ?? '';
+    return text.includes('yes');
+  } catch {
+    // If validation call fails, don't block generation — assume pose is OK
+    return true;
+  }
 }
 
 function extractBase64(response: {

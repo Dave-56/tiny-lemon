@@ -15,6 +15,34 @@ export type PrimaryCategory =
   | 'formalwear'
   | 'other';
 
+export type PricePoint = 'value' | 'mid-market' | 'premium' | 'luxury';
+
+export const PRICE_POINTS: { id: PricePoint; label: string; description: string }[] = [
+  { id: 'value',      label: 'Value',      description: 'Affordable essentials. Target, Primark, Shein.' },
+  { id: 'mid-market', label: 'Mid-Market',  description: 'Quality basics. H&M, ASOS, Uniqlo.' },
+  { id: 'premium',    label: 'Premium',     description: 'Elevated quality. Reiss, Sandro, AllSaints.' },
+  { id: 'luxury',     label: 'Luxury',      description: 'High-end fashion. Gucci, Celine, Bottega.' },
+];
+
+/**
+ * Maps price point to a production quality cue injected into generation prompts.
+ * This tells Gemini what tier of fashion photography to emulate.
+ */
+export function getProductionQualityCue(pricePoint: string | null | undefined): string {
+  switch (pricePoint) {
+    case 'value':
+      return 'Clean, well-lit product photography. Simple and functional — the garment is the focus. Standard e-commerce quality.';
+    case 'mid-market':
+      return 'Professional fashion e-commerce photography matching the quality of brands like H&M, ASOS, and Uniqlo. Clean, polished, and commercial.';
+    case 'premium':
+      return 'Premium fashion photography matching the quality of brands like Reiss, Sandro, and COS. Refined lighting, elevated production values, editorial-leaning quality.';
+    case 'luxury':
+      return 'High-end fashion editorial photography matching the production quality of luxury brands like Gucci, Celine, and Bottega Veneta. Impeccable lighting, cinematic quality, every detail considered.';
+    default:
+      return 'Professional fashion e-commerce photography matching the quality of premium retail brands.';
+  }
+}
+
 export const BRAND_ENERGIES: { id: BrandEnergy; label: string; description: string }[] = [
   { id: 'minimal',    label: 'Minimal Clarity',       description: 'Clean, composed, timeless. COS, Uniqlo, Arket.' },
   { id: 'accessible', label: 'Accessible Warmth',      description: 'Approachable, friendly, non-intimidating. H&M, ASOS, Next.' },
