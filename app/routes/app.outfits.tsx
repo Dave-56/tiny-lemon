@@ -14,6 +14,7 @@ import { useAuthenticatedFetch } from '../contexts/AuthenticatedFetchContext';
 import { authenticate } from '../shopify.server';
 import prisma from '../db.server';
 import { BRAND_STYLE_PRESETS } from '../lib/pdpPresets';
+import { buildSrcSet } from '../lib/imageVariants';
 import { handleRegenerateOutfit } from '../lib/triggerGeneration.server';
 import { tasks, runs } from '../trigger.server';
 import posthog from 'posthog-js';
@@ -238,19 +239,49 @@ function ImageTile({
   url,
   label,
   onLightbox,
+  isLcp = false,
 }: {
   url: string;
   label: string;
   onLightbox: () => void;
+  isLcp?: boolean;
 }) {
+  const [error, setError] = useState(false);
   return (
     <div>
       <div
         className="group relative h-[300px] rounded-lg overflow-hidden border border-krea-border bg-white cursor-pointer"
         onClick={onLightbox}
       >
-        <img src={url} alt={label} className="w-full h-full object-contain" />
-        {/* Overlay: always visible on mobile, hover-only on md+ */}
+        {error ? (
+          <div className="w-full h-full" style={{ background: '#f3f4f6' }} aria-hidden />
+        ) : (
+          <picture>
+            <source
+              type="image/avif"
+              srcSet={buildSrcSet(url, 'avif', [640, 800])}
+              sizes="(min-width: 1024px) 400px, 90vw"
+            />
+            <source
+              type="image/webp"
+              srcSet={buildSrcSet(url, 'webp', [640, 800])}
+              sizes="(min-width: 1024px) 400px, 90vw"
+            />
+            <img
+              src={url}
+              alt={label}
+              width={800}
+              height={1200}
+              className="block w-full h-full object-contain"
+              style={{ aspectRatio: '2 / 3' }}
+              loading={isLcp ? undefined : 'lazy'}
+              decoding={isLcp ? undefined : 'async'}
+              fetchpriority={isLcp ? 'high' : undefined}
+              sizes="(min-width: 1024px) 400px, 90vw"
+              onError={() => setError(true)}
+            />
+          </picture>
+        )}
         <div className="absolute inset-0 bg-black/25 flex items-center justify-center transition-opacity opacity-100 md:opacity-0 md:group-hover:opacity-100 pointer-events-none">
           <div className="p-2 rounded-full bg-white/90">
             <ZoomIn className="w-4 h-4 text-krea-text" />
@@ -461,13 +492,18 @@ function Lightbox({
         </button>
 
         <div className="flex items-center justify-center max-h-full max-w-lg w-full">
-          <img
-            key={current.url}
-            src={current.url}
-            alt={current.label}
-            className="max-w-full object-contain rounded-lg"
-            style={{ maxHeight: 'calc(100vh - 200px)' }}
-          />
+          <picture>
+            <source type="image/avif" srcSet={buildSrcSet(current.url, 'avif', [800])} />
+            <source type="image/webp" srcSet={buildSrcSet(current.url, 'webp', [800])} />
+            <img
+              key={current.url}
+              src={current.url}
+              alt={current.label}
+              decoding="async"
+              className="block max-w-full object-contain rounded-lg"
+              style={{ maxHeight: 'calc(100vh - 200px)' }}
+            />
+          </picture>
         </div>
 
         <button
@@ -908,6 +944,7 @@ function OutfitCard({
             url={shot.url}
             label={shot.label}
             onLightbox={isInProgress ? () => {} : () => onLightbox(outfit.id, i)}
+            isLcp={i === 0}
           />
         ))}
       </div>

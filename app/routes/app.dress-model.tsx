@@ -7,8 +7,10 @@ import { useAppBridge } from '@shopify/app-bridge-react';
 import { useAuthenticatedFetch } from '../contexts/AuthenticatedFetchContext';
 import { X, Download, Loader2, Plus, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
 import { zipSync } from 'fflate';
+import { getCachedFlatLay, setCachedFlatLay } from '../lib/flatlayCache';
 import type { PresetModelEntry } from '../lib/types';
 import { BRAND_STYLE_PRESETS } from '../lib/pdpPresets';
+import { buildSrcSet } from '../lib/imageVariants';
 import { authenticate } from '../shopify.server';
 import prisma, { ensureShop } from '../db.server';
 import {
@@ -122,59 +124,99 @@ function nanoid() {
   return Math.random().toString(36).slice(2, 9);
 }
 
-function validateFlatLay(file: File): Promise<FlatLayQuality> {
-  return new Promise(resolve => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      const MAX = 150;
-      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
-      const w = Math.max(1, Math.round(img.width * scale));
-      const h = Math.max(1, Math.round(img.height * scale));
-      const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      const ctx = canvas.getContext('2d')!;
-      ctx.drawImage(img, 0, 0, w, h);
-      URL.revokeObjectURL(url);
+// --- Worker-based downscale + hash -------------------------------------------------
+let flatlayWorker: Worker | null = null;
+function getFlatlayWorker(): Worker {
+  if (!flatlayWorker) {
+    flatlayWorker = new Worker(new URL('../workers/flatlayWorker.ts', import.meta.url), { type: 'module' });
+  }
+  return flatlayWorker;
+}
 
-      const { data } = ctx.getImageData(0, 0, w, h);
-      const n = w * h;
-      const lum = new Float32Array(n);
-      for (let i = 0; i < n; i++) {
-        lum[i] = (0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2]) / 255;
-      }
-
-      const avgBrightness = lum.reduce((s, v) => s + v, 0) / n;
-
-      // Corner busyness: 4 corners at 20% of min dimension
-      const pad = Math.round(Math.min(w, h) * 0.2);
-      let cSum = 0, cSumSq = 0, cCount = 0;
-      for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-          if ((x < pad || x >= w - pad) && (y < pad || y >= h - pad)) {
-            const v = lum[y * w + x];
-            cSum += v; cSumSq += v * v; cCount++;
-          }
-        }
-      }
-      const cMean = cSum / cCount;
-      const cornerStdDev = Math.sqrt(Math.max(0, cSumSq / cCount - cMean * cMean));
-
-      const ratio = img.width / img.height;
-
-      let issues = 0;
-      if (avgBrightness < 0.20) issues += 2;
-      else if (avgBrightness < 0.30) issues += 1;
-      if (cornerStdDev > 0.30) issues += 2;
-      else if (cornerStdDev > 0.20) issues += 1;
-      if (ratio > 1.8 || ratio < 0.45) issues += 2;
-      else if (ratio > 1.6) issues += 1;
-
-      resolve(issues >= 4 ? 'fail' : issues >= 2 ? 'warn' : 'good');
+async function downscaleAndHash(file: File): Promise<{ bytes: ArrayBuffer; mimeType: string; contentHash: string; width: number; height: number }> {
+  const worker = getFlatlayWorker();
+  const id = Math.random().toString(36).slice(2);
+  const ab = await file.arrayBuffer();
+  return new Promise((resolve, reject) => {
+    const onMessage = (e: MessageEvent) => {
+      const data = e.data as any;
+      if (data.id !== id) return;
+      worker.removeEventListener('message', onMessage);
+      if (data.ok) resolve({ bytes: data.bytes, mimeType: data.mimeType, contentHash: data.contentHash, width: data.width, height: data.height });
+      else reject(new Error(data.error || 'worker_error'));
     };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve('warn'); };
-    img.src = url;
+    worker.addEventListener('message', onMessage);
+    worker.postMessage({ id, arrayBuffer: ab, mimeType: file.type }, [ab]);
   });
+}
+
+// Remote flat-lay validation via API; fail-open on errors/auth issues.
+async function validateFlatLayRemote(
+  authenticatedFetch: ReturnType<typeof useAuthenticatedFetch>,
+  file: File,
+): Promise<FlatLayQuality | null> {
+  try {
+    const t0 = performance.now();
+    const { bytes, mimeType, contentHash, width, height } = await downscaleAndHash(file).catch(async () => ({
+      bytes: await file.arrayBuffer(), mimeType: file.type || 'image/jpeg', contentHash: '', width: 0, height: 0,
+    }));
+
+    // Client cache: instant result if present (still refresh in background)
+    const cached = contentHash ? getCachedFlatLay(contentHash) : null;
+    let qualityFromCache: FlatLayQuality | null = null;
+    if (cached) {
+      qualityFromCache = cached.quality;
+    }
+
+    const b64 = (() => {
+      const bytes = new Uint8Array(bytes as ArrayBuffer);
+      let binary = '';
+      const CHUNK = 0x8000;
+      for (let i = 0; i < bytes.length; i += CHUNK) {
+        binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + CHUNK)) as unknown as number[]);
+      }
+      return btoa(binary);
+    })();
+
+    const res = await authenticatedFetch('/api/validate-flatlay', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageB64: b64, mimeType }),
+    });
+    if (!res.ok) {
+      return qualityFromCache; // fail-open; keep cached if any
+    }
+    const data = (await res.json()) as {
+      schemaVersion?: string; model?: string; contentHash?: string; quality?: FlatLayQuality; reasons?: string[]; score?: number | null; count?: number | null; warnMode?: boolean; cacheHit?: boolean;
+    };
+    if (data.schemaVersion === '1' && data.quality && data.contentHash) {
+      setCachedFlatLay({
+        schemaVersion: '1', model: data.model || 'unknown', contentHash: data.contentHash,
+        quality: data.quality, reasons: data.reasons, score: data.score ?? null, count: data.count ?? null, at: Date.now(),
+      } as any);
+    }
+    try {
+      if (data.quality) {
+        posthog.capture('flatlay_validated', {
+          quality: data.quality,
+          score: typeof data.score === 'number' ? data.score : undefined,
+          reason: data.reasons?.[0],
+          size: file.size,
+          mime: file.type,
+          downscaled_w: width,
+          downscaled_h: height,
+          latency_ms: Math.round(performance.now() - t0),
+          cacheHit: data.cacheHit,
+          model: data.model,
+          schemaVersion: data.schemaVersion,
+          warnMode: data.warnMode,
+        });
+      }
+    } catch {}
+    return data.quality ?? qualityFromCache;
+  } catch {
+    return null;
+  }
 }
 
 function generateThumbnail(file: File): Promise<string> {
@@ -505,15 +547,19 @@ export default function DressModel() {
     setItems(prev => [...prev, ...newItems]);
 
     // Run quality validation and thumbnail generation asynchronously after items are added
-    newItems.forEach(item => {
-      validateFlatLay(item.frontFile).then(quality => {
-        setItems(prev => prev.map(i => i.id === item.id ? { ...i, quality } : i));
-      });
+    newItems.forEach((item, idx) => {
+      // Stagger validations slightly to avoid burst
+      setTimeout(() => {
+        validateFlatLayRemote(authenticatedFetch, item.frontFile).then(quality => {
+          setItems(prev => prev.map(i => i.id === item.id ? { ...i, quality: quality ?? null } : i));
+        });
+      }, idx * 200);
+      
       generateThumbnail(item.frontFile).then(thumbnail => {
         setItems(prev => prev.map(i => i.id === item.id ? { ...i, thumbnail } : i));
       });
     });
-  }, [items.length]);
+  }, [items.length, authenticatedFetch]);
 
   const removeItem = (id: string) => setItems(prev => prev.filter(i => i.id !== id));
   const updateSkuName = (id: string, name: string) =>
@@ -817,19 +863,19 @@ export default function DressModel() {
                 className="flex items-center gap-3 bg-white rounded-xl px-3 py-2 border border-krea-border"
               >
                 <div className="w-10 h-10 rounded-md overflow-hidden bg-krea-bg flex-shrink-0 relative">
-                  <img src={item.frontPreview} alt="" className="w-full h-full object-cover" />
+                  <img src={item.frontPreview} alt="" className="block w-full h-full object-cover" loading="lazy" decoding="async" />
                   {item.quality === 'good' && (
-                    <span title="Looks good" className="absolute bottom-0.5 right-0.5">
+                    <span title="Looks good" aria-label="Flat lay looks good" className="absolute bottom-0.5 right-0.5">
                       <CheckCircle className="w-3 h-3 text-green-500 bg-white rounded-full" />
                     </span>
                   )}
                   {item.quality === 'warn' && (
-                    <span title="Image may need better lighting" className="absolute bottom-0.5 right-0.5">
+                    <span title="Uncertain image quality" aria-label="Flat lay quality uncertain" className="absolute bottom-0.5 right-0.5">
                       <AlertTriangle className="w-3 h-3 text-yellow-500 bg-white rounded-full" />
                     </span>
                   )}
                   {item.quality === 'fail' && (
-                    <span title="Image quality concern" className="absolute bottom-0.5 right-0.5">
+                    <span title="Image quality concern" aria-label="Flat lay likely invalid" className="absolute bottom-0.5 right-0.5">
                       <XCircle className="w-3 h-3 text-red-500 bg-white rounded-full" />
                     </span>
                   )}
@@ -847,7 +893,7 @@ export default function DressModel() {
                 {(item.status === 'pending' || item.status === 'error') && (
                   item.backPreview ? (
                     <div className="relative group w-8 h-8 rounded-md overflow-hidden flex-shrink-0">
-                      <img src={item.backPreview} alt="back" className="w-full h-full object-cover" />
+                      <img src={item.backPreview} alt="back" className="block w-full h-full object-cover" loading="lazy" decoding="async" />
                       <button
                         type="button"
                         onClick={() => setItems(prev =>
@@ -899,13 +945,13 @@ export default function DressModel() {
               {item.quality === 'warn' && item.status === 'pending' && (
                 <p className="text-[10px] text-yellow-600 flex items-center gap-1 px-1">
                   <AlertTriangle className="w-3 h-3 flex-shrink-0" />
-                  Image may be too dark or busy — we recommend a clean flat lay for best results
+                  We’re not sure this is a single garment. Try a clearer flat lay.
                 </p>
               )}
               {item.quality === 'fail' && item.status === 'pending' && (
                 <p className="text-[10px] text-red-500 flex items-center gap-1 px-1">
                   <XCircle className="w-3 h-3 flex-shrink-0" />
-                  Likely to struggle — image is very dark or visually busy. Try a brighter, cleaner flat lay
+                  Multiple or no garments detected. Use a single garment flat lay.
                 </p>
               )}
               {item.status === 'error' && item.error && (
@@ -1000,7 +1046,7 @@ export default function DressModel() {
                 {item.cleanPreview && (
                   <div className="space-y-1.5">
                     <div className="aspect-[2/3] rounded-lg overflow-hidden border border-krea-border bg-white">
-                      <img src={item.cleanPreview} alt="Clean flat lay" className="w-full h-full object-contain" />
+                      <img src={item.cleanPreview} alt="Clean flat lay" className="block w-full h-full object-contain" loading="lazy" decoding="async" />
                     </div>
                     <p className="text-[10px] text-krea-muted">Flat lay</p>
                   </div>
@@ -1009,7 +1055,11 @@ export default function DressModel() {
                 {item.results.map(shot => (
                   <div key={shot.angleId} className="space-y-1.5">
                     <div className="aspect-[2/3] rounded-lg overflow-hidden border border-krea-border bg-white">
-                      <img src={shot.url} alt={shot.label} className="w-full h-full object-cover" />
+                      <picture>
+                        <source type="image/avif" srcSet={buildSrcSet(shot.url, 'avif', [640, 800])} />
+                        <source type="image/webp" srcSet={buildSrcSet(shot.url, 'webp', [640, 800])} />
+                        <img src={shot.url} alt={shot.label} className="block w-full h-full object-cover" loading="lazy" decoding="async" />
+                      </picture>
                     </div>
                     <p className="text-[10px] text-krea-muted">{shot.label}</p>
                   </div>
@@ -1140,7 +1190,9 @@ export default function DressModel() {
                       <img
                         src={model.imageUrl}
                         alt={model.name}
-                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        className="block w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        loading="lazy"
+                        decoding="async"
                         referrerPolicy="no-referrer"
                       />
                       {isSelected && (
@@ -1185,7 +1237,9 @@ export default function DressModel() {
                       <img
                         src={model.imageUrl}
                         alt={model.name}
-                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        className="block w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        loading="lazy"
+                        decoding="async"
                         referrerPolicy="no-referrer"
                       />
                       {isSelected && (
@@ -1231,7 +1285,8 @@ export default function DressModel() {
             <img
               src={previewModel.imageUrl}
               alt={previewModel.name}
-              className="h-[85vh] w-auto object-contain rounded-xl shadow-2xl"
+              className="block h-[85vh] w-auto object-contain rounded-xl shadow-2xl"
+              decoding="async"
               referrerPolicy="no-referrer"
             />
             <div className="pb-2 space-y-4 min-w-[180px] bg-white rounded-xl p-4">
