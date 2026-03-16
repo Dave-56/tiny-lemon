@@ -48,6 +48,7 @@ model BrandStyle {
   stylingDirectionId  String   @default("minimal")
   brandEnergy         String?  // minimal | accessible | editorial | premium | street | athletic
   primaryCategory     String?  // womenswear | menswear | unisex | activewear | streetwear | formalwear | other
+  pricePoint          String?  // value | mid-market | premium | luxury
   onboardingCompleted Boolean  @default(false)
   updatedAt           DateTime @updatedAt
 

@@ -8,6 +8,7 @@ import { STYLING_DIRECTION_PRESETS } from '../lib/pdpPresets';
 import {
   BRAND_ENERGIES,
   PRIMARY_CATEGORIES,
+  PRICE_POINTS,
   getRecommendedDirections,
 } from '../lib/brandProfileMapping';
 import { shopifyRedirect } from '../shopify-params';
@@ -34,18 +35,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const fd = await request.formData();
   const brandEnergy = fd.get('brandEnergy') as string;
   const primaryCategory = fd.get('primaryCategory') as string;
+  const pricePoint = fd.get('pricePoint') as string;
   const stylingDirectionId = fd.get('stylingDirectionId') as string;
 
   await ensureShop(shopId);
   await prisma.brandStyle.upsert({
     where: { shopId },
-    update: { brandEnergy, primaryCategory, stylingDirectionId, onboardingCompleted: true },
+    update: { brandEnergy, primaryCategory, pricePoint, stylingDirectionId, onboardingCompleted: true },
     create: {
       shopId,
       angleIds: ['front'],
       stylingDirectionId,
       brandEnergy,
       primaryCategory,
+      pricePoint,
       onboardingCompleted: true,
     },
   });
@@ -102,18 +105,19 @@ function SelectCard({
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Onboarding() {
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [brandEnergy, setBrandEnergy] = useState('');
   const [primaryCategory, setPrimaryCategory] = useState('');
+  const [pricePoint, setPricePoint] = useState('');
   const [stylingDirectionId, setStylingDirectionId] = useState('');
 
-  function goToStep3() {
+  function goToStep4() {
     const recs = getRecommendedDirections(brandEnergy, primaryCategory);
     setStylingDirectionId(recs[0]);
-    setStep(3);
+    setStep(4);
   }
 
-  const recommendedIds = step === 3 ? getRecommendedDirections(brandEnergy, primaryCategory) : [];
+  const recommendedIds = step === 4 ? getRecommendedDirections(brandEnergy, primaryCategory) : [];
   const selectedPreset = STYLING_DIRECTION_PRESETS.find((p) => p.id === stylingDirectionId);
 
   return (
@@ -122,7 +126,7 @@ export default function Onboarding() {
 
         {/* Step indicator */}
         <div className="flex items-center gap-2">
-          {[1, 2, 3].map((s) => (
+          {[1, 2, 3, 4].map((s) => (
             <div
               key={s}
               className={`h-1 flex-1 rounded-full transition-colors ${s <= step ? 'bg-krea-accent' : 'bg-krea-border'}`}
@@ -200,7 +204,7 @@ export default function Onboarding() {
               <button
                 type="button"
                 disabled={!primaryCategory}
-                onClick={goToStep3}
+                onClick={() => setStep(3)}
                 className="flex-1 h-9 rounded-md bg-krea-accent text-white text-sm font-medium hover:opacity-90 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Continue
@@ -209,8 +213,57 @@ export default function Onboarding() {
           </div>
         )}
 
-        {/* Step 3: Confirm styling direction */}
+        {/* Step 3: Price Point */}
         {step === 3 && (
+          <div className="space-y-4">
+            <div>
+              <h1 className="text-lg font-semibold text-krea-text">What's your price point?</h1>
+              <p className="text-xs text-krea-muted mt-1">This shapes the production quality of your model photos.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {PRICE_POINTS.map((pp) => {
+                const selected = pricePoint === pp.id;
+                return (
+                  <button
+                    key={pp.id}
+                    type="button"
+                    onClick={() => setPricePoint(pp.id)}
+                    className={`rounded-lg border-2 px-3 py-2.5 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-krea-accent/50 focus:ring-offset-2 ${
+                      selected
+                        ? 'border-krea-accent bg-krea-accent/5'
+                        : 'border-krea-border bg-white hover:border-krea-muted'
+                    }`}
+                  >
+                    <span className={`block text-sm font-medium ${selected ? 'text-krea-accent' : 'text-krea-text'}`}>
+                      {pp.label}
+                    </span>
+                    <span className="block text-[10px] text-krea-muted leading-snug mt-0.5">{pp.description}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setStep(2)}
+                className="h-9 px-4 rounded-md border border-krea-border text-sm text-krea-muted hover:border-krea-muted transition-colors"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                disabled={!pricePoint}
+                onClick={goToStep4}
+                className="flex-1 h-9 rounded-md bg-krea-accent text-white text-sm font-medium hover:opacity-90 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 4: Confirm styling direction */}
+        {step === 4 && (
           <div className="space-y-4">
             <div>
               <h1 className="text-lg font-semibold text-krea-text">Your recommended style</h1>
@@ -239,11 +292,12 @@ export default function Onboarding() {
             <Form method="post" className="space-y-3">
               <input type="hidden" name="brandEnergy" value={brandEnergy} />
               <input type="hidden" name="primaryCategory" value={primaryCategory} />
+              <input type="hidden" name="pricePoint" value={pricePoint} />
               <input type="hidden" name="stylingDirectionId" value={stylingDirectionId} />
               <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={() => setStep(2)}
+                  onClick={() => setStep(3)}
                   className="h-9 px-4 rounded-md border border-krea-border text-sm text-krea-muted hover:border-krea-muted transition-colors"
                 >
                   Back
