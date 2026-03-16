@@ -4,7 +4,7 @@ import prisma from '../app/db.server';
 import { uploadImageToBlob } from '../app/blob.server';
 import { buildPromptFromSpec } from '../app/lib/garmentFidelityPrompt';
 import { normalizeReferenceImageServer } from '../app/lib/normalizeReferenceImage.server';
-import { PDP_STYLE_PRESETS, STYLING_DIRECTION_PRESETS } from '../app/lib/pdpPresets';
+import { PDP_STYLE_PRESETS, BRAND_STYLE_PRESETS } from '../app/lib/pdpPresets';
 import type { GarmentSpec } from '../app/lib/garmentSpec';
 
 // ── Payload ───────────────────────────────────────────────────────────────────
@@ -20,6 +20,10 @@ interface RegenerateOutfitPayload {
   styleId: string;
   /** Brand price point (value | mid-market | premium | luxury) — shapes production quality cue in prompt. */
   pricePoint?: string;
+  /** Brand energy (minimal | accessible | editorial | premium | street | athletic) — shapes mood/tone cue in prompt. */
+  brandEnergy?: string;
+  /** Primary category (womenswear | menswear | unisex | activewear | streetwear | formalwear | other) — shapes category context in prompt. */
+  primaryCategory?: string;
   allowedPoses: string[];
 }
 
@@ -120,6 +124,8 @@ export const regenerateOutfitTask = task({
       modelGender,
       styleId,
       pricePoint,
+      brandEnergy,
+      primaryCategory,
       allowedPoses,
     } = payload;
     const poses = allowedPoses?.length ? allowedPoses : ['front'];
@@ -130,7 +136,7 @@ export const regenerateOutfitTask = task({
         cleanFlatLayUrl: true,
         cleanBackFlatLayUrl: true,
         garmentSpec: true,
-        stylingDirectionId: true,
+        brandStyleId: true,
       },
     });
     if (!outfit?.cleanFlatLayUrl) {
@@ -155,9 +161,9 @@ export const regenerateOutfitTask = task({
     const normalizedModelB64 = normalizedModelBuffer.toString('base64');
 
     const stylingDir =
-      STYLING_DIRECTION_PRESETS.find((p) => p.id === outfit.stylingDirectionId) ??
-      STYLING_DIRECTION_PRESETS[0];
-    // backdropSnippet is now driven by the styling direction; stylePreset kept as fallback only
+      BRAND_STYLE_PRESETS.find((p) => p.id === outfit.brandStyleId) ??
+      BRAND_STYLE_PRESETS[0];
+    // backdropSnippet is now driven by the brand style; stylePreset kept as fallback only
     const stylePreset = PDP_STYLE_PRESETS.find((p) => p.id === styleId) ?? PDP_STYLE_PRESETS[0];
     const backdropSnippet = stylingDir.backdropSnippet ?? stylePreset.promptSnippet;
 
@@ -167,7 +173,7 @@ export const regenerateOutfitTask = task({
     // need more creative latitude to commit to the rotation.
     const baseGenConfig = {
       imageConfig: { aspectRatio: '2:3' as const, imageSize: '1K' as const },
-      thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
+      thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
     };
     const frontGenConfig = { ...baseGenConfig, temperature: 0.2 };
     const threeQuarterGenConfig = { ...baseGenConfig, temperature: 0.35 };
@@ -189,6 +195,8 @@ export const regenerateOutfitTask = task({
         stylingDir,
         modelGender,
         pricePoint,
+        brandEnergy,
+        primaryCategory,
       ),
       userDirection,
     );
@@ -213,10 +221,19 @@ export const regenerateOutfitTask = task({
       `${blobPrefix}-front.png`,
     );
 
-    // ── Three-quarter ─────────────────────────────────────────────────────────
+    // ── Three-quarter + back (parallel) ───────────────────────────────────────
+    // Both depend on frontB64 but NOT on each other — run in parallel to save ~25-35s.
     let tqUrl: string | null = null;
-    if (poses.includes('three-quarter')) {
-      await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_tq' } });
+    let backUrl: string | null = null;
+    const needsTq = poses.includes('three-quarter');
+    const needsBack = poses.includes('back');
+
+    if (needsTq || needsBack) {
+      await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_poses' } });
+    }
+
+    const generateThreeQuarter = async () => {
+      if (!needsTq) return;
       const tqPrompt = appendUserDirection(
         buildPromptFromSpec(
           garmentSpec,
@@ -228,6 +245,8 @@ export const regenerateOutfitTask = task({
           stylingDir,
           modelGender,
           pricePoint,
+          brandEnergy,
+          primaryCategory,
         ),
         userDirection,
       );
@@ -263,12 +282,10 @@ export const regenerateOutfitTask = task({
           .toBuffer(),
         `${blobPrefix}-three-quarter.png`,
       );
-    }
+    };
 
-    // ── Back ──────────────────────────────────────────────────────────────────
-    let backUrl: string | null = null;
-    if (poses.includes('back')) {
-      await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_back' } });
+    const generateBack = async () => {
+      if (!needsBack) return;
       const backPrompt = appendUserDirection(
         buildPromptFromSpec(
           garmentSpec,
@@ -280,6 +297,8 @@ export const regenerateOutfitTask = task({
           stylingDir,
           modelGender,
           pricePoint,
+          brandEnergy,
+          primaryCategory,
         ),
         userDirection,
       );
@@ -315,7 +334,9 @@ export const regenerateOutfitTask = task({
           .toBuffer(),
         `${blobPrefix}-back.png`,
       );
-    }
+    };
+
+    await Promise.all([generateThreeQuarter(), generateBack()]);
 
     // ── Replace in place: delete old images, create new, mark completed ────────
     const newImages: Array<{ shopId: string; outfitId: string; imageUrl: string; pose: string; styleId: string }> = [

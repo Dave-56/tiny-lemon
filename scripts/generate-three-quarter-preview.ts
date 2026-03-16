@@ -19,7 +19,7 @@ import sharp from 'sharp';
 import { extractGarmentSpec } from '../app/lib/garmentSpec';
 import { buildPromptFromSpec } from '../app/lib/garmentFidelityPrompt';
 import { normalizeReferenceImageServer } from '../app/lib/normalizeReferenceImage.server';
-import { PDP_STYLE_PRESETS, STYLING_DIRECTION_PRESETS } from '../app/lib/pdpPresets';
+import { PDP_STYLE_PRESETS, BRAND_STYLE_PRESETS } from '../app/lib/pdpPresets';
 import type { GarmentSpec } from '../app/lib/garmentSpec';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -100,7 +100,7 @@ async function main(): Promise<void> {
     thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH as const },
   };
   const whiteStudio = PDP_STYLE_PRESETS[0];
-  const minimalStyling = STYLING_DIRECTION_PRESETS[0];
+  const minimalStyling = BRAND_STYLE_PRESETS[0];
   const hasBack = false;
 
   // Front (length anchor for three-quarter)

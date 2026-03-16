@@ -5,7 +5,7 @@ import { boundary } from '@shopify/shopify-app-react-router/server';
 import { Check } from 'lucide-react';
 import { authenticate } from '../shopify.server';
 import prisma, { ensureShop } from '../db.server';
-import { ANGLE_PRESETS, STYLING_DIRECTION_PRESETS } from '../lib/pdpPresets';
+import { ANGLE_PRESETS, BRAND_STYLE_PRESETS } from '../lib/pdpPresets';
 import { getPlanForShop, PLAN_ANGLES } from '../lib/billing.server';
 import { getRecommendedDirections } from '../lib/brandProfileMapping';
 import posthog from 'posthog-js';
@@ -86,7 +86,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return {
     shop: session.shop,
     angleIds: brandStyle?.angleIds ?? ANGLE_PRESETS.map((p) => p.id),
-    stylingDirectionId: brandStyle?.stylingDirectionId ?? STYLING_DIRECTION_PRESETS[0].id,
+    brandStyleId: brandStyle?.brandStyleId ?? BRAND_STYLE_PRESETS[0].id,
     allowedAngleIds: PLAN_ANGLES[plan] ?? PLAN_ANGLES.free,
     brandEnergy: brandStyle?.brandEnergy ?? null,
     primaryCategory: brandStyle?.primaryCategory ?? null,
@@ -101,13 +101,30 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const fd = await request.formData();
 
   const angleIds = fd.getAll('angleIds') as string[];
-  const stylingDirectionId = fd.get('stylingDirectionId') as string;
+  const brandStyleId = fd.get('brandStyleId') as string;
 
   await ensureShop(shopId);
+
+  // Preserve brand profile fields set during onboarding (brandEnergy,
+  // primaryCategory, pricePoint). The update path only touches the fields this
+  // page controls, but the create path must carry forward any values that were
+  // set via a race or re-creation so they aren't silently wiped to null.
+  const existing = await prisma.brandStyle.findUnique({
+    where: { shopId },
+    select: { brandEnergy: true, primaryCategory: true, pricePoint: true },
+  });
+
   await prisma.brandStyle.upsert({
     where: { shopId },
-    update: { angleIds, stylingDirectionId },
-    create: { shopId, angleIds, stylingDirectionId },
+    update: { angleIds, brandStyleId },
+    create: {
+      shopId,
+      angleIds,
+      brandStyleId,
+      brandEnergy: existing?.brandEnergy,
+      primaryCategory: existing?.primaryCategory,
+      pricePoint: existing?.pricePoint,
+    },
   });
 
   return { ok: true };
@@ -116,7 +133,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function BrandStyle() {
-  const { shop, angleIds: savedAngleIds, stylingDirectionId: savedStylingId, allowedAngleIds, brandEnergy, primaryCategory } =
+  const { shop, angleIds: savedAngleIds, brandStyleId: savedStylingId, allowedAngleIds, brandEnergy, primaryCategory } =
     useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const navigate = useNavigate();
@@ -129,7 +146,7 @@ export default function BrandStyle() {
   const savedIsRecommended = recommendedIds.includes(savedStylingId as never);
 
   const [selectedAngleIds, setSelectedAngleIds] = useState<string[]>(savedAngleIds);
-  const [stylingDirectionId, setStylingDirectionId] = useState<string>(savedStylingId);
+  const [brandStyleId, setStylingDirectionId] = useState<string>(savedStylingId);
   const [showAllDirections, setShowAllDirections] = useState(!hasBrandProfile || !savedIsRecommended);
   const [saveFeedback, setSaveFeedback] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -157,12 +174,12 @@ export default function BrandStyle() {
   function handleSave() {
     const fd = new FormData();
     selectedAngleIds.forEach((id) => fd.append('angleIds', id));
-    fd.set('stylingDirectionId', stylingDirectionId);
+    fd.set('brandStyleId', brandStyleId);
     fetcher.submit(fd, { method: 'post' });
   }
 
   const allowedAnglePresets = ANGLE_PRESETS.filter(p => allowedAngleIds.includes(p.id));
-  const selectedDirection = STYLING_DIRECTION_PRESETS.find((p) => p.id === stylingDirectionId);
+  const selectedDirection = BRAND_STYLE_PRESETS.find((p) => p.id === brandStyleId);
   const isSaving = fetcher.state !== 'idle';
 
   return (
@@ -192,11 +209,11 @@ export default function BrandStyle() {
           <p className="text-[11px] font-semibold uppercase tracking-widest text-krea-muted">Styling Direction</p>
           <p className="text-xs text-krea-muted">The aesthetic your model projects. Set once for your brand.</p>
           <div className="grid grid-cols-3 gap-3">
-            {(showAllDirections ? STYLING_DIRECTION_PRESETS : STYLING_DIRECTION_PRESETS.filter((p) => recommendedIds.includes(p.id as never))).map((p) => (
+            {(showAllDirections ? BRAND_STYLE_PRESETS : BRAND_STYLE_PRESETS.filter((p) => recommendedIds.includes(p.id as never))).map((p) => (
               <PresetCard
                 key={p.id}
                 preset={p}
-                selected={stylingDirectionId === p.id}
+                selected={brandStyleId === p.id}
                 onSelect={() => setStylingDirectionId(p.id)}
                 recommended={hasBrandProfile && recommendedIds.includes(p.id as never)}
               />

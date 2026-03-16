@@ -38,7 +38,7 @@ export function normalizeModelGender(value: string | undefined): ModelGender | u
   return MODEL_GENDER.includes(value as ModelGender) ? (value as ModelGender) : undefined;
 }
 
-export interface StylingDirectionPreset {
+export interface BrandStylePreset {
   id: string;
   label: string;
   /** Optional image path for brand-style UI (e.g. /presets/styling/minimal.png). */

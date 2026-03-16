@@ -45,7 +45,7 @@ model Shop {
 model BrandStyle {
   shopId              String   @id
   angleIds            String[]
-  stylingDirectionId  String   @default("minimal")
+  brandStyleId        String   @default("minimal") @map("stylingDirectionId")
   brandEnergy         String?  // minimal | accessible | editorial | premium | street | athletic
   primaryCategory     String?  // womenswear | menswear | unisex | activewear | streetwear | formalwear | other
   pricePoint          String?  // value | mid-market | premium | luxury
@@ -87,7 +87,7 @@ model Outfit {
   cleanBackFlatLayUrl  String?   // cleaned back flat lay
   garmentSpec          Json?
   modelId              String    // preset model ID or batchId of user-generated model
-  stylingDirectionId   String    @default("minimal") // preset id from STYLING_DIRECTION_PRESETS (pose/energy)
+  brandStyleId         String    @default("minimal") @map("stylingDirectionId") // preset id from BRAND_STYLE_PRESETS (body language/backdrop)
   status               String    @default("pending") // pending | processing | completed | failed
   jobId                String?   // Trigger.dev runId
   errorMessage         String?   // failure reason, set on task failure

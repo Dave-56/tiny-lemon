@@ -1,6 +1,6 @@
 import type { GarmentSpec } from './garmentSpec';
 import { buildPromptFromSpec } from './garmentFidelityPrompt';
-import { STYLING_DIRECTION_PRESETS, PDP_STYLE_PRESETS } from './pdpPresets';
+import { BRAND_STYLE_PRESETS, PDP_STYLE_PRESETS } from './pdpPresets';
 
 const FORMALWEAR_RE = /evening dress|occasion dress|cocktail dress|gown|tuxedo|suit/i;
 
@@ -26,7 +26,7 @@ export function buildTryDemoPrompt(
   modelHeight?: string,
 ): string {
   const isFormal = FORMALWEAR_RE.test(spec.garment_type);
-  const stylingDir = STYLING_DIRECTION_PRESETS.find(
+  const stylingDir = BRAND_STYLE_PRESETS.find(
     (p) => p.id === (isFormal ? 'premium' : 'editorial'),
   )!;
   const greyStudio = PDP_STYLE_PRESETS.find((p) => p.id === 'grey-studio')!;

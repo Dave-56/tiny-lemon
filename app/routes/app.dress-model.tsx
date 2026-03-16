@@ -8,7 +8,7 @@ import { useAuthenticatedFetch } from '../contexts/AuthenticatedFetchContext';
 import { X, Download, Loader2, Plus, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
 import { zipSync } from 'fflate';
 import type { PresetModelEntry } from '../lib/types';
-import { STYLING_DIRECTION_PRESETS } from '../lib/pdpPresets';
+import { BRAND_STYLE_PRESETS } from '../lib/pdpPresets';
 import { authenticate } from '../shopify.server';
 import prisma, { ensureShop } from '../db.server';
 import {
@@ -41,7 +41,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   return {
     shop,
-    stylingDirectionId: brandStyle?.stylingDirectionId ?? STYLING_DIRECTION_PRESETS[0].id,
+    brandStyleId: brandStyle?.brandStyleId ?? BRAND_STYLE_PRESETS[0].id,
     plan,
     used,
     limit: PLAN_LIMITS[plan] ?? PLAN_LIMITS.free,
@@ -67,7 +67,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       modelHeight: body.modelHeight as string | undefined,
       modelGender: body.modelGender as string | undefined,
       styleId: (body.styleId as string) ?? 'white-studio',
-      stylingDirectionId: (body.stylingDirectionId as string) ?? 'minimal',
+      brandStyleId: (body.brandStyleId as string) ?? 'minimal',
       frontB64: body.frontB64 as string,
       frontMime: (body.frontMime as string) ?? 'image/png',
       backB64: body.backB64 as string | null,
@@ -163,14 +163,14 @@ function validateFlatLay(file: File): Promise<FlatLayQuality> {
       const ratio = img.width / img.height;
 
       let issues = 0;
-      if (avgBrightness < 0.25) issues += 2;
-      else if (avgBrightness < 0.4) issues += 1;
-      if (cornerStdDev > 0.25) issues += 2;
-      else if (cornerStdDev > 0.15) issues += 1;
+      if (avgBrightness < 0.20) issues += 2;
+      else if (avgBrightness < 0.30) issues += 1;
+      if (cornerStdDev > 0.30) issues += 2;
+      else if (cornerStdDev > 0.20) issues += 1;
       if (ratio > 1.8 || ratio < 0.45) issues += 2;
-      else if (ratio > 1.3) issues += 1;
+      else if (ratio > 1.6) issues += 1;
 
-      resolve(issues >= 3 ? 'fail' : issues >= 1 ? 'warn' : 'good');
+      resolve(issues >= 4 ? 'fail' : issues >= 2 ? 'warn' : 'good');
     };
     img.onerror = () => { URL.revokeObjectURL(url); resolve('warn'); };
     img.src = url;
@@ -235,6 +235,7 @@ type ItemStatus =
   | 'generating_front'
   | 'generating_tq'
   | 'generating_back'
+  | 'generating_poses' // 3/4 + back running in parallel
   | 'done'
   | 'error'
   | 'submitted'; // job was triggered but polling was lost (e.g. session expired mid-poll)
@@ -279,6 +280,7 @@ const STATUS_LABEL: Record<ItemStatus, string> = {
   generating_front: 'Generating front',
   generating_tq: 'Generating three-quarter',
   generating_back: 'Generating back',
+  generating_poses: 'Generating poses',
   submitted: 'Submitted',
   done: 'Done',
   error: 'Error',
@@ -310,12 +312,13 @@ const ACTIVE_STATUSES: ItemStatus[] = [
   'generating_front',
   'generating_tq',
   'generating_back',
+  'generating_poses',
 ];
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function DressModel() {
-  const { shop, stylingDirectionId, customModels } = useLoaderData<typeof loader>();
+  const { shop, brandStyleId, customModels } = useLoaderData<typeof loader>();
   const shopify = useAppBridge();
   const authenticatedFetch = useAuthenticatedFetch();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -605,6 +608,7 @@ export default function DressModel() {
                 status === 'generating_front' ? 'generating_front'
                 : status === 'generating_tq' ? 'generating_tq'
                 : status === 'generating_back' ? 'generating_back'
+                : status === 'generating_poses' ? 'generating_poses'
                 : 'processing';
               updateItem(item.id, { ...patch, status: uiStatus });
             }
@@ -678,7 +682,7 @@ export default function DressModel() {
             modelHeight: selectedModel.height,
             modelGender: selectedModel.gender,
             styleId: 'white-studio',
-            stylingDirectionId,
+            brandStyleId,
             frontB64,
             frontMime,
             backB64,
@@ -761,8 +765,8 @@ export default function DressModel() {
     ? (STATUS_LABEL[activeItem.status as ItemStatus] ?? 'Generating…')
     : null;
   const activeStyle =
-    STYLING_DIRECTION_PRESETS.find(p => p.id === stylingDirectionId) ??
-    STYLING_DIRECTION_PRESETS[0];
+    BRAND_STYLE_PRESETS.find(p => p.id === brandStyleId) ??
+    BRAND_STYLE_PRESETS[0];
 
   return (
     <>
@@ -820,12 +824,12 @@ export default function DressModel() {
                     </span>
                   )}
                   {item.quality === 'warn' && (
-                    <span title="Might struggle" className="absolute bottom-0.5 right-0.5">
+                    <span title="Image may need better lighting" className="absolute bottom-0.5 right-0.5">
                       <AlertTriangle className="w-3 h-3 text-yellow-500 bg-white rounded-full" />
                     </span>
                   )}
                   {item.quality === 'fail' && (
-                    <span title="Likely to fail" className="absolute bottom-0.5 right-0.5">
+                    <span title="Image quality concern" className="absolute bottom-0.5 right-0.5">
                       <XCircle className="w-3 h-3 text-red-500 bg-white rounded-full" />
                     </span>
                   )}
@@ -895,13 +899,13 @@ export default function DressModel() {
               {item.quality === 'warn' && item.status === 'pending' && (
                 <p className="text-[10px] text-yellow-600 flex items-center gap-1 px-1">
                   <AlertTriangle className="w-3 h-3 flex-shrink-0" />
-                  Might struggle. Make sure it's just one garment
+                  Image may be too dark or busy — we recommend a clean flat lay for best results
                 </p>
               )}
               {item.quality === 'fail' && item.status === 'pending' && (
                 <p className="text-[10px] text-red-500 flex items-center gap-1 px-1">
                   <XCircle className="w-3 h-3 flex-shrink-0" />
-                  Likely to fail. Use a single garment image, no extra items
+                  Likely to struggle — image is very dark or visually busy. Try a brighter, cleaner flat lay
                 </p>
               )}
               {item.status === 'error' && item.error && (
@@ -1018,7 +1022,8 @@ export default function DressModel() {
                     const isCurrentPhase =
                       (item.status === 'generating_front' && slotIndex === 0) ||
                       (item.status === 'generating_tq' && slotIndex === 1) ||
-                      (item.status === 'generating_back' && slotIndex === 2);
+                      (item.status === 'generating_back' && slotIndex === 2) ||
+                      (item.status === 'generating_poses' && (slotIndex === 1 || slotIndex === 2));
                     return (
                       <div key={`skel-${i}`} className="space-y-1.5">
                         <div className="aspect-[2/3] rounded-lg bg-krea-border/30 animate-pulse flex items-center justify-center">

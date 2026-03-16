@@ -1,6 +1,6 @@
-import type { PdpStylePreset, AnglePreset, StylingDirectionPreset } from './types';
+import type { PdpStylePreset, AnglePreset, BrandStylePreset } from './types';
 import type { GarmentSpec } from './garmentSpec';
-import { getProductionQualityCue } from './brandProfileMapping';
+import { getProductionQualityCue, getBrandEnergyCue, getCategoryContext } from './brandProfileMapping';
 
 // ── Styling Resolver ──────────────────────────────────────────────────────────
 
@@ -228,9 +228,9 @@ export function generateGarmentFidelityPrompt(
 export type SpecPose = 'front' | 'three-quarter' | 'back';
 
 /**
- * Camera geometry constants — defined once per angle, shared across all style directions.
+ * Camera geometry constants — defined once per angle, shared across all brand styles.
  * These describe WHERE the camera is, not how the model stands.
- * Body language (stance, arms, expression) lives in StylingDirectionPreset snippets.
+ * Body language (stance, arms, expression) lives in BrandStylePreset snippets.
  */
 export const POSE_GEOMETRY: Record<SpecPose, string> = {
   front: 'Camera directly in front of the model, at eye level.',
@@ -256,7 +256,7 @@ function lengthAndLightingBlock(spec: GarmentSpec, hasBackFlatLay: boolean, pose
  * Build a short structured prompt from garment spec for one pose.
  * Used in multi-turn chat: turn 1 = front (with images), turn 2 = three-quarter, turn 3 = back.
  * @param hasBackFlatLay when true and pose is back, instructs to use back flat lay only for design, not length
- * @param stylingDirection optional full preset — front/energy snippets resolved by modelGender (Male uses frontSnippetMale/energyCueMale when present)
+ * @param brandStyle optional brand style preset — body language snippets resolved by modelGender (Male uses frontSnippetMale/energyCueMale when present)
  * @param modelGender when 'Male', uses frontSnippetMale/energyCueMale when present; else uses frontSnippet/energyCue
  */
 export function buildPromptFromSpec(
@@ -266,11 +266,13 @@ export function buildPromptFromSpec(
   hasBackFlatLay = false,
   hasLengthAnchor = false,
   modelHeight?: string,
-  stylingDirection?: StylingDirectionPreset,
+  brandStyle?: BrandStylePreset,
   modelGender?: string,
   pricePoint?: string,
+  brandEnergy?: string,
+  primaryCategory?: string,
 ): string {
-  const preset = stylingDirection;
+  const preset = brandStyle;
   const effectiveFrontSnippet =
     modelGender === 'Male' && preset?.frontSnippetMale
       ? preset.frontSnippetMale
@@ -291,8 +293,12 @@ export function buildPromptFromSpec(
   const colors = spec.primary_colors.length ? spec.primary_colors.join(' ') : 'neutral';
   const heightNote = modelHeight ? ` The model is ${modelHeight} tall.` : '';
   const qualityCue = getProductionQualityCue(pricePoint);
-  const base = `${qualityCue}\n\nPhoto of the person in the reference image wearing a ${colors} ${spec.fit}-fit ${spec.silhouette} ${spec.garment_type}, ${spec.sleeve_length} sleeves, hem ${spec.hem_length}${spec.notable_details ? `, ${spec.notable_details}` : ''}.${heightNote}`;
-  const effectiveBackdrop = stylingDirection?.backdropSnippet ?? styleSnippet;
+  const brandMoodCue = getBrandEnergyCue(brandEnergy);
+  const categoryCue = getCategoryContext(primaryCategory);
+  const brandProfileBlock = [brandMoodCue, categoryCue].filter(Boolean).join('\n');
+  const brandPrefix = brandProfileBlock ? `${brandProfileBlock}\n\n` : '';
+  const base = `${qualityCue}\n\n${brandPrefix}Photo of the person in the reference image wearing a ${colors} ${spec.fit}-fit ${spec.silhouette} ${spec.garment_type}, ${spec.sleeve_length} sleeves, hem ${spec.hem_length}${spec.notable_details ? `, ${spec.notable_details}` : ''}.${heightNote}`;
+  const effectiveBackdrop = brandStyle?.backdropSnippet ?? styleSnippet;
   const tail = lengthAndLightingBlock(spec, hasBackFlatLay, pose, effectiveBackdrop);
 
   const styling = resolveStyling(spec, modelGender);

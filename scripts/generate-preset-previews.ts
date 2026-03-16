@@ -24,7 +24,7 @@ import { normalizeReferenceImageServer } from '../app/lib/normalizeReferenceImag
 import {
   PDP_STYLE_PRESETS,
   ANGLE_PRESETS,
-  STYLING_DIRECTION_PRESETS,
+  BRAND_STYLE_PRESETS,
 } from '../app/lib/pdpPresets';
 import type { GarmentSpec } from '../app/lib/garmentSpec';
 import type { SpecPose } from '../app/lib/garmentFidelityPrompt';
@@ -119,7 +119,7 @@ async function main(): Promise<void> {
     ? process.env.SEED_STYLING_IDS.split(',').map((s) => s.trim())
     : null;
 
-  const minimalStyling = STYLING_DIRECTION_PRESETS[0];
+  const minimalStyling = BRAND_STYLE_PRESETS[0];
   const whiteStudio = PDP_STYLE_PRESETS[0];
   const hasBack = false;
 
@@ -207,8 +207,8 @@ async function main(): Promise<void> {
 
   // ── Styling directions: one image per styling preset, per-direction flat-lay + backdrop
   const stylingPresetsToRun = stylingIds
-    ? STYLING_DIRECTION_PRESETS.filter((p) => stylingIds.includes(p.id))
-    : STYLING_DIRECTION_PRESETS;
+    ? BRAND_STYLE_PRESETS.filter((p) => stylingIds.includes(p.id))
+    : BRAND_STYLE_PRESETS;
 
   if (stylingIds) console.log(`Regenerating styling only: ${stylingIds.join(', ')}`);
 

@@ -4,7 +4,7 @@ import { Form, useRouteError } from 'react-router';
 import { boundary } from '@shopify/shopify-app-react-router/server';
 import { authenticate } from '../shopify.server';
 import prisma, { ensureShop } from '../db.server';
-import { STYLING_DIRECTION_PRESETS } from '../lib/pdpPresets';
+import { BRAND_STYLE_PRESETS } from '../lib/pdpPresets';
 import {
   BRAND_ENERGIES,
   PRIMARY_CATEGORIES,
@@ -36,16 +36,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const brandEnergy = fd.get('brandEnergy') as string;
   const primaryCategory = fd.get('primaryCategory') as string;
   const pricePoint = fd.get('pricePoint') as string;
-  const stylingDirectionId = fd.get('stylingDirectionId') as string;
+  const brandStyleId = fd.get('brandStyleId') as string;
 
   await ensureShop(shopId);
   await prisma.brandStyle.upsert({
     where: { shopId },
-    update: { brandEnergy, primaryCategory, pricePoint, stylingDirectionId, onboardingCompleted: true },
+    update: { brandEnergy, primaryCategory, pricePoint, brandStyleId, onboardingCompleted: true },
     create: {
       shopId,
       angleIds: ['front'],
-      stylingDirectionId,
+      brandStyleId,
       brandEnergy,
       primaryCategory,
       pricePoint,
@@ -109,7 +109,7 @@ export default function Onboarding() {
   const [brandEnergy, setBrandEnergy] = useState('');
   const [primaryCategory, setPrimaryCategory] = useState('');
   const [pricePoint, setPricePoint] = useState('');
-  const [stylingDirectionId, setStylingDirectionId] = useState('');
+  const [brandStyleId, setStylingDirectionId] = useState('');
 
   function goToStep4() {
     const recs = getRecommendedDirections(brandEnergy, primaryCategory);
@@ -118,7 +118,7 @@ export default function Onboarding() {
   }
 
   const recommendedIds = step === 4 ? getRecommendedDirections(brandEnergy, primaryCategory) : [];
-  const selectedPreset = STYLING_DIRECTION_PRESETS.find((p) => p.id === stylingDirectionId);
+  const selectedPreset = BRAND_STYLE_PRESETS.find((p) => p.id === brandStyleId);
 
   return (
     <div className="min-h-screen bg-krea-bg p-6 pt-12">
@@ -143,7 +143,7 @@ export default function Onboarding() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               {BRAND_ENERGIES.map((energy) => {
-                const preset = STYLING_DIRECTION_PRESETS.find((p) => p.id === energy.id);
+                const preset = BRAND_STYLE_PRESETS.find((p) => p.id === energy.id);
                 return (
                   <SelectCard
                     key={energy.id}
@@ -273,14 +273,14 @@ export default function Onboarding() {
             </div>
             <div className="grid grid-cols-3 gap-3">
               {recommendedIds.map((dirId) => {
-                const preset = STYLING_DIRECTION_PRESETS.find((p) => p.id === dirId);
+                const preset = BRAND_STYLE_PRESETS.find((p) => p.id === dirId);
                 if (!preset) return null;
                 return (
                   <SelectCard
                     key={dirId}
                     imageUrl={preset.imageUrl}
                     label={preset.label}
-                    selected={stylingDirectionId === dirId}
+                    selected={brandStyleId === dirId}
                     onSelect={() => setStylingDirectionId(dirId)}
                   />
                 );
@@ -293,7 +293,7 @@ export default function Onboarding() {
               <input type="hidden" name="brandEnergy" value={brandEnergy} />
               <input type="hidden" name="primaryCategory" value={primaryCategory} />
               <input type="hidden" name="pricePoint" value={pricePoint} />
-              <input type="hidden" name="stylingDirectionId" value={stylingDirectionId} />
+              <input type="hidden" name="brandStyleId" value={brandStyleId} />
               <div className="flex gap-3">
                 <button
                   type="button"
@@ -304,7 +304,7 @@ export default function Onboarding() {
                 </button>
                 <button
                   type="submit"
-                  disabled={!stylingDirectionId}
+                  disabled={!brandStyleId}
                   className="flex-1 h-9 rounded-md bg-krea-accent text-white text-sm font-medium hover:opacity-90 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   Start generating

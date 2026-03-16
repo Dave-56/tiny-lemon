@@ -1,4 +1,4 @@
-import type { PdpStylePreset, AnglePreset, StylingDirectionPreset } from './types';
+import type { PdpStylePreset, AnglePreset, BrandStylePreset } from './types';
 
 /**
  * PDP style presets. First item is the default (White Studio).
@@ -41,7 +41,8 @@ export const PDP_STYLE_PRESETS: PdpStylePreset[] = [
 ];
 
 /**
- * Styling direction presets. Evidence-based profiles from the Fashion PDP Visual Framework.
+ * Brand style presets. Evidence-based profiles from the Fashion PDP Visual Framework.
+ * Each preset controls body language (stance, arms, expression, gaze) and backdrop per brand style.
  * First item (minimal) is the default — maps to the Universal PDP Neutral (contrapposto stance).
  * frontSnippet: injected into the front pose prompt (replaces the hardcoded pose line).
  * energyCue: short cue appended to 3/4 and back turns — kept terse so multi-turn chat context isn't confused.
@@ -49,7 +50,7 @@ export const PDP_STYLE_PRESETS: PdpStylePreset[] = [
  * Expression is baked into each profile per framework research:
  * slight smile for accessible/mid-market (+18% CTR, +21% sales), neutral for premium/luxury.
  */
-export const STYLING_DIRECTION_PRESETS: StylingDirectionPreset[] = [
+export const BRAND_STYLE_PRESETS: BrandStylePreset[] = [
   {
     id: 'minimal',
     label: 'Minimal Clarity',

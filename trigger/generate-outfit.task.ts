@@ -7,7 +7,7 @@ import { extractGarmentSpec } from '../app/lib/garmentSpec';
 import { buildPromptFromSpec } from '../app/lib/garmentFidelityPrompt';
 import { buildTryDemoPrompt } from '../app/lib/tryDemoPrompt';
 import { normalizeReferenceImageServer } from '../app/lib/normalizeReferenceImage.server';
-import { PDP_STYLE_PRESETS, STYLING_DIRECTION_PRESETS } from '../app/lib/pdpPresets';
+import { PDP_STYLE_PRESETS, BRAND_STYLE_PRESETS } from '../app/lib/pdpPresets';
 import { DEMO_SHOP_ID } from '../app/lib/billing.server';
 import type { GarmentSpec } from '../app/lib/garmentSpec';
 
@@ -26,9 +26,13 @@ interface GenerateOutfitPayload {
   /** Model gender (e.g. Male, Female) — used to pick male/neutral pose snippets when present. */
   modelGender?: string;
   styleId: string;
-  stylingDirectionId: string;
+  brandStyleId: string;
   /** Brand price point (value | mid-market | premium | luxury) — shapes production quality cue in prompt. */
   pricePoint?: string;
+  /** Brand energy (minimal | accessible | editorial | premium | street | athletic) — shapes mood/tone cue in prompt. */
+  brandEnergy?: string;
+  /** Primary category (womenswear | menswear | unisex | activewear | streetwear | formalwear | other) — shapes category context in prompt. */
+  primaryCategory?: string;
   allowedPoses: string[];
 }
 
@@ -67,8 +71,10 @@ export const generateOutfitTask = task({
       modelHeight,
       modelGender,
       styleId,
-      stylingDirectionId,
+      brandStyleId,
       pricePoint,
+      brandEnergy,
+      primaryCategory,
       allowedPoses,
     } = payload;
     const poses = allowedPoses?.length ? allowedPoses : ['front'];
@@ -137,8 +143,8 @@ export const generateOutfitTask = task({
     const completedPoses = new Set(existingImages.map((img) => img.pose));
 
     // ── 4. Style presets ──────────────────────────────────────────────────────
-    const stylingDir = STYLING_DIRECTION_PRESETS.find(p => p.id === stylingDirectionId) ?? STYLING_DIRECTION_PRESETS[0];
-    // backdropSnippet is now driven by the styling direction; stylePreset kept as fallback only
+    const stylingDir = BRAND_STYLE_PRESETS.find(p => p.id === brandStyleId) ?? BRAND_STYLE_PRESETS[0];
+    // backdropSnippet is now driven by the brand style; stylePreset kept as fallback only
     const stylePreset = PDP_STYLE_PRESETS.find(p => p.id === styleId) ?? PDP_STYLE_PRESETS[0];
     const backdropSnippet = stylingDir.backdropSnippet ?? stylePreset.promptSnippet;
 
@@ -153,7 +159,7 @@ export const generateOutfitTask = task({
     // need more creative latitude to commit to the rotation.
     const baseGenConfig = {
       imageConfig: { aspectRatio: '2:3' as const, imageSize: '1K' as const },
-      thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
+      thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
     };
     const frontGenConfig = { ...baseGenConfig, temperature: 0.2 };
     const threeQuarterGenConfig = { ...baseGenConfig, temperature: 0.35 };
@@ -171,7 +177,7 @@ export const generateOutfitTask = task({
       await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_front' } });
       const frontPrompt = isDemo
         ? buildTryDemoPrompt(garmentSpec, modelGender, modelHeight)
-        : buildPromptFromSpec(garmentSpec, 'front', backdropSnippet, hasBack, false, modelHeight, stylingDir, modelGender, pricePoint);
+        : buildPromptFromSpec(garmentSpec, 'front', backdropSnippet, hasBack, false, modelHeight, stylingDir, modelGender, pricePoint, brandEnergy, primaryCategory);
       const frontResp = await ai.models.generateContent({
         model: MODEL,
         contents: [{
@@ -193,16 +199,21 @@ export const generateOutfitTask = task({
       await prisma.generatedImage.create({ data: { shopId, outfitId, imageUrl: frontUrl, pose: 'front', styleId } });
     }
 
-    // ── 7. Three-quarter pose ─────────────────────────────────────────────────
-    // Text primer before images primes Gemini for rotation before it processes
-    // front-oriented reference images. Front result is included as an OUTFIT
-    // CONSISTENCY anchor (complementary pieces, length, fit) — pose bias is
-    // controlled by the primer, camera-centric POSE_GEOMETRY, and the explicit
-    // "do NOT copy pose" instruction on the anchor.
-    if (poses.includes('three-quarter') && !completedPoses.has('three-quarter')) {
-      await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_tq' } });
+    // ── 7. Three-quarter + back poses (parallel) ─────────────────────────────
+    // Both depend on frontB64 but NOT on each other — run in parallel to save
+    // ~25-35s. Text primer before images primes Gemini for rotation before it
+    // processes front-oriented reference images.
+    const needsTq = poses.includes('three-quarter') && !completedPoses.has('three-quarter');
+    const needsBack = poses.includes('back') && !completedPoses.has('back');
+
+    if (needsTq || needsBack) {
+      await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_poses' } });
+    }
+
+    const generateThreeQuarter = async () => {
+      if (!needsTq) return;
       const tqPrompt = buildPromptFromSpec(
-        garmentSpec, 'three-quarter', backdropSnippet, hasBack, true, modelHeight, stylingDir, modelGender, pricePoint,
+        garmentSpec, 'three-quarter', backdropSnippet, hasBack, true, modelHeight, stylingDir, modelGender, pricePoint, brandEnergy, primaryCategory,
       );
       const tqContents = [{
         role: 'user' as const,
@@ -236,14 +247,12 @@ export const generateOutfitTask = task({
         .toBuffer();
       const tqUrl = await uploadImageToBlob(tqCropped, `outfits/${shopId}/${outfitId}/three-quarter.png`);
       await prisma.generatedImage.create({ data: { shopId, outfitId, imageUrl: tqUrl, pose: 'three-quarter', styleId } });
-    }
+    };
 
-    // ── 8. Back pose ──────────────────────────────────────────────────────────
-    // Same strategy as 3/4: text primer, front anchor for outfit consistency, pose-tuned temperature.
-    if (poses.includes('back') && !completedPoses.has('back')) {
-      await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_back' } });
+    const generateBack = async () => {
+      if (!needsBack) return;
       const backPrompt = buildPromptFromSpec(
-        garmentSpec, 'back', backdropSnippet, hasBack, true, modelHeight, stylingDir, modelGender, pricePoint,
+        garmentSpec, 'back', backdropSnippet, hasBack, true, modelHeight, stylingDir, modelGender, pricePoint, brandEnergy, primaryCategory,
       );
       const backContents = [{
         role: 'user' as const,
@@ -277,7 +286,9 @@ export const generateOutfitTask = task({
         .toBuffer();
       const backUrl = await uploadImageToBlob(backCropped, `outfits/${shopId}/${outfitId}/back.png`);
       await prisma.generatedImage.create({ data: { shopId, outfitId, imageUrl: backUrl, pose: 'back', styleId } });
-    }
+    };
+
+    await Promise.all([generateThreeQuarter(), generateBack()]);
 
     // ── 9. Complete ───────────────────────────────────────────────────────────
     await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'completed' } });

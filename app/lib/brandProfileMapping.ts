@@ -62,6 +62,53 @@ export const PRIMARY_CATEGORIES: { id: PrimaryCategory; label: string }[] = [
   { id: 'other',       label: 'Other / Mixed' },
 ];
 
+/**
+ * Maps brand energy to a mood/tone cue injected into generation prompts.
+ * Complements the styling direction preset — this adds overall photographic mood
+ * while the preset controls specific pose/body language.
+ */
+export function getBrandEnergyCue(brandEnergy: string | null | undefined): string {
+  switch (brandEnergy) {
+    case 'minimal':
+      return 'Brand mood: clean, composed, understated. Restrained styling with no visual excess. The image should feel calm, precise, and timeless — like COS or Arket.';
+    case 'accessible':
+      return 'Brand mood: warm, approachable, everyday. The image should feel inviting and non-intimidating — like H&M or ASOS. Natural, friendly expression.';
+    case 'editorial':
+      return 'Brand mood: effortless cool, fashion-forward. Slightly artful and intentional — like Zara or Reformation. The model should look self-assured, not stiff.';
+    case 'premium':
+      return 'Brand mood: polished, sophisticated, quietly confident. Elevated bearing and refined presentation — like Reiss or Sandro. Every detail considered.';
+    case 'street':
+      return 'Brand mood: casual, self-expressive, urban energy. Relaxed and authentic — like Urban Outfitters or Carhartt WIP. Natural, uncontrived stance.';
+    case 'athletic':
+      return 'Brand mood: strong, dynamic, performance-oriented. Confident athletic presence — like Lululemon or Gymshark. Purposeful posture.';
+    default:
+      return '';
+  }
+}
+
+/**
+ * Maps primary category to contextual cue for styling decisions in the prompt.
+ * Helps Gemini make appropriate choices for complementary pieces and overall presentation.
+ */
+export function getCategoryContext(primaryCategory: string | null | undefined): string {
+  switch (primaryCategory) {
+    case 'womenswear':
+      return 'Category context: womenswear. Style complementary pieces for a women\'s fashion context.';
+    case 'menswear':
+      return 'Category context: menswear. Style complementary pieces for a men\'s fashion context.';
+    case 'unisex':
+      return 'Category context: unisex / gender-neutral fashion. Keep styling modern and gender-neutral.';
+    case 'activewear':
+      return 'Category context: activewear. Prioritize athletic, functional styling. Complementary pieces should suit a performance/sport context.';
+    case 'streetwear':
+      return 'Category context: streetwear. Style with urban, casual, self-expressive complementary pieces.';
+    case 'formalwear':
+      return 'Category context: formalwear. Style with elegant, occasion-appropriate complementary pieces. Elevated accessories.';
+    default:
+      return '';
+  }
+}
+
 // Fallback when no brand profile is set, or category is "other"
 export const FALLBACK_DIRECTIONS: BrandEnergy[] = ['minimal', 'accessible', 'editorial'];
 

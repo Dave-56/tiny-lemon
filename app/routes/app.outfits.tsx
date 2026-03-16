@@ -13,7 +13,7 @@ import { zipSync } from 'fflate';
 import { useAuthenticatedFetch } from '../contexts/AuthenticatedFetchContext';
 import { authenticate } from '../shopify.server';
 import prisma from '../db.server';
-import { STYLING_DIRECTION_PRESETS } from '../lib/pdpPresets';
+import { BRAND_STYLE_PRESETS } from '../lib/pdpPresets';
 import { handleRegenerateOutfit } from '../lib/triggerGeneration.server';
 import { tasks, runs } from '../trigger.server';
 import posthog from 'posthog-js';
@@ -49,11 +49,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     modelNameMap[m.id] = m.name;
   }
 
-  const stylingDirectionLabelMap: Record<string, string> = Object.fromEntries(
-    STYLING_DIRECTION_PRESETS.map((p) => [p.id, p.label]),
+  const brandStyleLabelMap: Record<string, string> = Object.fromEntries(
+    BRAND_STYLE_PRESETS.map((p) => [p.id, p.label]),
   );
 
-  return { shop, outfits, modelNameMap, stylingDirectionLabelMap };
+  return { shop, outfits, modelNameMap, brandStyleLabelMap };
 };
 
 // ── Action ─────────────────────────────────────────────────────────────────────
@@ -561,6 +561,7 @@ const OUTFIT_STATUS = {
   generating_front: 'generating_front',
   generating_tq: 'generating_tq',
   generating_back: 'generating_back',
+  generating_poses: 'generating_poses',
   completed: 'completed',
   failed: 'failed',
 } as const;
@@ -568,7 +569,7 @@ const OUTFIT_STATUS = {
 function OutfitCard({
   outfit,
   modelName,
-  stylingDirectionLabel,
+  brandStyleLabel,
   isDeleting,
   selected,
   onDelete,
@@ -582,7 +583,7 @@ function OutfitCard({
 }: {
   outfit: OutfitWithImages;
   modelName: string | undefined;
-  stylingDirectionLabel: string;
+  brandStyleLabel: string;
   isDeleting: boolean;
   selected: boolean;
   onDelete: (id: string) => void;
@@ -758,7 +759,7 @@ function OutfitCard({
                 className="text-[11px] font-medium text-krea-muted bg-krea-border/40 rounded-md px-2 py-0.5 shrink-0"
                 title="Styling direction used for this outfit"
               >
-                {stylingDirectionLabel}
+                {brandStyleLabel}
               </span>
               <span className="text-krea-border shrink-0" aria-hidden>·</span>
               <span className="text-xs text-krea-muted shrink-0">
@@ -922,7 +923,7 @@ function OutfitCard({
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function Outfits() {
-  const { shop, outfits, modelNameMap, stylingDirectionLabelMap } = useLoaderData<typeof loader>();
+  const { shop, outfits, modelNameMap, brandStyleLabelMap } = useLoaderData<typeof loader>();
   const { revalidate } = useRevalidator();
   const authenticatedFetch = useAuthenticatedFetch();
 
@@ -1146,8 +1147,8 @@ export default function Outfits() {
                 key={outfit.id}
                 outfit={outfit}
                 modelName={modelNameMap[outfit.modelId] ?? undefined}
-                stylingDirectionLabel={
-                  stylingDirectionLabelMap[(outfit as { stylingDirectionId?: string }).stylingDirectionId ?? 'minimal'] ??
+                brandStyleLabel={
+                  brandStyleLabelMap[(outfit as { brandStyleId?: string }).brandStyleId ?? 'minimal'] ??
                   'Minimal Clarity'
                 }
                 isDeleting={deletingIds.has(outfit.id)}
