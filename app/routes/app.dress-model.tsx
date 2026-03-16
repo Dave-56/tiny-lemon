@@ -177,6 +177,26 @@ function validateFlatLay(file: File): Promise<FlatLayQuality> {
   });
 }
 
+function generateThumbnail(file: File): Promise<string> {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const SIZE = 60;
+      const scale = Math.min(1, SIZE / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/jpeg', 0.7));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(''); };
+    img.src = url;
+  });
+}
+
 async function downloadAllAsZip(items: BatchItem[]) {
   const doneItems = items.filter(i => i.status === 'done' && i.results.length > 0);
   if (!doneItems.length) return;
@@ -236,6 +256,7 @@ interface BatchItem {
   skuName: string;
   status: ItemStatus;
   cleanPreview: string | null;
+  thumbnail: string | null;
   results: ResultShot[];
   error: string | null;
   savedOutfitId: string | null;
@@ -303,19 +324,21 @@ export default function DressModel() {
   const pendingItemsCtx = usePendingItems();
 
   const [presetModels, setPresetModels] = useState<PresetModelEntry[]>([]);
-  // Priority: URL param > router state (passed from brand-style) > first custom model
+  // Priority: URL param > router state (passed from brand-style) > context (survived nav) > first custom model
   const [selectedModelId, setSelectedModelId] = useState<string | null>(
     searchParams.get('model') ??
     (location.state as { model?: string } | null)?.model ??
+    pendingItemsCtx.selectedModelId ??
     customModels[0]?.id ?? null,
   );
   const [modelTab, setModelTab] = useState<'mine' | 'presets'>(customModels.length > 0 ? 'mine' : 'presets');
 
-  // Updates both React state and the URL param so selection is bookmarkable
+  // Updates React state, URL param, and layout-level context so selection survives navigation
   const selectModel = useCallback((id: string) => {
     setSelectedModelId(id);
+    pendingItemsCtx.setSelectedModelId(id);
     setSearchParams(prev => { prev.set('model', id); return prev; }, { replace: true });
-  }, [setSearchParams]);
+  }, [setSearchParams, pendingItemsCtx]);
   const [previewModel, setPreviewModel] = useState<PresetModelEntry | null>(null);
   const [items, setItems] = useState<BatchItem[]>([]);
   const [isRunning, setIsRunning] = useState(false);
@@ -343,10 +366,12 @@ export default function DressModel() {
       .catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Scroll the selected model card into view when selection changes
+  // Scroll the selected model card into view when selection changes,
+  // and keep the layout-level context in sync so it survives navigation.
   useEffect(() => {
     selectedCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-  }, [selectedModelId]);
+    if (selectedModelId) pendingItemsCtx.setSelectedModelId(selectedModelId);
+  }, [selectedModelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Session persistence ───────────────────────────────────────────────────────
 
@@ -380,6 +405,7 @@ export default function DressModel() {
         skuName: entry.skuName,
         status: 'pending',
         cleanPreview: null,
+        thumbnail: null,
         results: [],
         error: null,
         savedOutfitId: null,
@@ -397,7 +423,7 @@ export default function DressModel() {
           merged.push({
             ...stored,
             frontFile: new File([], stored.skuName), // dummy — never read after savedOutfitId exists
-            frontPreview: stored.cleanPreview ?? '',  // CDN URL for done items; blank for in-progress
+            frontPreview: stored.cleanPreview ?? stored.thumbnail ?? '',  // CDN URL for done items; thumbnail for in-progress
             backFile: null,
             backPreview: null,
           });
@@ -444,9 +470,9 @@ export default function DressModel() {
     }
     const latest = [...items].reverse().find(i => i.savedOutfitId !== null && i.status !== 'error');
     if (latest) {
-      const { id, skuName, status, cleanPreview, results, error, savedOutfitId, savedShopId, quality } = latest;
+      const { id, skuName, status, cleanPreview, thumbnail, results, error, savedOutfitId, savedShopId, quality } = latest;
       sessionStorage.setItem(SESSION_KEY(shop), JSON.stringify(
-        { id, skuName, status, cleanPreview, results, error, savedOutfitId, savedShopId, quality },
+        { id, skuName, status, cleanPreview, thumbnail, results, error, savedOutfitId, savedShopId, quality },
       ));
     } else {
       sessionStorage.removeItem(SESSION_KEY(shop));
@@ -466,6 +492,7 @@ export default function DressModel() {
       skuName: file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' '),
       status: 'pending',
       cleanPreview: null,
+      thumbnail: null,
       results: [],
       error: null,
       savedOutfitId: null,
@@ -474,10 +501,13 @@ export default function DressModel() {
     }));
     setItems(prev => [...prev, ...newItems]);
 
-    // Run quality validation asynchronously after items are added
+    // Run quality validation and thumbnail generation asynchronously after items are added
     newItems.forEach(item => {
       validateFlatLay(item.frontFile).then(quality => {
         setItems(prev => prev.map(i => i.id === item.id ? { ...i, quality } : i));
+      });
+      generateThumbnail(item.frontFile).then(thumbnail => {
+        setItems(prev => prev.map(i => i.id === item.id ? { ...i, thumbnail } : i));
       });
     });
   }, [items.length]);
@@ -762,7 +792,7 @@ export default function DressModel() {
             }`}
           >
             <Plus className="w-5 h-5 text-krea-muted" />
-            <p className="text-sm text-krea-muted">Drop front flat lays or click to browse</p>
+            <p className="text-sm text-krea-muted">One garment per image, any background. We'll clean it up</p>
             <p className="text-xs text-krea-muted/60">Up to {MAX_BATCH - items.length} more</p>
           </button>
         )}
@@ -865,13 +895,13 @@ export default function DressModel() {
               {item.quality === 'warn' && item.status === 'pending' && (
                 <p className="text-[10px] text-yellow-600 flex items-center gap-1 px-1">
                   <AlertTriangle className="w-3 h-3 flex-shrink-0" />
-                  Might struggle — dark or complex background detected
+                  Might struggle. Make sure it's just one garment
                 </p>
               )}
               {item.quality === 'fail' && item.status === 'pending' && (
                 <p className="text-[10px] text-red-500 flex items-center gap-1 px-1">
                   <XCircle className="w-3 h-3 flex-shrink-0" />
-                  Likely to fail — try a plain white/light background
+                  Likely to fail. Use a single garment image, no extra items
                 </p>
               )}
               {item.status === 'error' && item.error && (

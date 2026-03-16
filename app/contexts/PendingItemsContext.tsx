@@ -21,12 +21,15 @@ interface PendingItemsCtx {
   upsert: (entry: PendingEntry) => void;
   remove: (id: string) => void;
   clear: () => void;
+  selectedModelId: string | null;
+  setSelectedModelId: (id: string | null) => void;
 }
 
 const Ctx = createContext<PendingItemsCtx | null>(null);
 
 export function PendingItemsProvider({ children }: { children: React.ReactNode }) {
   const [entries, setEntries] = useState<PendingEntry[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
 
   const upsert = useCallback((entry: PendingEntry) => {
     setEntries(prev => {
@@ -47,7 +50,7 @@ export function PendingItemsProvider({ children }: { children: React.ReactNode }
   const clear = useCallback(() => setEntries([]), []);
 
   return (
-    <Ctx.Provider value={{ entries, upsert, remove, clear }}>
+    <Ctx.Provider value={{ entries, upsert, remove, clear, selectedModelId, setSelectedModelId }}>
       {children}
     </Ctx.Provider>
   );
