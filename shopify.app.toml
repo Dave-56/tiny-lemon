@@ -35,3 +35,33 @@ scopes = "read_products,write_products"
 
 [auth]
 redirect_urls = [ "https://tinylemon.xyz/auth/callback" ]
+
+[[extensions]]
+type = "app_subscription"
+name = "Starter"
+  [[extensions.plans]]
+  name = "Starter"
+  price = 39.0
+  currency_code = "USD"
+  interval = "EVERY_30_DAYS"
+  trial_days = 0
+
+[[extensions]]
+type = "app_subscription"
+name = "Growth"
+  [[extensions.plans]]
+  name = "Growth"
+  price = 99.0
+  currency_code = "USD"
+  interval = "EVERY_30_DAYS"
+  trial_days = 0
+
+[[extensions]]
+type = "app_subscription"
+name = "Scale"
+  [[extensions.plans]]
+  name = "Scale"
+  price = 249.0
+  currency_code = "USD"
+  interval = "EVERY_30_DAYS"
+  trial_days = 0

@@ -1,10 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import posthog from 'posthog-js';
-import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from 'react-router';
+import type { HeadersFunction, LoaderFunctionArgs } from 'react-router';
 import { useLoaderData, useRouteError } from 'react-router';
 import { boundary } from '@shopify/shopify-app-react-router/server';
-import { Loader2 } from 'lucide-react';
-import { useAuthenticatedFetch } from '../contexts/AuthenticatedFetchContext';
 import { authenticate } from '../shopify.server';
 import { BILLING_PLANS } from '../lib/plans';
 import prisma from '../db.server';
@@ -21,7 +19,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const subscription = await billing.check({
     plans: Object.values(BILLING_PLANS),
-    isTest: true,
   });
 
   const activePlan = subscription.hasActivePayment
@@ -45,25 +42,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
 };
 
-// ── Action ────────────────────────────────────────────────────────────────────
-
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const { billing } = await authenticate.admin(request);
-  const fd = await request.formData();
-  const plan = fd.get('plan') as keyof typeof BILLING_PLANS;
-
-  if (!Object.values(BILLING_PLANS).includes(plan)) {
-    return Response.json({ error: 'Invalid plan' }, { status: 400 });
-  }
-
-  // billing.request() always throws — on success it throws a redirect Response,
-  // on failure it throws a BillingError. React Router handles the thrown Response.
-  await billing.request({
-    plan,
-    isTest: true,
-    returnUrl: `${process.env.SHOPIFY_APP_URL}/app/billing`,
-  });
-};
 
 // ── Plan card data ────────────────────────────────────────────────────────────
 
@@ -110,34 +88,15 @@ const PLANS = [
 
 export default function Billing() {
   const { shop, plan, used, limit } = useLoaderData<typeof loader>();
-  const authenticatedFetch = useAuthenticatedFetch();
-  const [isSubscribing, setIsSubscribing] = useState(false);
-  const [submittingPlan, setSubmittingPlan] = useState<string | undefined>();
 
   useEffect(() => {
     posthog.capture('billing_viewed', { shop, plan });
   }, [shop, plan]);
 
-  async function handlePlanSubmit(planId: keyof typeof BILLING_PLANS) {
-    if (!Object.values(BILLING_PLANS).includes(planId)) return;
-    setIsSubscribing(true);
-    setSubmittingPlan(planId);
-    try {
-      const formData = new FormData();
-      formData.set('plan', planId);
-      const res = await authenticatedFetch('/app/billing', {
-        method: 'POST',
-        body: formData,
-        redirect: 'manual',
-      });
-      if (res.status >= 300 && res.status < 400) {
-        const location = res.headers.get('Location');
-        if (location) window.location.href = location;
-      }
-    } finally {
-      setIsSubscribing(false);
-      setSubmittingPlan(undefined);
-    }
+  function handlePlanSubmit() {
+    const storeHandle = shop.replace('.myshopify.com', '');
+    window.top!.location.href =
+      `https://admin.shopify.com/store/${storeHandle}/charges/tiny-lemon/pricing_plans`;
   }
 
   return (
@@ -171,7 +130,6 @@ export default function Billing() {
           <div className="grid grid-cols-2 gap-3">
             {PLANS.map((p) => {
               const isCurrent = p.id === plan;
-              const isSubmitting = isSubscribing && submittingPlan === p.id;
 
               return (
                 <div
@@ -206,15 +164,10 @@ export default function Billing() {
                   ) : p.cta ? (
                     <button
                       type="button"
-                      disabled={isSubscribing}
-                      onClick={() => handlePlanSubmit(p.id)}
-                      className="w-full h-8 rounded-md bg-krea-accent text-white text-xs font-medium flex items-center justify-center gap-2 hover:opacity-90 active:scale-95 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                      onClick={handlePlanSubmit}
+                      className="w-full h-8 rounded-md bg-krea-accent text-white text-xs font-medium flex items-center justify-center gap-2 hover:opacity-90 active:scale-95 transition-all"
                     >
-                      {isSubscribing && submittingPlan === p.id ? (
-                        <><Loader2 className="w-3 h-3 animate-spin" />Redirecting…</>
-                      ) : (
-                        p.cta
-                      )}
+                      {p.cta}
                     </button>
                   ) : null}
                 </div>
