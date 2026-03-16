@@ -42,8 +42,12 @@ export default function App() {
 
       {/* Usage counter — rendered outside s-app-nav to avoid App Bridge conflicts */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-krea-border bg-white text-xs text-krea-muted">
-        <span>{used}/{limit} generations this month</span>
-        {plan === "free" && (
+        <span className={used >= limit ? "text-red-500 font-medium" : ""}>{used}/{limit} generations this month</span>
+        {used >= limit ? (
+          <Link to="/app/billing" className="text-red-500 underline underline-offset-2 font-medium">
+            Upgrade to continue →
+          </Link>
+        ) : plan === "free" && (
           <Link to="/app/billing" className="text-krea-accent underline underline-offset-2">
             Upgrade
           </Link>
