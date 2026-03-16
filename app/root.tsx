@@ -1,4 +1,5 @@
-import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
+import { Links, Meta, Outlet, Scripts, ScrollRestoration, useLocation } from "react-router";
+import { Analytics } from "@vercel/analytics/react";
 import appCss from "./app.css?url";
 
 export function links() {
@@ -6,6 +7,9 @@ export function links() {
 }
 
 export default function App() {
+  const { pathname } = useLocation();
+  const isAppRoute = pathname.startsWith("/app");
+
   return (
     <html lang="en">
       <head>
@@ -25,6 +29,7 @@ export default function App() {
         <Outlet />
         <ScrollRestoration />
         <Scripts />
+        {!isAppRoute && <Analytics />}
       </body>
     </html>
   );
