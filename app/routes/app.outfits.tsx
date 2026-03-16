@@ -276,7 +276,7 @@ function ImageTile({
               style={{ aspectRatio: '2 / 3' }}
               loading={isLcp ? undefined : 'lazy'}
               decoding={isLcp ? undefined : 'async'}
-              fetchpriority={isLcp ? 'high' : undefined}
+              fetchPriority={isLcp ? 'high' : undefined}
               sizes="(min-width: 1024px) 400px, 90vw"
               onError={() => setError(true)}
             />

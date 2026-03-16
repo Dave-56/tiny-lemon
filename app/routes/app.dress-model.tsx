@@ -157,7 +157,7 @@ async function validateFlatLayRemote(
 ): Promise<FlatLayQuality | null> {
   try {
     const t0 = performance.now();
-    const { bytes, mimeType, contentHash, width, height } = await downscaleAndHash(file).catch(async () => ({
+    const { bytes: rawBytes, mimeType, contentHash, width, height } = await downscaleAndHash(file).catch(async () => ({
       bytes: await file.arrayBuffer(), mimeType: file.type || 'image/jpeg', contentHash: '', width: 0, height: 0,
     }));
 
@@ -169,11 +169,11 @@ async function validateFlatLayRemote(
     }
 
     const b64 = (() => {
-      const bytes = new Uint8Array(bytes as ArrayBuffer);
+      const arr = new Uint8Array(rawBytes as ArrayBuffer);
       let binary = '';
       const CHUNK = 0x8000;
-      for (let i = 0; i < bytes.length; i += CHUNK) {
-        binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + CHUNK)) as unknown as number[]);
+      for (let i = 0; i < arr.length; i += CHUNK) {
+        binary += String.fromCharCode.apply(null, Array.from(arr.subarray(i, i + CHUNK)) as unknown as number[]);
       }
       return btoa(binary);
     })();
