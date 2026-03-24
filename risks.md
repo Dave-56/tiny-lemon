@@ -74,7 +74,7 @@
 - [x] Add tests for refund behavior on pre-enqueue failure
 - [x] Add tests for generate/regenerate/publish idempotency behavior
 - [x] Add tests for duplicate generated-image conflict handling
-- [ ] Add tests for billing boundary conditions in `billing.server.ts`
+- [x] Add tests for billing boundary conditions in `billing.server.ts`
 - [x] Add tests for `triggerGeneration.server.ts` happy path and limit-reached path
 
 ### Phase 3. Durable rate limiting and observability
@@ -115,6 +115,7 @@
 - [x] Generate/regenerate flows now claim idempotency before reservation in [triggerGeneration.server.ts](/Users/preciousemakenemi/Downloads/test-fashion/create-a-model/tiny-lemon/app/lib/triggerGeneration.server.ts)
 - [x] Focused generate/regenerate idempotency tests added in [triggerGeneration.server.test.ts](/Users/preciousemakenemi/Downloads/test-fashion/create-a-model/tiny-lemon/app/lib/triggerGeneration.server.test.ts)
 - [x] Focused generation trust-boundary tests added in [app/lib/triggerGeneration.server.test.ts](/Users/preciousemakenemi/Downloads/test-fashion/create-a-model/tiny-lemon/app/lib/triggerGeneration.server.test.ts)
+- [x] Focused billing boundary-condition tests added in [billing.server.test.ts](/Users/preciousemakenemi/Downloads/test-fashion/create-a-model/tiny-lemon/app/lib/billing.server.test.ts)
 - [x] Verification completed: `npm run typecheck`, focused Vitest auth tests, and full `npm test`
 
 ## Lightweight Instrumentation To Keep
