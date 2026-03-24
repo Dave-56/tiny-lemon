@@ -1,5 +1,6 @@
 import { task } from '@trigger.dev/sdk/v3';
 import prisma from '../app/db.server';
+import { logServerEvent } from '../app/lib/observability.server';
 
 // Match the API version used in shopify.server.ts (ApiVersion.October25)
 const SHOPIFY_API_VERSION = '2025-10';
@@ -13,6 +14,20 @@ interface SyncOutfitPayload {
   shopifyProductId?: string;
 }
 
+function logTaskLifecycle(
+  event: 'task.started' | 'task.completed' | 'task.failed_final',
+  payload: SyncOutfitPayload,
+  extras: Record<string, unknown> = {},
+) {
+  logServerEvent(event === 'task.failed_final' ? 'error' : 'info', event, {
+    taskId: 'sync-outfit-to-shopify',
+    outfitId: payload.outfitId,
+    shopId: payload.shopId,
+    hasExistingProduct: Boolean(payload.shopifyProductId),
+    ...extras,
+  });
+}
+
 // ── Task ──────────────────────────────────────────────────────────────────────
 
 export const syncOutfitToShopifyTask = task({
@@ -23,6 +38,7 @@ export const syncOutfitToShopifyTask = task({
 
   onFailure: async ({ payload, error }: { payload: SyncOutfitPayload; error: unknown }) => {
     const errorMessage = error instanceof Error ? error.message : 'Shopify sync failed.';
+    logTaskLifecycle('task.failed_final', payload, { error: errorMessage });
     await prisma.outfit
       .update({ where: { id: payload.outfitId }, data: { shopifySyncStatus: 'failed', errorMessage } })
       .catch(() => {});
@@ -30,6 +46,7 @@ export const syncOutfitToShopifyTask = task({
 
   run: async (payload: SyncOutfitPayload) => {
     const { outfitId, shopId } = payload;
+    logTaskLifecycle('task.started', payload);
 
     // ── 1. Fetch outfit + images ──────────────────────────────────────────────
     const outfit = await prisma.outfit.findFirst({
@@ -156,6 +173,10 @@ export const syncOutfitToShopifyTask = task({
       },
     });
 
+    logTaskLifecycle('task.completed', payload, {
+      productGid,
+      imageCount: ordered.length,
+    });
     return { outfitId, productGid, status: 'synced' };
   },
 });

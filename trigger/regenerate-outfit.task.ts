@@ -1,15 +1,17 @@
 import { task } from '@trigger.dev/sdk/v3';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import prisma from '../app/db.server';
-import { uploadImageToBlob, uploadImageVariant } from '../app/blob.server';
 import { buildPromptFromSpec } from '../app/lib/garmentFidelityPrompt';
 import {
   deleteGeneratedImagesNotInPoses,
   upsertGeneratedImageByPose,
 } from '../app/lib/generatedImagePersistence.server';
+import { createPoseAssetManifest } from '../app/lib/imageAssetManifest.server';
 import { normalizeReferenceImageServer } from '../app/lib/normalizeReferenceImage.server';
+import { logServerEvent } from '../app/lib/observability.server';
 import { PDP_STYLE_PRESETS, BRAND_STYLE_PRESETS } from '../app/lib/pdpPresets';
 import type { GarmentSpec } from '../app/lib/garmentSpec';
+import type { PoseImageAssetManifest } from '../app/lib/imageAssetManifest';
 
 // ── Payload ───────────────────────────────────────────────────────────────────
 
@@ -29,6 +31,21 @@ interface RegenerateOutfitPayload {
   /** Primary category (womenswear | menswear | unisex | activewear | streetwear | formalwear | other) — shapes category context in prompt. */
   primaryCategory?: string;
   allowedPoses: string[];
+}
+
+function logTaskLifecycle(
+  event: 'task.started' | 'task.completed' | 'task.failed_final',
+  payload: RegenerateOutfitPayload,
+  extras: Record<string, unknown> = {},
+) {
+  logServerEvent(event === 'task.failed_final' ? 'error' : 'info', event, {
+    taskId: 'regenerate-outfit',
+    outfitId: payload.outfitId,
+    shopId: payload.shopId,
+    allowedPoses: payload.allowedPoses,
+    hasUserDirection: Boolean(payload.userDirection?.trim()),
+    ...extras,
+  });
 }
 
 // ── Helpers (mirror generate-outfit) ────────────────────────────────────────────
@@ -113,6 +130,7 @@ export const regenerateOutfitTask = task({
     });
     if (existing?.errorMessage === 'Cancelled by user') return;
     const errorMessage = error instanceof Error ? error.message : 'Regeneration failed.';
+    logTaskLifecycle('task.failed_final', payload, { error: errorMessage });
     await prisma.outfit
       .update({ where: { id: payload.outfitId }, data: { status: 'failed', errorMessage } })
       .catch(() => {});
@@ -132,6 +150,7 @@ export const regenerateOutfitTask = task({
       primaryCategory,
       allowedPoses,
     } = payload;
+    logTaskLifecycle('task.started', payload);
     const poses = allowedPoses?.length ? allowedPoses : ['front'];
 
     const outfit = await prisma.outfit.findFirst({
@@ -224,18 +243,20 @@ export const regenerateOutfitTask = task({
     const crypto = await import('crypto');
     const hashFront = crypto.createHash('sha256').update(frontPng).digest('hex').slice(0, 8);
     const baseFront = `${blobPrefix}-front.${hashFront}`;
-    const frontUrl = await uploadImageToBlob(frontPng, `${baseFront}.png`, 'image/png', 86400, 'inline');
-    for (const w of [320, 640, 800]) {
-      const avif = await sharp(frontPng).resize({ width: w }).avif({ quality: 50, effort: 4 }).toBuffer();
-      await uploadImageVariant(avif, `${baseFront}-${w}w.avif`, 'image/avif', 31536000);
-      const webp = await sharp(frontPng).resize({ width: w }).webp({ quality: 60 }).toBuffer();
-      await uploadImageVariant(webp, `${baseFront}-${w}w.webp`, 'image/webp', 31536000);
-    }
+    const frontAssetManifest = await createPoseAssetManifest({
+      pngBuffer: frontPng,
+      pathnameStem: baseFront,
+      width: 800,
+      height: 1200,
+    });
+    const frontUrl = frontAssetManifest.original.url;
 
     // ── Three-quarter + back (parallel) ───────────────────────────────────────
     // Both depend on frontB64 but NOT on each other — run in parallel to save ~25-35s.
     let tqUrl: string | null = null;
     let backUrl: string | null = null;
+    let tqAssetManifest: PoseImageAssetManifest | null = null;
+    let backAssetManifest: PoseImageAssetManifest | null = null;
     const needsTq = poses.includes('three-quarter');
     const needsBack = poses.includes('back');
 
@@ -293,13 +314,13 @@ export const regenerateOutfitTask = task({
       const cryptoTq = await import('crypto');
       const hashTq = cryptoTq.createHash('sha256').update(tqPng).digest('hex').slice(0, 8);
       const baseTq = `${blobPrefix}-three-quarter.${hashTq}`;
-      tqUrl = await uploadImageToBlob(tqPng, `${baseTq}.png`, 'image/png', 86400, 'inline');
-      for (const w of [320, 640, 800]) {
-        const avif = await sharp(tqPng).resize({ width: w }).avif({ quality: 50, effort: 4 }).toBuffer();
-        await uploadImageVariant(avif, `${baseTq}-${w}w.avif`, 'image/avif', 31536000);
-        const webp = await sharp(tqPng).resize({ width: w }).webp({ quality: 60 }).toBuffer();
-        await uploadImageVariant(webp, `${baseTq}-${w}w.webp`, 'image/webp', 31536000);
-      }
+      tqAssetManifest = await createPoseAssetManifest({
+        pngBuffer: tqPng,
+        pathnameStem: baseTq,
+        width: 800,
+        height: 1200,
+      });
+      tqUrl = tqAssetManifest.original.url;
     };
 
     const generateBack = async () => {
@@ -352,23 +373,55 @@ export const regenerateOutfitTask = task({
       const cryptoBack = await import('crypto');
       const hashBack = cryptoBack.createHash('sha256').update(backPng).digest('hex').slice(0, 8);
       const baseBack = `${blobPrefix}-back.${hashBack}`;
-      backUrl = await uploadImageToBlob(backPng, `${baseBack}.png`, 'image/png', 86400, 'inline');
-      for (const w of [320, 640, 800]) {
-        const avif = await sharp(backPng).resize({ width: w }).avif({ quality: 50, effort: 4 }).toBuffer();
-        await uploadImageVariant(avif, `${baseBack}-${w}w.avif`, 'image/avif', 31536000);
-        const webp = await sharp(backPng).resize({ width: w }).webp({ quality: 60 }).toBuffer();
-        await uploadImageVariant(webp, `${baseBack}-${w}w.webp`, 'image/webp', 31536000);
-      }
+      backAssetManifest = await createPoseAssetManifest({
+        pngBuffer: backPng,
+        pathnameStem: baseBack,
+        width: 800,
+        height: 1200,
+      });
+      backUrl = backAssetManifest.original.url;
     };
 
     await Promise.all([generateThreeQuarter(), generateBack()]);
 
     // ── Replace in place: update/create target poses, then clean up stale ones ─
-    const newImages: Array<{ shopId: string; outfitId: string; imageUrl: string; pose: string; styleId: string }> = [
-      { shopId, outfitId, imageUrl: frontUrl, pose: 'front', styleId },
+    const newImages: Array<{
+      shopId: string;
+      outfitId: string;
+      imageUrl: string;
+      assetManifest?: PoseImageAssetManifest | null;
+      pose: string;
+      styleId: string;
+    }> = [
+      {
+        shopId,
+        outfitId,
+        imageUrl: frontUrl,
+        assetManifest: frontAssetManifest,
+        pose: 'front',
+        styleId,
+      },
     ];
-    if (tqUrl) newImages.push({ shopId, outfitId, imageUrl: tqUrl, pose: 'three-quarter', styleId });
-    if (backUrl) newImages.push({ shopId, outfitId, imageUrl: backUrl, pose: 'back', styleId });
+    if (tqUrl) {
+      newImages.push({
+        shopId,
+        outfitId,
+        imageUrl: tqUrl,
+        assetManifest: tqAssetManifest,
+        pose: 'three-quarter',
+        styleId,
+      });
+    }
+    if (backUrl) {
+      newImages.push({
+        shopId,
+        outfitId,
+        imageUrl: backUrl,
+        assetManifest: backAssetManifest,
+        pose: 'back',
+        styleId,
+      });
+    }
 
     await prisma.$transaction(async (tx) => {
       for (const image of newImages) {
@@ -389,6 +442,9 @@ export const regenerateOutfitTask = task({
       });
     });
 
+    logTaskLifecycle('task.completed', payload, {
+      completedPoses: newImages.map((image) => image.pose),
+    });
     return { outfitId, status: 'completed' };
   },
 });

@@ -84,7 +84,7 @@
 - [x] Replace flat-lay validation rate limiting with durable shared storage
 - [x] Move rate-limit logic into shared utilities instead of route-local state
 - [x] Add counters/logs for rate-limit allow/deny behavior
-- [ ] Add counters/logs for background-job failures and retries
+- [x] Add counters/logs for background-job failures and retries
 
 ### Phase 4. Trigger.dev cleanup/migration
 
@@ -127,9 +127,11 @@
 - [x] Count unique-constraint conflicts if they occur
 - [x] Count durable `/try` rate-limit allow/deny behavior
 - [x] Count durable flat-lay validation rate-limit allow/deny behavior
+- [x] Count background task start/success/final-failure lifecycle events
 
 ## Phase 3 Notes
 
 - `/try` now uses a durable Prisma-backed limiter with HMAC subject digests, bounded transaction retries, fail-open behavior on limiter-store issues, and standard rate-limit headers.
 - `/api/validate-flatlay` now uses the same durable limiter with preserved sliding-window semantics, standard rate-limit headers, and distinct upstream Gemini failure logs.
+- Background tasks now emit shared structured `task.started`, `task.completed`, and `task.failed_final` logs. Per-attempt retry telemetry is still intentionally deferred until the Trigger.dev cleanup/migration work in Phase 4.
 - Validator residual risk remains: [app/lib/validateFlatLay.server.ts](/Users/preciousemakenemi/Downloads/test-fashion/create-a-model/tiny-lemon/app/lib/validateFlatLay.server.ts) still keeps per-instance cache and warn-mode breaker state.

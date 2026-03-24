@@ -28,30 +28,6 @@ export const meta: MetaFunction = () => {
 
 type PresetModel = { id: string; name: string; imageUrl: string; gender: string; ethnicity: string; bodyBuild: string; height: string };
 
-// #region agent log
-function debugLog(
-  location: string,
-  message: string,
-  data: Record<string, unknown>,
-  hypothesisId: string
-) {
-  const payload = {
-    sessionId: "63d77a",
-    location,
-    message,
-    data,
-    hypothesisId,
-    timestamp: Date.now(),
-  };
-  fetch("http://127.0.0.1:7384/ingest/922c043d-8201-4442-8506-2ee8f8772d35", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "63d77a" },
-    body: JSON.stringify(payload),
-  }).catch(() => {});
-  console.log("[Try action debug]", message, data);
-}
-// #endregion
-
 /**
  * Get buffer and mime from a form file value. Works with File/Blob in browser
  * and in runtimes (e.g. Vercel) that may expose a different shape.
@@ -59,40 +35,18 @@ function debugLog(
 async function getFileBytes(
   value: unknown
 ): Promise<{ buffer: Buffer; mime: string } | null> {
-  // #region agent log
-  const hasValue = value != null;
-  const arrayBufferType = typeof (value as File)?.arrayBuffer;
-  debugLog(
-    "try.tsx:getFileBytes(entry)",
-    "getFileBytes called",
-    { hasValue, arrayBufferType, valueConstructor: value != null ? (value as object).constructor?.name : undefined },
-    "H2"
-  );
-  // #endregion
   if (value == null) {
-    // #region agent log
-    debugLog("try.tsx:getFileBytes(null)", "return null: value == null", {}, "H1");
-    // #endregion
     return null;
   }
   if (typeof (value as File)?.arrayBuffer !== "function") {
-    // #region agent log
-    debugLog("try.tsx:getFileBytes(no arrayBuffer)", "return null: no arrayBuffer", { arrayBufferType }, "H2");
-    // #endregion
     return null;
   }
   try {
     const ab = await (value as File).arrayBuffer();
     const buffer = Buffer.from(ab);
     const mime = (value as Blob).type || "image/png";
-    // #region agent log
-    debugLog("try.tsx:getFileBytes(ok)", "return buffer", { bufferLen: buffer.length, mime }, "H4");
-    // #endregion
     return { buffer, mime };
-  } catch (e) {
-    // #region agent log
-    debugLog("try.tsx:getFileBytes(catch)", "return null: catch", { errorName: (e as Error)?.name }, "H3");
-    // #endregion
+  } catch {
     return null;
   }
 }
@@ -156,38 +110,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const fd = await request.formData();
   const modelId = (fd.get("modelId") as string) || "";
   const flatLay = fd.get("flatLay");
-  // #region agent log
-  const formKeys = Array.from(fd.keys());
-  const flatLayType = typeof flatLay;
-  const flatLayConstructor = flatLay != null && typeof flatLay === "object" ? (flatLay as object).constructor?.name : undefined;
-  const hasArrayBuffer = flatLay != null && typeof (flatLay as File).arrayBuffer === "function";
-  const hasType = flatLay != null && typeof flatLay === "object" && "type" in (flatLay as object);
-  const flatLaySize = flatLay != null && typeof (flatLay as Blob).size === "number" ? (flatLay as Blob).size : undefined;
-  const flatLayKeys = flatLay != null && typeof flatLay === "object" ? Object.keys(flatLay as object) : [];
-  debugLog(
-    "try.tsx:action(after formData)",
-    "formData received",
-    {
-      formKeys,
-      hasFlatLay: flatLay != null,
-      flatLayType,
-      flatLayConstructor,
-      hasArrayBuffer,
-      hasType,
-      flatLaySize,
-      flatLayKeys,
-    },
-    "H1"
-  );
-  // #endregion
   if (!flatLay || !modelId) {
     return jsonWithRateLimit({ error: "Missing flatLay or modelId" }, { status: 400 });
   }
   const fileResult = await getFileBytes(flatLay);
   if (!fileResult) {
-    // #region agent log
-    debugLog("try.tsx:action(400)", "returning Invalid file upload", { formKeys, flatLayType, flatLayConstructor }, "H5");
-    // #endregion
     return jsonWithRateLimit({ error: "Invalid file upload" }, { status: 400 });
   }
   const base64 = fileResult.buffer.toString("base64");

@@ -91,7 +91,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       select: {
         status: true,
         errorMessage: true,
-        images: { select: { id: true, pose: true, imageUrl: true } },
+        images: { select: { id: true, pose: true, imageUrl: true, assetManifest: true } },
       },
     });
     if (!outfit) return Response.json({ error: 'Not found' }, { status: 404 });
@@ -292,6 +292,7 @@ interface ResultShot {
   angleId: string;
   label: string;
   url: string;
+  asset?: unknown;
 }
 
 type FlatLayQuality = 'good' | 'warn' | 'fail';
@@ -675,13 +676,14 @@ export default function DressModel() {
               status: string;
               errorMessage?: string | null;
               cleanFlatLayUrl?: string | null;
-              images: Array<{ id: string; pose: string; imageUrl: string }>;
+              images: Array<{ id: string; pose: string; imageUrl: string; assetManifest?: unknown }>;
             };
 
             const results: ResultShot[] = (images ?? []).map(img => ({
               angleId: img.pose,
               label: POSE_LABEL[img.pose] ?? img.pose,
               url: img.imageUrl,
+              asset: img.assetManifest,
             }));
 
             const patch: Partial<BatchItem> = { results };
@@ -855,11 +857,6 @@ export default function DressModel() {
             },
             body,
           });
-
-          // #region agent log
-          fetch('http://127.0.0.1:7384/ingest/922c043d-8201-4442-8506-2ee8f8772d35',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f32e37'},body:JSON.stringify({sessionId:'f32e37',runId:'trigger_post',hypothesisId:'post_fix',location:'app.dress-model.tsx:trigger',message:'API trigger response',data:{status:res.status,contentType:(res.headers.get('Content-Type')??'').slice(0,80)},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
-
           if (!res.ok) {
             if (isSessionExpiredResponse(res)) {
               throw new Error(SESSION_EXPIRED_MESSAGE);
@@ -886,10 +883,6 @@ export default function DressModel() {
             outfitId: string;
             shopId: string;
           };
-
-          // #region agent log
-          fetch('http://127.0.0.1:7384/ingest/922c043d-8201-4442-8506-2ee8f8772d35',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f32e37'},body:JSON.stringify({sessionId:'f32e37',runId:'trigger_post',hypothesisId:'post_fix_success',location:'app.dress-model.tsx:success',message:'Trigger succeeded',data:{outfitId},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
           updateItem(item.id, {
             status: 'processing',
             savedOutfitId: outfitId,
@@ -898,9 +891,6 @@ export default function DressModel() {
           });
         } catch (err) {
           const errMsg = (err as Error).message ?? 'Failed to start generation';
-          // #region agent log
-          fetch('http://127.0.0.1:7384/ingest/922c043d-8201-4442-8506-2ee8f8772d35',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f32e37'},body:JSON.stringify({sessionId:'f32e37',runId:'trigger_post',hypothesisId:'catch',location:'app.dress-model.tsx:catch',message:'handleGenerate catch',data:{errorMessage:errMsg.slice(0,100)},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
           updateItem(item.id, {
             status: 'error',
             error: errMsg,
@@ -1194,6 +1184,7 @@ export default function DressModel() {
                   <div key={shot.angleId} className="space-y-1.5">
                     <div className="aspect-[2/3] rounded-lg overflow-hidden border border-krea-border bg-white">
                       <GeneratedPoseImage
+                        asset={shot.asset}
                         url={shot.url}
                         label={shot.label}
                         className="block w-full h-full object-cover"
