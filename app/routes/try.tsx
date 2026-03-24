@@ -8,7 +8,8 @@ import { login } from "../shopify.server";
 import { ensureShop } from "../db.server";
 import { handleTriggerGeneration } from "../lib/triggerGeneration.server";
 import { DEMO_SHOP_ID } from "../lib/billing.server";
-import { checkDemoRateLimit, getClientIp } from "../lib/demoRateLimit.server";
+import { buildRateLimitHeaders, consumeRateLimit } from "../lib/rateLimit.server";
+import { getNormalizedRateLimitSubject } from "../lib/rateLimitSubject.server";
 
 import landingStyles from "./_index/styles.module.css";
 import styles from "../styles/try.module.css";
@@ -122,12 +123,34 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (request.method !== "POST") {
     return Response.json({ error: "Method not allowed" }, { status: 405 });
   }
-  const ip = getClientIp(request);
-  const { allowed } = checkDemoRateLimit(ip);
-  if (!allowed) {
-    return Response.json(
-      { error: "rate_limited", message: "1 free generation per day limit reached. Try again tomorrow or install the app for unlimited generations." },
-      { status: 429 }
+
+  const rateLimit = await consumeRateLimit({
+    namespace: "try-demo",
+    subject: getNormalizedRateLimitSubject(request),
+    limit: 1,
+    windowMs: 24 * 60 * 60 * 1000,
+    algorithm: "fixed",
+  });
+  const rateLimitHeaders = buildRateLimitHeaders(rateLimit);
+  const jsonWithRateLimit = (
+    body: unknown,
+    init?: ResponseInit,
+  ) => {
+    const headers = new Headers(init?.headers);
+    for (const [key, value] of rateLimitHeaders.entries()) {
+      headers.set(key, value);
+    }
+    return Response.json(body, { ...init, headers });
+  };
+
+  if (!rateLimit.allowed) {
+    return jsonWithRateLimit(
+      {
+        error: "rate_limited",
+        message:
+          "1 free generation per day limit reached. Try again tomorrow or install the app for unlimited generations.",
+      },
+      { status: 429 },
     );
   }
   const fd = await request.formData();
@@ -158,14 +181,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   );
   // #endregion
   if (!flatLay || !modelId) {
-    return Response.json({ error: "Missing flatLay or modelId" }, { status: 400 });
+    return jsonWithRateLimit({ error: "Missing flatLay or modelId" }, { status: 400 });
   }
   const fileResult = await getFileBytes(flatLay);
   if (!fileResult) {
     // #region agent log
     debugLog("try.tsx:action(400)", "returning Invalid file upload", { formKeys, flatLayType, flatLayConstructor }, "H5");
     // #endregion
-    return Response.json({ error: "Invalid file upload" }, { status: 400 });
+    return jsonWithRateLimit({ error: "Invalid file upload" }, { status: 400 });
   }
   const base64 = fileResult.buffer.toString("base64");
   const mime = fileResult.mime;
@@ -176,11 +199,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const arr = JSON.parse(raw) as Array<{ id: string; name: string; imageUrl: string; gender?: string; ethnicity?: string; bodyBuild?: string; height?: string }>;
     presets = arr.map((p) => ({ id: p.id, name: p.name, imageUrl: p.imageUrl, gender: p.gender ?? "", ethnicity: p.ethnicity ?? "", bodyBuild: p.bodyBuild ?? "", height: p.height ?? "" }));
   } catch {
-    return Response.json({ error: "Presets unavailable" }, { status: 500 });
+    return jsonWithRateLimit({ error: "Presets unavailable" }, { status: 500 });
   }
   const preset = presets.find((p) => p.id === modelId);
   if (!preset) {
-    return Response.json({ error: "Invalid model" }, { status: 400 });
+    return jsonWithRateLimit({ error: "Invalid model" }, { status: 400 });
   }
   await ensureShop(DEMO_SHOP_ID);
   const res = await handleTriggerGeneration(DEMO_SHOP_ID, {
@@ -192,10 +215,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    return Response.json(data, { status: res.status });
+    return jsonWithRateLimit(data, { status: res.status });
   }
   const data = (await res.json()) as { outfitId: string; shopId: string };
-  return Response.json(data);
+  return jsonWithRateLimit(data);
 };
 
 export default function TryPage() {

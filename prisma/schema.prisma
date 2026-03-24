@@ -171,6 +171,20 @@ model RequestIdempotency {
   @@index([shopId, status, expiresAt])
 }
 
+model RateLimitEvent {
+  id            String   @id @default(cuid())
+  namespace     String
+  subjectDigest String
+  algorithm     String
+  windowStart   DateTime?
+  createdAt     DateTime @default(now())
+  expiresAt     DateTime
+
+  @@index([namespace, subjectDigest, createdAt])
+  @@index([namespace, subjectDigest, windowStart])
+  @@index([expiresAt])
+}
+
 model BetaFeedback {
   id        String   @id @default(cuid())
   shopId     String

@@ -27,8 +27,9 @@
 - User impact: regressions in billing, generation, auth, and publishing are easier to ship unnoticed.
 
 ### 6. In-memory rate limiting is not durable across instances
-- `/try` demo limiting and flat-lay validation throttling currently use process-local memory.
-- Files involved: [app/lib/demoRateLimit.server.ts](/Users/preciousemakenemi/Downloads/test-fashion/create-a-model/tiny-lemon/app/lib/demoRateLimit.server.ts), [app/routes/api.validate-flatlay.ts](/Users/preciousemakenemi/Downloads/test-fashion/create-a-model/tiny-lemon/app/routes/api.validate-flatlay.ts)
+- `/try` demo limiting is now durable, but flat-lay validation throttling still uses process-local memory.
+- The validator also still has process-local cache and circuit-breaker state even after durable `/try` rate limiting landed.
+- Files involved: [app/lib/rateLimit.server.ts](/Users/preciousemakenemi/Downloads/test-fashion/create-a-model/tiny-lemon/app/lib/rateLimit.server.ts), [app/routes/try.tsx](/Users/preciousemakenemi/Downloads/test-fashion/create-a-model/tiny-lemon/app/routes/try.tsx), [app/routes/api.validate-flatlay.ts](/Users/preciousemakenemi/Downloads/test-fashion/create-a-model/tiny-lemon/app/routes/api.validate-flatlay.ts), [app/lib/validateFlatLay.server.ts](/Users/preciousemakenemi/Downloads/test-fashion/create-a-model/tiny-lemon/app/lib/validateFlatLay.server.ts)
 - User impact: inconsistent enforcement in production and weaker abuse protection across multiple instances.
 
 ### 7. Trigger.dev version consistency
@@ -79,7 +80,7 @@
 
 ### Phase 3. Durable rate limiting and observability
 
-- [ ] Replace `/try` demo rate limiting with durable shared storage
+- [x] Replace `/try` demo rate limiting with durable shared storage
 - [ ] Replace flat-lay validation rate limiting with durable shared storage
 - [ ] Move rate-limit logic into shared utilities instead of route-local state
 - [ ] Add counters/logs for rate-limit allow/deny behavior
@@ -124,3 +125,10 @@
 - [x] Count reservation/refund paths
 - [x] Count idempotency reuses vs fresh enqueues
 - [x] Count unique-constraint conflicts if they occur
+- [x] Count durable `/try` rate-limit allow/deny behavior
+
+## Phase 3 Notes
+
+- `/try` now uses a durable Prisma-backed limiter with HMAC subject digests, bounded transaction retries, fail-open behavior on limiter-store issues, and standard rate-limit headers.
+- `/api/validate-flatlay` still preserves its existing sliding-window, route-local limiter for now.
+- Validator residual risk remains: [app/lib/validateFlatLay.server.ts](/Users/preciousemakenemi/Downloads/test-fashion/create-a-model/tiny-lemon/app/lib/validateFlatLay.server.ts) still keeps per-instance cache and warn-mode breaker state.

@@ -1,4 +1,5 @@
 import type { ActionFunctionArgs } from 'react-router';
+import { getClientIp } from '../lib/rateLimitSubject.server';
 import { getShopFromSessionToken } from '../lib/sessionToken.server';
 import { validateFlatLayServer } from '../lib/validateFlatLay.server';
 
@@ -46,7 +47,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   // Rate limit per shop+IP
-  const ip = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || 'ip:unknown';
+  const ip = getClientIp(request);
   const key = `${shopId}:${ip}`;
   const now = Date.now();
   rl[key] = (rl[key] || []).filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
