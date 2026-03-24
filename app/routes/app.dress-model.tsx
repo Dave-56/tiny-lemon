@@ -3,23 +3,22 @@ import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from 're
 import { useLoaderData, useRouteError, useSearchParams, useLocation, useNavigate, useBlocker, useBeforeUnload, Link } from 'react-router';
 import { usePendingItems } from '../contexts/PendingItemsContext';
 import { boundary } from '@shopify/shopify-app-react-router/server';
-import { useAppBridge } from '@shopify/app-bridge-react';
+import { GeneratedPoseImage } from '../components/GeneratedPoseImage';
 import { useAuthenticatedFetch } from '../contexts/AuthenticatedFetchContext';
 import { X, Download, Loader2, Plus, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
 import { zipSync } from 'fflate';
 import { getCachedFlatLay, setCachedFlatLay } from '../lib/flatlayCache';
 import type { PresetModelEntry } from '../lib/types';
 import { BRAND_STYLE_PRESETS } from '../lib/pdpPresets';
-import { buildSrcSet } from '../lib/imageVariants';
 import { authenticate } from '../shopify.server';
 import prisma, { ensureShop } from '../db.server';
 import {
-  getPlanForShop,
+  getEffectiveEntitlements,
   getMonthlyUsage,
-  PLAN_LIMITS,
-  PLAN_ANGLES,
 } from '../lib/billing.server';
+import { getSupportEmail } from '../lib/support.server';
 import { handleTriggerGeneration } from '../lib/triggerGeneration.server';
+import { isSessionExpiredResponse, SESSION_EXPIRED_MESSAGE } from '../lib/authenticatedRequest.client';
 import posthog from 'posthog-js';
 
 // ── Loader ────────────────────────────────────────────────────────────────────
@@ -30,24 +29,31 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   await ensureShop(shop);
 
-  const [brandStyle, plan, used, customModels] = await Promise.all([
+  const [brandStyle, entitlements, used, customModels, wouldUseLive] = await Promise.all([
     prisma.brandStyle.findUnique({ where: { shopId: shop } }),
-    getPlanForShop(shop),
+    getEffectiveEntitlements(shop),
     getMonthlyUsage(shop),
     prisma.model.findMany({
       where: { shopId: shop, isPreset: false },
       orderBy: { createdAt: 'desc' },
       select: { id: true, name: true, gender: true, ethnicity: true, imageUrl: true, height: true, bodyBuild: true },
     }),
+    prisma.betaFeedback.findFirst({
+      where: { shopId: shop, category: 'would_use_live' },
+      select: { id: true },
+    }),
   ]);
 
   return {
     shop,
     brandStyleId: brandStyle?.brandStyleId ?? BRAND_STYLE_PRESETS[0].id,
-    plan,
+    plan: entitlements.publicPlan,
     used,
-    limit: PLAN_LIMITS[plan] ?? PLAN_LIMITS.free,
-    angles: PLAN_ANGLES[plan] ?? PLAN_ANGLES.free,
+    limit: entitlements.effectiveLimit,
+    angles: entitlements.effectiveAngles,
+    isBeta: entitlements.isBeta,
+    supportEmail: getSupportEmail(),
+    wouldUseLiveCaptured: Boolean(wouldUseLive),
     customModels,
   };
 };
@@ -335,13 +341,28 @@ const POSE_LABEL: Record<string, string> = {
 };
 
 const UPGRADE_MSG = "You've used all your generations this month. Upgrade to continue.";
+const BETA_LIMIT_MSG = "You've used your beta allocation for now. Contact us if you need more access.";
 
-function ErrorMsg({ msg }: { msg: string }) {
+function ErrorMsg({ msg, isBeta, supportEmail }: { msg: string; isBeta: boolean; supportEmail: string }) {
   if (msg === UPGRADE_MSG) {
     return (
       <span>
         You&apos;ve used all your generations this month.{' '}
         <Link to="/app/billing" className="underline font-medium">Upgrade to continue</Link>.
+      </span>
+    );
+  }
+  if (isBeta && msg === BETA_LIMIT_MSG) {
+    return (
+      <span>
+        You&apos;ve used your beta allocation for now.{' '}
+        <a
+          href={`mailto:${supportEmail}?subject=${encodeURIComponent('TinyLemon beta access')}`}
+          className="underline font-medium"
+        >
+          Contact us
+        </a>{' '}
+        if you need more access.
       </span>
     );
   }
@@ -357,11 +378,19 @@ const ACTIVE_STATUSES: ItemStatus[] = [
   'generating_poses',
 ];
 
+const WOULD_USE_LIVE_DELAY_MS = 15_000;
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function DressModel() {
-  const { shop, brandStyleId, customModels } = useLoaderData<typeof loader>();
-  const shopify = useAppBridge();
+  const {
+    shop,
+    brandStyleId,
+    customModels,
+    isBeta,
+    supportEmail,
+    wouldUseLiveCaptured,
+  } = useLoaderData<typeof loader>();
   const authenticatedFetch = useAuthenticatedFetch();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
@@ -388,9 +417,15 @@ export default function DressModel() {
   const [items, setItems] = useState<BatchItem[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [wouldUseLivePrompt, setWouldUseLivePrompt] = useState<{ outfitId: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const selectedCardRef = useRef<HTMLDivElement | null>(null);
+  const firstFlatlayTrackedRef = useRef(false);
+  const firstGenerationTriggeredRef = useRef(false);
+  const firstGenerationCompletedRef = useRef(false);
+  const wouldUseLiveHandledRef = useRef(wouldUseLiveCaptured);
+  const wouldUseLiveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keep a ref to items so the polling interval reads fresh state without
   // being listed as a dependency (avoids clearing/recreating the interval on every state update).
@@ -399,6 +434,13 @@ export default function DressModel() {
 
   // Track consecutive poll failures per item to surface errors after repeated failures
   const pollFailuresRef = useRef<Record<string, number>>({});
+
+  const clearWouldUseLiveTimeout = useCallback(() => {
+    if (wouldUseLiveTimeoutRef.current) {
+      clearTimeout(wouldUseLiveTimeoutRef.current);
+      wouldUseLiveTimeoutRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     fetch('/preset-models.json')
@@ -545,6 +587,10 @@ export default function DressModel() {
       quality: null,
     }));
     setItems(prev => [...prev, ...newItems]);
+    if (isBeta && newItems.length > 0 && !firstFlatlayTrackedRef.current) {
+      firstFlatlayTrackedRef.current = true;
+      posthog.capture('first_flatlay_uploaded', { shop, beta_access: true });
+    }
 
     // Run quality validation and thumbnail generation asynchronously after items are added
     newItems.forEach((item, idx) => {
@@ -559,7 +605,7 @@ export default function DressModel() {
         setItems(prev => prev.map(i => i.id === item.id ? { ...i, thumbnail } : i));
       });
     });
-  }, [items.length, authenticatedFetch]);
+  }, [items.length, authenticatedFetch, isBeta, shop]);
 
   const removeItem = (id: string) => setItems(prev => prev.filter(i => i.id !== id));
   const updateSkuName = (id: string, name: string) =>
@@ -672,6 +718,64 @@ export default function DressModel() {
     return () => clearInterval(interval);
   }, [isPolling]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!isBeta) return;
+    const completed = items.find(i => i.status === 'done' && i.savedOutfitId);
+    if (!completed?.savedOutfitId) return;
+
+    if (!firstGenerationCompletedRef.current) {
+      firstGenerationCompletedRef.current = true;
+      posthog.capture('first_generation_completed', {
+        shop,
+        beta_access: true,
+        outfit_id: completed.savedOutfitId,
+      });
+    }
+
+    if (!wouldUseLiveHandledRef.current && !wouldUseLivePrompt && !wouldUseLiveTimeoutRef.current) {
+      const outfitId = completed.savedOutfitId;
+      wouldUseLiveTimeoutRef.current = setTimeout(() => {
+        clearWouldUseLiveTimeout();
+        if (wouldUseLiveHandledRef.current) return;
+        setWouldUseLivePrompt(current => current ?? { outfitId });
+      }, WOULD_USE_LIVE_DELAY_MS);
+    }
+  }, [clearWouldUseLiveTimeout, isBeta, items, shop, wouldUseLivePrompt]);
+
+  useEffect(() => {
+    if (!wouldUseLivePrompt) return;
+    clearWouldUseLiveTimeout();
+  }, [clearWouldUseLiveTimeout, wouldUseLivePrompt]);
+
+  useEffect(() => {
+    return () => {
+      clearWouldUseLiveTimeout();
+    };
+  }, [clearWouldUseLiveTimeout]);
+
+  async function submitWouldUseLive(rating: 'yes' | 'almost' | 'no') {
+    if (!wouldUseLivePrompt) return;
+    const outfitId = wouldUseLivePrompt.outfitId;
+    wouldUseLiveHandledRef.current = true;
+    clearWouldUseLiveTimeout();
+    setWouldUseLivePrompt(null);
+    posthog.capture('would_use_live_answered', {
+      shop,
+      beta_access: true,
+      outfit_id: outfitId,
+      rating,
+    });
+    await authenticatedFetch('/app/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        category: 'would_use_live',
+        rating,
+        outfitId,
+      }),
+    }).catch(() => null);
+  }
+
   // ── Generate ─────────────────────────────────────────────────────────────────
 
   const allModels: PresetModelEntry[] = [
@@ -735,13 +839,19 @@ export default function DressModel() {
             backMime,
           });
 
-          const token = await shopify.idToken();
           posthog.capture('generation_triggered', { shop, skuName: item.skuName });
-          const res = await fetch('/api/trigger-generation', {
+          if (isBeta && !firstGenerationTriggeredRef.current) {
+            firstGenerationTriggeredRef.current = true;
+            posthog.capture('first_generation_triggered', {
+              shop,
+              beta_access: true,
+              sku_name: item.skuName,
+            });
+          }
+          const res = await authenticatedFetch('/api/trigger-generation', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
             },
             body,
           });
@@ -751,11 +861,15 @@ export default function DressModel() {
           // #endregion
 
           if (!res.ok) {
-            if (res.status === 401 || res.status === 403) {
-              throw new Error('Session expired — please refresh the page.');
+            if (isSessionExpiredResponse(res)) {
+              throw new Error(SESSION_EXPIRED_MESSAGE);
             }
             if (res.status === 402) {
-              throw new Error(UPGRADE_MSG);
+              const data = (await res.json().catch(() => ({}))) as { message?: string; isBeta?: boolean };
+              if (data.isBeta) {
+                posthog.capture('beta_cap_reached', { shop, beta_access: true });
+              }
+              throw new Error(data.message ?? UPGRADE_MSG);
             }
             const text = await res.text();
             let errMsg: string;
@@ -820,6 +934,30 @@ export default function DressModel() {
 
       {/* ── Left column ── */}
       <div className="w-[420px] flex-shrink-0 space-y-6">
+
+      {isBeta && (
+        <div className="rounded-xl border border-krea-accent/20 bg-krea-accent/5 px-4 py-3 text-sm text-krea-text">
+          <p className="font-medium">You&apos;re in beta.</p>
+          <p className="mt-1 text-xs text-krea-muted">
+            Best results come from one clean garment per image.
+          </p>
+          <div className="mt-2 flex gap-3 text-xs">
+            <a
+              href={`mailto:${supportEmail}?subject=${encodeURIComponent('TinyLemon beta support')}`}
+              onClick={() => posthog.capture('beta_support_clicked', { shop, location: 'dress_model_banner' })}
+              className="font-medium text-krea-accent underline underline-offset-2"
+            >
+              Need help?
+            </a>
+            <Link
+              to="/app/feedback"
+              className="font-medium text-krea-accent underline underline-offset-2"
+            >
+              Send feedback
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* ── Flat lay upload ── */}
       <div className="space-y-4">
@@ -957,7 +1095,7 @@ export default function DressModel() {
               {item.status === 'error' && item.error && (
                 <p className="text-[10px] text-red-500 flex items-center gap-1 px-1">
                   <XCircle className="w-3 h-3 flex-shrink-0" />
-                  <ErrorMsg msg={item.error} />
+                  <ErrorMsg msg={item.error} isBeta={isBeta} supportEmail={supportEmail} />
                 </p>
               )}
               {item.status === 'submitted' && (
@@ -1055,11 +1193,15 @@ export default function DressModel() {
                 {item.results.map(shot => (
                   <div key={shot.angleId} className="space-y-1.5">
                     <div className="aspect-[2/3] rounded-lg overflow-hidden border border-krea-border bg-white">
-                      <picture>
-                        <source type="image/avif" srcSet={buildSrcSet(shot.url, 'avif', [640, 800])} />
-                        <source type="image/webp" srcSet={buildSrcSet(shot.url, 'webp', [640, 800])} />
-                        <img src={shot.url} alt={shot.label} className="block w-full h-full object-cover" loading="lazy" decoding="async" />
-                      </picture>
+                      <GeneratedPoseImage
+                        url={shot.url}
+                        label={shot.label}
+                        className="block w-full h-full object-cover"
+                        loading="lazy"
+                        decoding="async"
+                        sizes="(min-width: 1024px) 240px, 45vw"
+                        placeholderClassName="w-full h-full bg-krea-border/30"
+                      />
                     </div>
                     <p className="text-[10px] text-krea-muted">{shot.label}</p>
                   </div>
@@ -1090,7 +1232,11 @@ export default function DressModel() {
                 }
               </div>
 
-              {item.error && <p className="text-xs text-red-500"><ErrorMsg msg={item.error} /></p>}
+              {item.error && (
+                <p className="text-xs text-red-500">
+                  <ErrorMsg msg={item.error} isBeta={isBeta} supportEmail={supportEmail} />
+                </p>
+              )}
               {item.status === 'submitted' && (
                 <p className="text-xs text-krea-muted">
                   Generation in progress —{' '}
@@ -1312,6 +1458,29 @@ export default function DressModel() {
       )}
 
     </div>
+
+      {wouldUseLivePrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h2 className="text-lg font-semibold text-krea-text">Would you use this live?</h2>
+            <p className="mt-2 text-sm text-krea-muted">
+              One quick check-in so we can learn whether this result is already good enough for a live PDP.
+            </p>
+            <div className="mt-5 grid grid-cols-3 gap-3">
+              {(['yes', 'almost', 'no'] as const).map((rating) => (
+                <button
+                  key={rating}
+                  type="button"
+                  onClick={() => submitWouldUseLive(rating)}
+                  className="h-10 rounded-md border border-krea-border text-sm font-medium text-krea-text transition-colors hover:border-krea-accent hover:text-krea-accent"
+                >
+                  {rating === 'yes' ? 'Yes' : rating === 'almost' ? 'Almost' : 'No'}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Nav guard confirm modal ── */}
       {blocker.state === 'blocked' && (

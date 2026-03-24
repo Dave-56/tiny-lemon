@@ -3,6 +3,10 @@ import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import prisma from '../app/db.server';
 import { uploadImageToBlob, uploadImageVariant } from '../app/blob.server';
 import { buildPromptFromSpec } from '../app/lib/garmentFidelityPrompt';
+import {
+  deleteGeneratedImagesNotInPoses,
+  upsertGeneratedImageByPose,
+} from '../app/lib/generatedImagePersistence.server';
 import { normalizeReferenceImageServer } from '../app/lib/normalizeReferenceImage.server';
 import { PDP_STYLE_PRESETS, BRAND_STYLE_PRESETS } from '../app/lib/pdpPresets';
 import type { GarmentSpec } from '../app/lib/garmentSpec';
@@ -359,23 +363,31 @@ export const regenerateOutfitTask = task({
 
     await Promise.all([generateThreeQuarter(), generateBack()]);
 
-    // ── Replace in place: delete old images, create new, mark completed ────────
+    // ── Replace in place: update/create target poses, then clean up stale ones ─
     const newImages: Array<{ shopId: string; outfitId: string; imageUrl: string; pose: string; styleId: string }> = [
       { shopId, outfitId, imageUrl: frontUrl, pose: 'front', styleId },
     ];
     if (tqUrl) newImages.push({ shopId, outfitId, imageUrl: tqUrl, pose: 'three-quarter', styleId });
     if (backUrl) newImages.push({ shopId, outfitId, imageUrl: backUrl, pose: 'back', styleId });
 
-    await prisma.$transaction([
-      prisma.generatedImage.deleteMany({ where: { outfitId } }),
-      prisma.generatedImage.createMany({ data: newImages }),
-      prisma.outfit.update({
+    await prisma.$transaction(async (tx) => {
+      for (const image of newImages) {
+        await upsertGeneratedImageByPose(tx.generatedImage, image, 'regenerate-outfit');
+      }
+
+      await deleteGeneratedImagesNotInPoses(
+        tx.generatedImage,
+        outfitId,
+        newImages.map((image) => image.pose),
+      );
+
+      await tx.outfit.update({
         where: { id: outfitId, shopId },
         // shopifyProductId is intentionally preserved so re-publish updates the
         // existing Shopify product instead of creating a duplicate.
         data: { status: 'completed', errorMessage: null, shopifySyncStatus: 'stale' },
-      }),
-    ]);
+      });
+    });
 
     return { outfitId, status: 'completed' };
   },

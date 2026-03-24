@@ -11,13 +11,17 @@ import {
 } from 'lucide-react';
 import { zipSync } from 'fflate';
 import { useAuthenticatedFetch } from '../contexts/AuthenticatedFetchContext';
+import { GeneratedPoseImage } from '../components/GeneratedPoseImage';
 import { authenticate } from '../shopify.server';
 import prisma from '../db.server';
 import { BRAND_STYLE_PRESETS } from '../lib/pdpPresets';
-import { buildSrcSet } from '../lib/imageVariants';
+import { isSessionExpiredResponse, SESSION_EXPIRED_MESSAGE } from '../lib/authenticatedRequest.client';
 import { handleRegenerateOutfit } from '../lib/triggerGeneration.server';
+import { getEffectiveEntitlements } from '../lib/billing.server';
 import { tasks, runs } from '../trigger.server';
 import posthog from 'posthog-js';
+
+const SHOPIFY_SYNC_RECENCY_WINDOW_MS = 10 * 60 * 1000;
 
 // ── Loader ─────────────────────────────────────────────────────────────────────
 
@@ -25,11 +29,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const shop = session.shop;
 
-  const outfits = await prisma.outfit.findMany({
-    where: { shopId: shop },
-    include: { images: true },
-    orderBy: { createdAt: 'desc' },
-  });
+  const [outfits, entitlements] = await Promise.all([
+    prisma.outfit.findMany({
+      where: { shopId: shop },
+      include: { images: true },
+      orderBy: { createdAt: 'desc' },
+    }),
+    getEffectiveEntitlements(shop),
+  ]);
 
   // Resolve model names: check DB first (custom models), then preset JSON
   const modelIds = [...new Set(outfits.map((o) => o.modelId).filter(Boolean))];
@@ -54,7 +61,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     BRAND_STYLE_PRESETS.map((p) => [p.id, p.label]),
   );
 
-  return { shop, outfits, modelNameMap, brandStyleLabelMap };
+  return { shop, outfits, modelNameMap, brandStyleLabelMap, isBeta: entitlements.isBeta };
 };
 
 // ── Action ─────────────────────────────────────────────────────────────────────
@@ -122,16 +129,38 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const outfitId = body.outfitId as string;
     const outfit = await prisma.outfit.findFirst({
       where: { id: outfitId, shopId },
-      select: { status: true, shopifyProductId: true, shopifySyncStatus: true },
+      select: {
+        status: true,
+        shopifyProductId: true,
+        shopifySyncStatus: true,
+        shopifySyncedAt: true,
+      },
     });
     if (!outfit) return Response.json({ error: 'Not found' }, { status: 404 });
     if (outfit.status !== 'completed') {
       return Response.json({ error: 'Outfit is not completed.' }, { status: 400 });
     }
+    const syncStartedRecently =
+      outfit.shopifySyncStatus === 'syncing' &&
+      outfit.shopifySyncedAt != null &&
+      Date.now() - outfit.shopifySyncedAt.getTime() < SHOPIFY_SYNC_RECENCY_WINDOW_MS;
+    if (syncStartedRecently) {
+      console.info('[publish_to_shopify.idempotent_reuse]', {
+        outfitId,
+        shopId,
+        reason: 'already_syncing_recently',
+      });
+      return Response.json({ ok: true, reused: true });
+    }
     const handle = await tasks.trigger('sync-outfit-to-shopify', {
       outfitId,
       shopId,
       shopifyProductId: outfit.shopifyProductId ?? undefined,
+    });
+    console.info('[publish_to_shopify.enqueued]', {
+      outfitId,
+      shopId,
+      reused: false,
     });
     await prisma.outfit.update({
       where: { id: outfitId },
@@ -238,11 +267,13 @@ async function downloadImage(url: string, filename: string) {
 function ImageTile({
   url,
   label,
+  hasVariants = true,
   onLightbox,
   isLcp = false,
 }: {
   url: string;
   label: string;
+  hasVariants?: boolean;
   onLightbox: () => void;
   isLcp?: boolean;
 }) {
@@ -256,17 +287,21 @@ function ImageTile({
         {error ? (
           <div className="w-full h-full" style={{ background: '#f3f4f6' }} aria-hidden />
         ) : (
-          <picture>
-            <source
-              type="image/avif"
-              srcSet={buildSrcSet(url, 'avif', [640, 800])}
+          hasVariants ? (
+            <GeneratedPoseImage
+              url={url}
+              label={label}
+              width={800}
+              height={1200}
+              className="block w-full h-full object-contain"
+              style={{ aspectRatio: '2 / 3' }}
+              loading={isLcp ? undefined : 'lazy'}
+              decoding={isLcp ? undefined : 'async'}
+              fetchPriority={isLcp ? 'high' : undefined}
               sizes="(min-width: 1024px) 400px, 90vw"
+              placeholderClassName="w-full h-full"
             />
-            <source
-              type="image/webp"
-              srcSet={buildSrcSet(url, 'webp', [640, 800])}
-              sizes="(min-width: 1024px) 400px, 90vw"
-            />
+          ) : (
             <img
               src={url}
               alt={label}
@@ -280,7 +315,7 @@ function ImageTile({
               sizes="(min-width: 1024px) 400px, 90vw"
               onError={() => setError(true)}
             />
-          </picture>
+          )
         )}
         <div className="absolute inset-0 bg-black/25 flex items-center justify-center transition-opacity opacity-100 md:opacity-0 md:group-hover:opacity-100 pointer-events-none">
           <div className="p-2 rounded-full bg-white/90">
@@ -426,11 +461,13 @@ function Lightbox({
   const tq    = outfit.images.find((img) => img.pose === 'three-quarter');
   const back  = outfit.images.find((img) => img.pose === 'back');
 
-  const images: Array<{ url: string; label: string }> = [
-    ...(front ? [{ url: front.imageUrl, label: 'Front'         }] : []),
-    ...(tq    ? [{ url: tq.imageUrl,    label: 'Three-quarter' }] : []),
-    ...(back  ? [{ url: back.imageUrl,  label: 'Back'          }] : []),
-    ...(outfit.cleanFlatLayUrl ? [{ url: outfit.cleanFlatLayUrl, label: 'Flat lay' }] : []),
+  const images: Array<{ url: string; label: string; hasVariants: boolean }> = [
+    ...(front ? [{ url: front.imageUrl, label: 'Front', hasVariants: true }] : []),
+    ...(tq ? [{ url: tq.imageUrl, label: 'Three-quarter', hasVariants: true }] : []),
+    ...(back ? [{ url: back.imageUrl, label: 'Back', hasVariants: true }] : []),
+    ...(outfit.cleanFlatLayUrl
+      ? [{ url: outfit.cleanFlatLayUrl, label: 'Flat lay', hasVariants: false }]
+      : []),
   ];
 
   const [index, setIndex] = useState(initialIndex);
@@ -492,9 +529,17 @@ function Lightbox({
         </button>
 
         <div className="flex items-center justify-center max-h-full max-w-lg w-full">
-          <picture>
-            <source type="image/avif" srcSet={buildSrcSet(current.url, 'avif', [800])} />
-            <source type="image/webp" srcSet={buildSrcSet(current.url, 'webp', [800])} />
+          {current.hasVariants ? (
+            <GeneratedPoseImage
+              url={current.url}
+              label={current.label}
+              decoding="async"
+              className="block max-w-full object-contain rounded-lg"
+              style={{ maxHeight: 'calc(100vh - 200px)' }}
+              sizes="800px"
+              placeholderClassName="w-full max-w-lg rounded-lg bg-krea-border/30"
+            />
+          ) : (
             <img
               key={current.url}
               src={current.url}
@@ -503,7 +548,7 @@ function Lightbox({
               className="block max-w-full object-contain rounded-lg"
               style={{ maxHeight: 'calc(100vh - 200px)' }}
             />
-          </picture>
+          )}
         </div>
 
         <button
@@ -646,17 +691,29 @@ function OutfitCard({
   const renameRef = useRef<HTMLInputElement>(null);
 
   // Ordered shots: front is hero, then tq, back, flat lay (smallest)
-  type CardShot = { url: string; label: string; key: string; size: 'hero' | 'normal' | 'small' };
+  type CardShot = {
+    url: string;
+    label: string;
+    key: string;
+    size: 'hero' | 'normal' | 'small';
+    hasVariants: boolean;
+  };
   const front = outfit.images.find((img) => img.pose === 'front');
   const tq    = outfit.images.find((img) => img.pose === 'three-quarter');
   const back  = outfit.images.find((img) => img.pose === 'back');
 
   const cardShots: CardShot[] = [
-    ...(front ? [{ url: front.imageUrl, label: 'Front',         key: front.id,    size: 'hero'   as const }] : []),
-    ...(tq    ? [{ url: tq.imageUrl,    label: 'Three-quarter', key: tq.id,        size: 'normal' as const }] : []),
-    ...(back  ? [{ url: back.imageUrl,  label: 'Back',          key: back.id,      size: 'normal' as const }] : []),
+    ...(front ? [{ url: front.imageUrl, label: 'Front', key: front.id, size: 'hero' as const, hasVariants: true }] : []),
+    ...(tq ? [{ url: tq.imageUrl, label: 'Three-quarter', key: tq.id, size: 'normal' as const, hasVariants: true }] : []),
+    ...(back ? [{ url: back.imageUrl, label: 'Back', key: back.id, size: 'normal' as const, hasVariants: true }] : []),
     ...(outfit.cleanFlatLayUrl
-      ? [{ url: outfit.cleanFlatLayUrl, label: 'Flat lay', key: 'flat-lay', size: 'small' as const }]
+      ? [{
+          url: outfit.cleanFlatLayUrl,
+          label: 'Flat lay',
+          key: 'flat-lay',
+          size: 'small' as const,
+          hasVariants: false,
+        }]
       : []),
   ];
 
@@ -943,6 +1000,7 @@ function OutfitCard({
             key={shot.key}
             url={shot.url}
             label={shot.label}
+            hasVariants={shot.hasVariants}
             onLightbox={isInProgress ? () => {} : () => onLightbox(outfit.id, i)}
             isLcp={i === 0}
           />
@@ -960,7 +1018,7 @@ function OutfitCard({
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function Outfits() {
-  const { shop, outfits, modelNameMap, brandStyleLabelMap } = useLoaderData<typeof loader>();
+  const { shop, outfits, modelNameMap, brandStyleLabelMap, isBeta } = useLoaderData<typeof loader>();
   const { revalidate } = useRevalidator();
   const authenticatedFetch = useAuthenticatedFetch();
 
@@ -981,8 +1039,13 @@ export default function Outfits() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [lightbox, setLightbox]       = useState<{ outfitId: string; index: number } | null>(null);
   const [regenerateModal, setRegenerateModal] = useState<{ outfitId: string; outfitName: string } | null>(null);
+  const [sessionError, setSessionError] = useState<string | null>(null);
 
   const closeLightbox = useCallback(() => setLightbox(null), []);
+
+  function handleSessionExpired() {
+    setSessionError(SESSION_EXPIRED_MESSAGE);
+  }
 
   // Poll when any outfit is generating or being synced to Shopify
   const hasInProgress = outfits.some((o) => {
@@ -1006,6 +1069,7 @@ export default function Outfits() {
   }
 
   async function deleteOutfit(outfitId: string) {
+    setSessionError(null);
     setDeletingIds((s) => new Set(s).add(outfitId));
     const res = await authenticatedFetch('/app/outfits', {
       method: 'POST',
@@ -1013,6 +1077,7 @@ export default function Outfits() {
       body: JSON.stringify({ intent: 'delete_outfit', outfitId }),
     });
     if (!res.ok) {
+      if (isSessionExpiredResponse(res)) handleSessionExpired();
       setDeletingIds((s) => { const n = new Set(s); n.delete(outfitId); return n; });
       return;
     }
@@ -1023,12 +1088,17 @@ export default function Outfits() {
     outfitId: string,
     name: string,
   ): Promise<{ ok: boolean; error?: string }> {
+    setSessionError(null);
     const res = await authenticatedFetch('/app/outfits', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ intent: 'rename_outfit', outfitId, name }),
     });
     if (!res.ok) {
+      if (isSessionExpiredResponse(res)) {
+        handleSessionExpired();
+        return { ok: false, error: SESSION_EXPIRED_MESSAGE };
+      }
       const data = await res.json().catch(() => ({})) as { error?: string };
       return { ok: false, error: data.error ?? 'Couldn’t rename outfit' };
     }
@@ -1038,6 +1108,7 @@ export default function Outfits() {
 
   async function submitRegenerate(userDirection?: string): Promise<{ ok: boolean; error?: string }> {
     if (!regenerateModal) return { ok: false, error: 'No outfit selected' };
+    setSessionError(null);
     const res = await authenticatedFetch('/app/outfits', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1047,10 +1118,14 @@ export default function Outfits() {
         userDirection: userDirection || undefined,
       }),
     });
-    const data = (await res.json().catch(() => ({}))) as { error?: string; used?: number; limit?: number; plan?: string };
+    const data = (await res.json().catch(() => ({}))) as { error?: string; used?: number; limit?: number; plan?: string; message?: string };
     if (!res.ok) {
+      if (isSessionExpiredResponse(res)) {
+        handleSessionExpired();
+        return { ok: false, error: SESSION_EXPIRED_MESSAGE };
+      }
       if (res.status === 402 && data.error === 'limit_reached') {
-        return { ok: false, error: "You've used all your generations this month. Upgrade to continue." };
+        return { ok: false, error: data.message ?? "You've used all your generations this month. Upgrade to continue." };
       }
       return { ok: false, error: data.error ?? 'Could not regenerate. Try again.' };
     }
@@ -1059,39 +1134,55 @@ export default function Outfits() {
   }
 
   async function cancelSync(outfitId: string) {
+    setSessionError(null);
     const res = await authenticatedFetch('/app/outfits', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ intent: 'cancel_sync', outfitId }),
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      if (isSessionExpiredResponse(res)) handleSessionExpired();
+      return;
+    }
     revalidate();
   }
 
   async function publishOutfit(outfitId: string) {
+    setSessionError(null);
     const res = await authenticatedFetch('/app/outfits', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ intent: 'publish_to_shopify', outfitId }),
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      if (isSessionExpiredResponse(res)) handleSessionExpired();
+      return;
+    }
     posthog.capture('outfit_published', { shop, outfitId });
+    if (isBeta) {
+      posthog.capture('first_outfit_published', { shop, beta_access: true, outfit_id: outfitId });
+    }
     revalidate();
   }
 
   async function cancelGeneration(outfitId: string) {
+    setSessionError(null);
     const res = await authenticatedFetch('/app/outfits', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ intent: 'cancel_generation', outfitId }),
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      if (isSessionExpiredResponse(res)) handleSessionExpired();
+      return;
+    }
     revalidate();
   }
 
   async function deleteSelectedOutfits() {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
+    setSessionError(null);
     setConfirmBulkDelete(false);
     setBulkDeleting(true);
     const res = await authenticatedFetch('/app/outfits', {
@@ -1100,7 +1191,10 @@ export default function Outfits() {
       body: JSON.stringify({ intent: 'delete_outfits', outfitIds: ids }),
     });
     setBulkDeleting(false);
-    if (!res.ok) return;
+    if (!res.ok) {
+      if (isSessionExpiredResponse(res)) handleSessionExpired();
+      return;
+    }
     setSelectedIds(new Set());
     revalidate();
   }
@@ -1115,6 +1209,12 @@ export default function Outfits() {
         <p className="text-[11px] font-semibold uppercase tracking-widest text-krea-muted">
           Outfits{outfits.length > 0 ? ` — ${outfits.length}` : ''}
         </p>
+
+        {sessionError && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {sessionError}
+          </div>
+        )}
 
         {outfits.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">

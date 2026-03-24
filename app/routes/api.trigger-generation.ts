@@ -42,9 +42,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  if (!body.modelId || !body.modelImageUrl || !body.frontB64) {
+  if (!body.modelId || !body.frontB64) {
     return Response.json(
-      { error: "Missing required fields: modelId, modelImageUrl, frontB64" },
+      { error: "Missing required fields: modelId, frontB64" },
       { status: 400 }
     );
   }

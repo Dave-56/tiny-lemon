@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { AuthenticatedFetchProvider, useAuthenticatedFetch } from "./AuthenticatedFetchContext";
+import { SESSION_EXPIRED_MESSAGE } from "../lib/authenticatedRequest.client";
 
 // Mock @shopify/app-bridge-react
 const mockIdToken = vi.fn();
@@ -8,6 +9,12 @@ vi.mock("@shopify/app-bridge-react", () => ({
   useAppBridge: () => ({
     idToken: mockIdToken,
   }),
+}));
+
+vi.mock("posthog-js", () => ({
+  default: {
+    capture: vi.fn(),
+  },
 }));
 
 function Consumer({ onFetch }: { onFetch: (fn: (url: string, init?: RequestInit) => Promise<Response>) => void }) {
@@ -80,6 +87,55 @@ describe("AuthenticatedFetchContext", () => {
     const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     const headers = call[1].headers as Headers;
     expect(headers.get("Authorization")).toBeNull();
+  });
+
+  it("normalizes unauthorized responses into a session-expired JSON response", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response("nope", { status: 401, headers: { "Content-Type": "text/plain" } })
+    );
+
+    let capturedFetch: (url: string, init?: RequestInit) => Promise<Response>;
+    render(
+      <AuthenticatedFetchProvider>
+        <Consumer
+          onFetch={(fn) => {
+            capturedFetch = fn;
+          }}
+        />
+      </AuthenticatedFetchProvider>
+    );
+    await screen.findByText("Consumer");
+
+    const res = await capturedFetch!("/app/outfits", { method: "POST" });
+
+    expect(res.status).toBe(401);
+    await expect(res.json()).resolves.toEqual({ error: SESSION_EXPIRED_MESSAGE });
+  });
+
+  it("treats redirected HTML responses as expired sessions", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      redirected: true,
+      headers: new Headers({ "Content-Type": "text/html; charset=utf-8" }),
+    } satisfies Partial<Response>);
+
+    let capturedFetch: (url: string, init?: RequestInit) => Promise<Response>;
+    render(
+      <AuthenticatedFetchProvider>
+        <Consumer
+          onFetch={(fn) => {
+            capturedFetch = fn;
+          }}
+        />
+      </AuthenticatedFetchProvider>
+    );
+    await screen.findByText("Consumer");
+
+    const res = await capturedFetch!("/app/outfits", { method: "POST" });
+
+    expect(res.status).toBe(401);
+    await expect(res.json()).resolves.toEqual({ error: SESSION_EXPIRED_MESSAGE });
   });
 
   it("merges existing headers with Authorization", async () => {

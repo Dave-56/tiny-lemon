@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useMemo } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
+import { fetchWithShopifyAuth } from "../lib/authenticatedRequest.client";
 
 type AuthenticatedFetch = (
   input: RequestInfo | URL,
@@ -25,12 +26,11 @@ export function AuthenticatedFetchProvider({
 
   const authenticatedFetch = useCallback<AuthenticatedFetch>(
     async (input, init = {}) => {
-      const token = await shopify.idToken();
-
-      const headers = new Headers(init.headers);
-      headers.set("Authorization", `Bearer ${token}`);
-
-      return fetch(input, { ...init, headers });
+      return fetchWithShopifyAuth({
+        getToken: () => shopify.idToken(),
+        input,
+        init,
+      });
     },
     [shopify]
   );

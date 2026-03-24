@@ -1,10 +1,21 @@
 export type VariantFormat = 'avif' | 'webp';
 
-function insertBeforeExt(url: string, insertion: string): string {
-  // Assumes no query/hash. If present, they will be preserved as they are not used currently.
-  const idx = url.lastIndexOf('.png');
-  if (idx === -1) return url;
-  return url.slice(0, idx) + insertion + url.slice(idx);
+function splitUrlSuffix(url: string): { base: string; suffix: string } {
+  const hashIndex = url.indexOf('#');
+  const queryIndex = url.indexOf('?');
+  const cutIndex =
+    hashIndex === -1 ? queryIndex
+    : queryIndex === -1 ? hashIndex
+    : Math.min(hashIndex, queryIndex);
+
+  if (cutIndex === -1) {
+    return { base: url, suffix: '' };
+  }
+
+  return {
+    base: url.slice(0, cutIndex),
+    suffix: url.slice(cutIndex),
+  };
 }
 
 /**
@@ -12,12 +23,12 @@ function insertBeforeExt(url: string, insertion: string): string {
  * derive variant URLs like `-640w.avif` and `-640w.webp`.
  */
 export function buildVariantUrl(pngUrl: string, width: number, fmt: VariantFormat): string {
-  const hasHash = /\.[a-f0-9]{8}\.png$/i.test(pngUrl);
-  const insertion = hasHash ? `-${width}w.${fmt}` : `-${width}w.${fmt}`; // same suffix whether hashed or not
-  return insertBeforeExt(pngUrl, insertion).replace(/\.png$/i, `.${fmt}`);
+  const { base, suffix } = splitUrlSuffix(pngUrl);
+  const match = base.match(/^(.*)\.png$/i);
+  if (!match) return pngUrl;
+  return `${match[1]}-${width}w.${fmt}${suffix}`;
 }
 
 export function buildSrcSet(pngUrl: string, fmt: VariantFormat, widths: number[]): string {
   return widths.map((w) => `${buildVariantUrl(pngUrl, w, fmt)} ${w}w`).join(', ');
 }
-

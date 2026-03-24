@@ -9,6 +9,7 @@ import { buildTryDemoPrompt } from '../app/lib/tryDemoPrompt';
 import { normalizeReferenceImageServer } from '../app/lib/normalizeReferenceImage.server';
 import { PDP_STYLE_PRESETS, BRAND_STYLE_PRESETS } from '../app/lib/pdpPresets';
 import { DEMO_SHOP_ID } from '../app/lib/billing.server';
+import { createGeneratedImageOrReuse } from '../app/lib/generatedImagePersistence.server';
 import type { GarmentSpec } from '../app/lib/garmentSpec';
 
 // ── Payload ───────────────────────────────────────────────────────────────────
@@ -211,7 +212,11 @@ export const generateOutfitTask = task({
         const webp = await sharp(frontCropped).resize({ width: w }).webp({ quality: 60 }).toBuffer();
         await uploadImageVariant(webp, `${baseNameFront}-${w}w.webp`, 'image/webp', 31536000);
       }
-      await prisma.generatedImage.create({ data: { shopId, outfitId, imageUrl: frontUrl, pose: 'front', styleId } });
+      await createGeneratedImageOrReuse(
+        prisma.generatedImage,
+        { shopId, outfitId, imageUrl: frontUrl, pose: 'front', styleId },
+        'generate-outfit',
+      );
     }
 
     // ── 7. Three-quarter + back poses (parallel) ─────────────────────────────
@@ -270,7 +275,11 @@ export const generateOutfitTask = task({
         const webp = await sharp(tqCropped).resize({ width: w }).webp({ quality: 60 }).toBuffer();
         await uploadImageVariant(webp, `${baseNameTq}-${w}w.webp`, 'image/webp', 31536000);
       }
-      await prisma.generatedImage.create({ data: { shopId, outfitId, imageUrl: tqUrl, pose: 'three-quarter', styleId } });
+      await createGeneratedImageOrReuse(
+        prisma.generatedImage,
+        { shopId, outfitId, imageUrl: tqUrl, pose: 'three-quarter', styleId },
+        'generate-outfit',
+      );
     };
 
     const generateBack = async () => {
@@ -318,7 +327,11 @@ export const generateOutfitTask = task({
         const webp = await sharp(backCropped).resize({ width: w }).webp({ quality: 60 }).toBuffer();
         await uploadImageVariant(webp, `${baseNameBack}-${w}w.webp`, 'image/webp', 31536000);
       }
-      await prisma.generatedImage.create({ data: { shopId, outfitId, imageUrl: backUrl, pose: 'back', styleId } });
+      await createGeneratedImageOrReuse(
+        prisma.generatedImage,
+        { shopId, outfitId, imageUrl: backUrl, pose: 'back', styleId },
+        'generate-outfit',
+      );
     };
 
     await Promise.all([generateThreeQuarter(), generateBack()]);
