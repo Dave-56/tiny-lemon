@@ -30,16 +30,34 @@ model Session {
 }
 
 model Shop {
-  id        String   @id // myshopify_domain e.g. "my-store.myshopify.com"
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  plan      String   @default("free") // free | Starter | Growth | Scale
+  id                      String         @id // myshopify_domain e.g. "my-store.myshopify.com"
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+  plan                    String         @default("free") // free | Starter | Growth | Scale
+  betaAccess              Boolean        @default(false)
+  betaStatus              String?
+  betaCap                 Int?
+  betaGrantedAt           DateTime?
+  betaGrantedBy           String?
+  betaGrantedReason       String?
+  betaActivatedAt         DateTime?
+  betaWelcomeCompleted    Boolean        @default(false)
+  betaIntakeCompleted     Boolean        @default(false)
+  betaOnboardingCompleted Boolean        @default(false)
+  storeUrl                String?
+  catalogType             String?
+  skuVolume               String?
+  photoWorkflow           String?
+  biggestPain             String?
+  intendedUseCase         String?
+  betaFeedback            BetaFeedback[]
 
   outfits       Outfit[]
   models        Model[]
   brandStyle    BrandStyle?
   creditBalance CreditBalance?
   transactions  CreditTransaction[]
+  requestIdempotencies RequestIdempotency[]
 }
 
 model BrandStyle {
@@ -111,6 +129,8 @@ model GeneratedImage {
   createdAt DateTime @default(now())
 
   outfit Outfit @relation(fields: [outfitId], references: [id], onDelete: Cascade)
+
+  @@unique([outfitId, pose])
 }
 
 model CreditBalance {
@@ -130,4 +150,37 @@ model CreditTransaction {
   createdAt   DateTime @default(now())
 
   shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+}
+
+model RequestIdempotency {
+  id         String   @id @default(cuid())
+  shopId     String
+  operation  String
+  requestKey String
+  status     String
+  runToken   String
+  outfitId   String?
+  jobId      String?
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, operation, requestKey])
+  @@index([shopId, status, expiresAt])
+}
+
+model BetaFeedback {
+  id        String   @id @default(cuid())
+  shopId     String
+  outfitId   String?
+  rating     String?
+  category   String?
+  message    String?
+  createdAt  DateTime @default(now())
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId])
 }

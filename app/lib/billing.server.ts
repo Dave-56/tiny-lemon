@@ -3,6 +3,8 @@ import prisma from "../db.server";
 
 /** Demo shop id for public /try free tool. No credits; rate limit only. */
 export const DEMO_SHOP_ID = process.env.DEMO_SHOP_ID ?? "__demo__";
+export const BETA_DEFAULT_CAP = 100;
+export const BETA_FULL_ANGLES = ["front", "three-quarter", "back"] as const;
 
 export const PLAN_LIMITS: Record<string, number> = {
   free: 3,
@@ -17,6 +19,25 @@ export const PLAN_ANGLES: Record<string, string[]> = {
   Starter: ["front", "three-quarter", "back"],
   Growth: ["front", "three-quarter", "back"],
   Scale: ["front", "three-quarter", "back"],
+};
+
+type ReserveGenerationsOptions = {
+  description?: string;
+};
+
+type RefundReservationArgs = {
+  count?: number;
+  reservationDescription: string;
+  refundDescription: string;
+};
+
+export type EffectiveEntitlements = {
+  publicPlan: string;
+  isBeta: boolean;
+  betaStatus: string | null;
+  effectiveLimit: number;
+  effectiveAngles: readonly string[];
+  showUpgradePrompt: boolean;
 };
 
 function startOfCalendarMonth(): Date {
@@ -45,6 +66,58 @@ export async function getPlanForShop(shopId: string): Promise<string> {
   return shop?.plan ?? "free";
 }
 
+export async function getEffectiveEntitlements(
+  shopId: string,
+): Promise<EffectiveEntitlements> {
+  if (shopId === DEMO_SHOP_ID) {
+    return {
+      publicPlan: "free",
+      isBeta: false,
+      betaStatus: null,
+      effectiveLimit: PLAN_LIMITS.free,
+      effectiveAngles: PLAN_ANGLES.free,
+      showUpgradePrompt: true,
+    };
+  }
+
+  const shop = await prisma.shop.findUnique({
+    where: { id: shopId },
+    select: {
+      plan: true,
+      betaAccess: true,
+      betaStatus: true,
+      betaCap: true,
+    },
+  });
+
+  const publicPlan = shop?.plan ?? "free";
+  const betaStatus = shop?.betaStatus ?? null;
+  const isBeta =
+    shop?.betaAccess === true &&
+    betaStatus !== "paused" &&
+    betaStatus !== "ended";
+
+  if (isBeta) {
+    return {
+      publicPlan,
+      isBeta: true,
+      betaStatus,
+      effectiveLimit: shop?.betaCap ?? BETA_DEFAULT_CAP,
+      effectiveAngles: BETA_FULL_ANGLES,
+      showUpgradePrompt: false,
+    };
+  }
+
+  return {
+    publicPlan,
+    isBeta: false,
+    betaStatus,
+    effectiveLimit: PLAN_LIMITS[publicPlan] ?? PLAN_LIMITS.free,
+    effectiveAngles: PLAN_ANGLES[publicPlan] ?? PLAN_ANGLES.free,
+    showUpgradePrompt: true,
+  };
+}
+
 /**
  * Atomically reserve `count` generation credits for the shop.
  *
@@ -61,12 +134,13 @@ export async function getPlanForShop(shopId: string): Promise<string> {
 export async function reserveGenerations(
   shopId: string,
   count: number,
-): Promise<string> {
+  options: ReserveGenerationsOptions = {},
+): Promise<EffectiveEntitlements> {
   if (shopId === DEMO_SHOP_ID) {
-    return "free";
+    return getEffectiveEntitlements(shopId);
   }
-  const plan = await getPlanForShop(shopId);
-  const limit = PLAN_LIMITS[plan] ?? PLAN_LIMITS.free;
+  const entitlements = await getEffectiveEntitlements(shopId);
+  const limit = entitlements.effectiveLimit;
   const startOfMonth = startOfCalendarMonth();
 
   await prisma.$transaction(
@@ -92,11 +166,63 @@ export async function reserveGenerations(
           shopId,
           type: "usage",
           amount: -1,
-          description: "outfit generation",
+          description: options.description ?? "outfit generation",
         })),
       });
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
   );
-  return plan;
+  return entitlements;
+}
+
+export async function refundReservedGeneration(
+  shopId: string,
+  {
+    count = 1,
+    reservationDescription,
+    refundDescription,
+  }: RefundReservationArgs,
+): Promise<boolean> {
+  if (shopId === DEMO_SHOP_ID) {
+    return false;
+  }
+
+  return prisma.$transaction(
+    async (tx) => {
+      const [reservedCount, existingRefundCount] = await Promise.all([
+        tx.creditTransaction.count({
+          where: {
+            shopId,
+            type: "usage",
+            amount: -1,
+            description: reservationDescription,
+          },
+        }),
+        tx.creditTransaction.count({
+          where: {
+            shopId,
+            type: "refund",
+            amount: count,
+            description: refundDescription,
+          },
+        }),
+      ]);
+
+      if (reservedCount < count || existingRefundCount > 0) {
+        return false;
+      }
+
+      await tx.creditTransaction.create({
+        data: {
+          shopId,
+          type: "refund",
+          amount: count,
+          description: refundDescription,
+        },
+      });
+
+      return true;
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+  );
 }
