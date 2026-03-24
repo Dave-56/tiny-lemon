@@ -6,7 +6,8 @@ import { boundary } from '@shopify/shopify-app-react-router/server';
 import { authenticate } from '../shopify.server';
 import { BILLING_PLANS } from '../lib/plans';
 import prisma from '../db.server';
-import { getMonthlyUsage, PLAN_LIMITS } from '../lib/billing.server';
+import { getMonthlyUsage, getEffectiveEntitlements, PLAN_LIMITS } from '../lib/billing.server';
+import { getSupportEmail } from '../lib/support.server';
 
 // ── Loader ────────────────────────────────────────────────────────────────────
 //
@@ -16,29 +17,48 @@ import { getMonthlyUsage, PLAN_LIMITS } from '../lib/billing.server';
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { billing, session } = await authenticate.admin(request);
-
-  const subscription = await billing.check({
-    plans: Object.values(BILLING_PLANS),
-  });
-
-  const activePlan = subscription.hasActivePayment
-    ? (subscription.appSubscriptions[0]?.name ?? 'free')
-    : 'free';
-
-  // Sync plan to DB — keeps us consistent after upgrades, downgrades, and
-  // subscription events that arrive via the webhook.
-  await prisma.shop.update({
+  const shop = await prisma.shop.findUnique({
     where: { id: session.shop },
-    data: { plan: activePlan },
+    select: { betaAccess: true, betaStatus: true },
   });
+  const isBeta =
+    shop?.betaAccess === true &&
+    shop.betaStatus !== 'paused' &&
+    shop.betaStatus !== 'ended';
 
-  const used = await getMonthlyUsage(session.shop);
+  let activePlan = 'free';
+  if (!isBeta) {
+    const subscription = await billing.check({
+      plans: Object.values(BILLING_PLANS),
+    });
+    activePlan = subscription.hasActivePayment
+      ? (subscription.appSubscriptions[0]?.name ?? 'free')
+      : 'free';
+
+    await prisma.shop.update({
+      where: { id: session.shop },
+      data: { plan: activePlan },
+    });
+  } else {
+    activePlan =
+      (await prisma.shop.findUnique({
+        where: { id: session.shop },
+        select: { plan: true },
+      }))?.plan ?? 'free';
+  }
+
+  const [used, entitlements] = await Promise.all([
+    getMonthlyUsage(session.shop),
+    getEffectiveEntitlements(session.shop),
+  ]);
 
   return {
     shop: session.shop,
     plan: activePlan,
     used,
-    limit: PLAN_LIMITS[activePlan] ?? PLAN_LIMITS.free,
+    limit: entitlements.effectiveLimit,
+    isBeta: entitlements.isBeta,
+    supportEmail: getSupportEmail(),
   };
 };
 
@@ -87,7 +107,7 @@ const PLANS = [
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Billing() {
-  const { shop, plan, used, limit } = useLoaderData<typeof loader>();
+  const { shop, plan, used, limit, isBeta, supportEmail } = useLoaderData<typeof loader>();
 
   useEffect(() => {
     posthog.capture('billing_viewed', { shop, plan });
@@ -124,7 +144,23 @@ export default function Billing() {
           </div>
         </section>
 
+        {isBeta && (
+          <section className="rounded-xl border border-krea-accent/20 bg-krea-accent/5 px-4 py-4 text-sm text-krea-text">
+            <p className="font-medium">Beta access active</p>
+            <p className="mt-1 text-xs text-krea-muted">
+              Your beta access is free during the program. If you need more room this month, contact us and we&apos;ll extend access.
+            </p>
+            <a
+              href={`mailto:${supportEmail}?subject=${encodeURIComponent('TinyLemon beta support')}`}
+              className="mt-3 inline-flex text-xs font-medium text-krea-accent underline underline-offset-2"
+            >
+              Contact support
+            </a>
+          </section>
+        )}
+
         {/* Plan cards */}
+        {!isBeta && (
         <section className="space-y-3">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-krea-muted">Plans</p>
           <div className="grid grid-cols-2 gap-3">
@@ -175,6 +211,7 @@ export default function Billing() {
             })}
           </div>
         </section>
+        )}
 
       </div>
     </div>

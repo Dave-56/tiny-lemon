@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from 'react-router';
-import { Form, useRouteError } from 'react-router';
+import { Form, useLoaderData, useRouteError } from 'react-router';
 import { boundary } from '@shopify/shopify-app-react-router/server';
+import posthog from 'posthog-js';
 import { authenticate } from '../shopify.server';
 import prisma, { ensureShop } from '../db.server';
 import { BRAND_STYLE_PRESETS } from '../lib/pdpPresets';
@@ -17,14 +18,26 @@ import { shopifyRedirect } from '../shopify-params';
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
-  const brandStyle = await prisma.brandStyle.findUnique({
-    where: { shopId: session.shop },
-    select: { onboardingCompleted: true },
-  });
+  const [shop, brandStyle] = await Promise.all([
+    prisma.shop.findUnique({
+      where: { id: session.shop },
+      select: { betaAccess: true, betaStatus: true },
+    }),
+    prisma.brandStyle.findUnique({
+      where: { shopId: session.shop },
+      select: { onboardingCompleted: true },
+    }),
+  ]);
   if (brandStyle?.onboardingCompleted) {
     return shopifyRedirect(request, '/app/dress-model');
   }
-  return { ready: true };
+  return {
+    ready: true,
+    isBeta:
+      shop?.betaAccess === true &&
+      shop.betaStatus !== 'paused' &&
+      shop.betaStatus !== 'ended',
+  };
 };
 
 // ── Action ────────────────────────────────────────────────────────────────────
@@ -52,6 +65,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       onboardingCompleted: true,
     },
   });
+
+  await prisma.shop.update({
+    where: { id: shopId },
+    data: {
+      betaOnboardingCompleted: true,
+    },
+  }).catch(() => null);
 
   return shopifyRedirect(request, '/app/dress-model');
 };
@@ -105,6 +125,7 @@ function SelectCard({
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Onboarding() {
+  const { isBeta } = useLoaderData<typeof loader>();
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [brandEnergy, setBrandEnergy] = useState('');
   const [primaryCategory, setPrimaryCategory] = useState('');
@@ -125,13 +146,20 @@ export default function Onboarding() {
       <div className="mx-auto max-w-md space-y-6">
 
         {/* Step indicator */}
-        <div className="flex items-center gap-2">
+        <div className="space-y-2">
+          {isBeta && (
+            <div className="rounded-lg border border-krea-accent/25 bg-krea-accent/5 px-3 py-2 text-xs text-krea-text">
+              Step 3 of 3: Set your brand look so TinyLemon can match your store.
+            </div>
+          )}
+          <div className="flex items-center gap-2">
           {[1, 2, 3, 4].map((s) => (
             <div
               key={s}
               className={`h-1 flex-1 rounded-full transition-colors ${s <= step ? 'bg-krea-accent' : 'bg-krea-border'}`}
             />
           ))}
+        </div>
         </div>
 
         {/* Step 1: Brand Energy */}
@@ -289,7 +317,13 @@ export default function Onboarding() {
             {selectedPreset?.description && (
               <p className="text-xs text-krea-muted leading-relaxed">{selectedPreset.description}</p>
             )}
-            <Form method="post" className="space-y-3">
+            <Form
+              method="post"
+              className="space-y-3"
+              onSubmit={() => {
+                if (isBeta) posthog.capture('brand_setup_completed', { beta_access: true });
+              }}
+            >
               <input type="hidden" name="brandEnergy" value={brandEnergy} />
               <input type="hidden" name="primaryCategory" value={primaryCategory} />
               <input type="hidden" name="pricePoint" value={pricePoint} />
