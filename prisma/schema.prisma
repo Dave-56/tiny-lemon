@@ -124,6 +124,7 @@ model GeneratedImage {
   shopId    String
   outfitId  String
   imageUrl  String   // Vercel Blob URL
+  assetManifest Json?
   pose      String   // front | three-quarter | back | torso-crop
   styleId   String?  // styling direction preset
   createdAt DateTime @default(now())

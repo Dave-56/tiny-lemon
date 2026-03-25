@@ -19,6 +19,7 @@ import {
   markRequestFailed,
   type OwnedRequestClaim,
 } from "./requestIdempotency.server";
+import { logServerEvent } from "./observability.server";
 
 export type TriggerGenerationBody = {
   skuName?: string;
@@ -221,7 +222,7 @@ export async function handleTriggerGeneration(
       requestKey,
     });
     if (claim.disposition === "reused") {
-      console.info("[trigger_generation.idempotent_reuse]", {
+      logServerEvent("info", "trigger_generation.idempotent_reuse", {
         shopId,
         outfitId: claim.outfitId,
         jobId: claim.jobId ?? undefined,
@@ -344,12 +345,12 @@ export async function handleTriggerGeneration(
       jobId: handle.id,
     });
     if (!markedEnqueued) {
-      console.warn("[trigger_generation.idempotency_transition_lost]", {
+      logServerEvent("warn", "trigger_generation.idempotency_transition_lost", {
         shopId,
         outfitId: outfit.id,
       });
     }
-    console.info("[trigger_generation.fresh_enqueue]", {
+    logServerEvent("info", "trigger_generation.fresh_enqueue", {
       shopId,
       outfitId: outfit.id,
       jobId: handle.id,
@@ -377,7 +378,7 @@ export async function handleTriggerGeneration(
         reservationDescription: reservation.reservationDescription,
         refundDescription: reservation.refundDescription,
       }).catch(() => false);
-      console.info("[trigger_generation.pre_enqueue_failure_refund]", {
+      logServerEvent("info", "trigger_generation.pre_enqueue_failure_refund", {
         refunded,
         reason: "pre_enqueue_failure",
         shopId,
@@ -386,7 +387,9 @@ export async function handleTriggerGeneration(
     if (message === "Model not found.") {
       return Response.json({ error: message }, { status: 400 });
     }
-    console.error("[trigger_generation]", e);
+    logServerEvent("error", "trigger_generation.unhandled_error", {
+      error: e instanceof Error ? e.message : String(e),
+    });
     return Response.json(
       { error: message || "Server error" },
       { status: 500 }
@@ -471,7 +474,7 @@ export async function handleRegenerateOutfit(
       outfitId,
     });
     if (claim.disposition === "reused") {
-      console.info("[regenerate_outfit.idempotent_reuse]", {
+      logServerEvent("info", "regenerate_outfit.idempotent_reuse", {
         shopId,
         outfitId: claim.outfitId,
         jobId: claim.jobId ?? undefined,
@@ -554,12 +557,12 @@ export async function handleRegenerateOutfit(
       jobId: handle.id,
     });
     if (!markedEnqueued) {
-      console.warn("[regenerate_outfit.idempotency_transition_lost]", {
+      logServerEvent("warn", "regenerate_outfit.idempotency_transition_lost", {
         shopId,
         outfitId,
       });
     }
-    console.info("[regenerate_outfit.fresh_enqueue]", {
+    logServerEvent("info", "regenerate_outfit.fresh_enqueue", {
       shopId,
       outfitId,
       jobId: handle.id,
@@ -587,7 +590,7 @@ export async function handleRegenerateOutfit(
         reservationDescription: reservation.reservationDescription,
         refundDescription: reservation.refundDescription,
       }).catch(() => false);
-      console.info("[regenerate_outfit.pre_enqueue_failure_refund]", {
+      logServerEvent("info", "regenerate_outfit.pre_enqueue_failure_refund", {
         refunded,
         reason: "pre_enqueue_failure",
         outfitId,
@@ -597,7 +600,9 @@ export async function handleRegenerateOutfit(
     if (message === "Model not found. Cannot regenerate.") {
       return Response.json({ error: message }, { status: 400 });
     }
-    console.error("[regenerate_outfit]", e);
+    logServerEvent("error", "regenerate_outfit.unhandled_error", {
+      error: e instanceof Error ? e.message : String(e),
+    });
     return Response.json(
       { error: message || "Server error" },
       { status: 500 }

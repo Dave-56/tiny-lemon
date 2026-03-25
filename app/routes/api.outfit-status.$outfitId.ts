@@ -20,7 +20,7 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
       status: true,
       errorMessage: true,
       cleanFlatLayUrl: true,
-      images: { select: { id: true, pose: true, imageUrl: true } },
+      images: { select: { id: true, pose: true, imageUrl: true, assetManifest: true } },
     },
   });
 

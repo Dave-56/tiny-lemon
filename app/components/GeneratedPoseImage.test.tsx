@@ -3,35 +3,79 @@ import { describe, expect, it } from "vitest";
 
 import { GeneratedPoseImage } from "./GeneratedPoseImage";
 
+const assetManifest = {
+  kind: "pose-image-v1" as const,
+  original: {
+    url: "https://blob.example/outfits/shop/outfit/front.abcd1234.png",
+    width: 800,
+    height: 1200,
+    contentType: "image/png",
+  },
+  variants: {
+    avif: [
+      {
+        url: "https://blob.example/outfits/shop/outfit/front.abcd1234-640w.avif",
+        width: 640,
+        contentType: "image/avif",
+      },
+      {
+        url: "https://blob.example/outfits/shop/outfit/front.abcd1234-800w.avif",
+        width: 800,
+        contentType: "image/avif",
+      },
+    ],
+    webp: [
+      {
+        url: "https://blob.example/outfits/shop/outfit/front.abcd1234-640w.webp",
+        width: 640,
+        contentType: "image/webp",
+      },
+      {
+        url: "https://blob.example/outfits/shop/outfit/front.abcd1234-800w.webp",
+        width: 800,
+        contentType: "image/webp",
+      },
+    ],
+  },
+  downloadUrl: "https://blob.example/outfits/shop/outfit/front.abcd1234.png",
+};
+
 describe("GeneratedPoseImage", () => {
-  it("retries without variant sources after the first image error", () => {
+  it("renders picture sources from the asset manifest", () => {
     const { container } = render(
       <GeneratedPoseImage
-        url="https://blob.example/outfits/shop/outfit/front.abcd1234.png"
+        asset={assetManifest}
         label="Front"
       />,
     );
 
     expect(container.querySelectorAll("source")).toHaveLength(2);
-
-    fireEvent.error(screen.getByAltText("Front"));
-
-    expect(container.querySelectorAll("source")).toHaveLength(0);
     expect(screen.getByAltText("Front")).toBeInTheDocument();
-    expect(
-      screen.queryByTestId("generated-pose-placeholder"),
-    ).not.toBeInTheDocument();
   });
 
-  it("shows a placeholder only after the plain png also fails", () => {
+  it("renders a plain image for legacy url-only rows", () => {
     const { container } = render(
       <GeneratedPoseImage
-        url="https://blob.example/outfits/shop/outfit/front.abcd1234.png"
+        url="https://blob.example/outfits/shop/outfit/front.legacy.png"
         label="Front"
       />,
     );
 
-    fireEvent.error(screen.getByAltText("Front"));
+    expect(container.querySelectorAll("source")).toHaveLength(0);
+    expect(screen.getByAltText("Front")).toHaveAttribute(
+      "src",
+      "https://blob.example/outfits/shop/outfit/front.legacy.png",
+    );
+  });
+
+  it("shows a placeholder after the selected asset fails", () => {
+    const { container } = render(
+      <GeneratedPoseImage
+        asset={assetManifest}
+        label="Front"
+      />,
+    );
+
     fireEvent.error(screen.getByAltText("Front"));
 
     expect(container.querySelectorAll("source")).toHaveLength(0);
@@ -39,20 +83,26 @@ describe("GeneratedPoseImage", () => {
     expect(screen.getByTestId("generated-pose-placeholder")).toBeInTheDocument();
   });
 
-  it("resets fallback state when the url changes", () => {
+  it("resets fallback state when the asset changes", () => {
     const { container, rerender } = render(
       <GeneratedPoseImage
-        url="https://blob.example/outfits/shop/outfit/front.abcd1234.png"
+        asset={assetManifest}
         label="Front"
       />,
     );
 
     fireEvent.error(screen.getByAltText("Front"));
-    expect(container.querySelectorAll("source")).toHaveLength(0);
+    expect(screen.getByTestId("generated-pose-placeholder")).toBeInTheDocument();
 
     rerender(
       <GeneratedPoseImage
-        url="https://blob.example/outfits/shop/outfit/back.efgh5678.png"
+        asset={{
+          ...assetManifest,
+          original: {
+            ...assetManifest.original,
+            url: "https://blob.example/outfits/shop/outfit/back.efgh5678.png",
+          },
+        }}
         label="Back"
       />,
     );

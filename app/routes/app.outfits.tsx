@@ -266,12 +266,14 @@ async function downloadImage(url: string, filename: string) {
 
 function ImageTile({
   url,
+  asset,
   label,
   hasVariants = true,
   onLightbox,
   isLcp = false,
 }: {
   url: string;
+  asset?: unknown;
   label: string;
   hasVariants?: boolean;
   onLightbox: () => void;
@@ -289,6 +291,7 @@ function ImageTile({
         ) : (
           hasVariants ? (
             <GeneratedPoseImage
+              asset={asset}
               url={url}
               label={label}
               width={800}
@@ -461,10 +464,10 @@ function Lightbox({
   const tq    = outfit.images.find((img) => img.pose === 'three-quarter');
   const back  = outfit.images.find((img) => img.pose === 'back');
 
-  const images: Array<{ url: string; label: string; hasVariants: boolean }> = [
-    ...(front ? [{ url: front.imageUrl, label: 'Front', hasVariants: true }] : []),
-    ...(tq ? [{ url: tq.imageUrl, label: 'Three-quarter', hasVariants: true }] : []),
-    ...(back ? [{ url: back.imageUrl, label: 'Back', hasVariants: true }] : []),
+  const images: Array<{ url: string; label: string; asset?: unknown; hasVariants: boolean }> = [
+    ...(front ? [{ url: front.imageUrl, label: 'Front', asset: front.assetManifest, hasVariants: true }] : []),
+    ...(tq ? [{ url: tq.imageUrl, label: 'Three-quarter', asset: tq.assetManifest, hasVariants: true }] : []),
+    ...(back ? [{ url: back.imageUrl, label: 'Back', asset: back.assetManifest, hasVariants: true }] : []),
     ...(outfit.cleanFlatLayUrl
       ? [{ url: outfit.cleanFlatLayUrl, label: 'Flat lay', hasVariants: false }]
       : []),
@@ -531,6 +534,7 @@ function Lightbox({
         <div className="flex items-center justify-center max-h-full max-w-lg w-full">
           {current.hasVariants ? (
             <GeneratedPoseImage
+              asset={current.asset}
               url={current.url}
               label={current.label}
               decoding="async"
@@ -693,6 +697,7 @@ function OutfitCard({
   // Ordered shots: front is hero, then tq, back, flat lay (smallest)
   type CardShot = {
     url: string;
+    asset?: unknown;
     label: string;
     key: string;
     size: 'hero' | 'normal' | 'small';
@@ -703,9 +708,9 @@ function OutfitCard({
   const back  = outfit.images.find((img) => img.pose === 'back');
 
   const cardShots: CardShot[] = [
-    ...(front ? [{ url: front.imageUrl, label: 'Front', key: front.id, size: 'hero' as const, hasVariants: true }] : []),
-    ...(tq ? [{ url: tq.imageUrl, label: 'Three-quarter', key: tq.id, size: 'normal' as const, hasVariants: true }] : []),
-    ...(back ? [{ url: back.imageUrl, label: 'Back', key: back.id, size: 'normal' as const, hasVariants: true }] : []),
+    ...(front ? [{ url: front.imageUrl, asset: front.assetManifest, label: 'Front', key: front.id, size: 'hero' as const, hasVariants: true }] : []),
+    ...(tq ? [{ url: tq.imageUrl, asset: tq.assetManifest, label: 'Three-quarter', key: tq.id, size: 'normal' as const, hasVariants: true }] : []),
+    ...(back ? [{ url: back.imageUrl, asset: back.assetManifest, label: 'Back', key: back.id, size: 'normal' as const, hasVariants: true }] : []),
     ...(outfit.cleanFlatLayUrl
       ? [{
           url: outfit.cleanFlatLayUrl,
@@ -999,6 +1004,7 @@ function OutfitCard({
           <ImageTile
             key={shot.key}
             url={shot.url}
+            asset={shot.asset}
             label={shot.label}
             hasVariants={shot.hasVariants}
             onLightbox={isInProgress ? () => {} : () => onLightbox(outfit.id, i)}

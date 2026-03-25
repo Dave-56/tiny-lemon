@@ -1,40 +1,37 @@
 import { useEffect, useState } from "react";
 import type { ComponentPropsWithoutRef } from "react";
 
-import { buildSrcSet } from "../lib/imageVariants";
+import {
+  buildVariantSrcSet,
+  parsePoseImageAssetManifest,
+} from "../lib/imageAssetManifest";
 
 type GeneratedPoseImageProps = Omit<
   ComponentPropsWithoutRef<"img">,
   "src" | "alt" | "onError"
 > & {
-  url: string;
+  url?: string;
+  asset?: unknown;
   label: string;
   placeholderClassName?: string;
 };
 
 export function GeneratedPoseImage({
   url,
+  asset,
   label,
   placeholderClassName,
   ...imgProps
 }: GeneratedPoseImageProps) {
-  const [variantsEnabled, setVariantsEnabled] = useState(true);
   const [baseFailed, setBaseFailed] = useState(false);
+  const manifest = parsePoseImageAssetManifest(asset);
+  const resolvedUrl = manifest?.original.url ?? url;
 
   useEffect(() => {
-    setVariantsEnabled(true);
     setBaseFailed(false);
-  }, [url]);
+  }, [asset, url]);
 
-  function handleError() {
-    if (variantsEnabled) {
-      setVariantsEnabled(false);
-      return;
-    }
-    setBaseFailed(true);
-  }
-
-  if (baseFailed) {
+  if (!resolvedUrl || baseFailed) {
     return (
       <div
         aria-hidden
@@ -46,30 +43,37 @@ export function GeneratedPoseImage({
 
   const image = (
     <img
-      key={`${url}:${variantsEnabled ? "variants" : "base"}`}
-      src={url}
+      key={resolvedUrl}
+      src={resolvedUrl}
       alt={label}
-      onError={handleError}
+      onError={() => setBaseFailed(true)}
       {...imgProps}
     />
   );
 
-  if (!variantsEnabled) {
+  const avifVariants = manifest?.variants.avif ?? [];
+  const webpVariants = manifest?.variants.webp ?? [];
+
+  if (avifVariants.length === 0 && webpVariants.length === 0) {
     return image;
   }
 
   return (
     <picture>
-      <source
-        type="image/avif"
-        srcSet={buildSrcSet(url, "avif", [640, 800])}
-        sizes={imgProps.sizes}
-      />
-      <source
-        type="image/webp"
-        srcSet={buildSrcSet(url, "webp", [640, 800])}
-        sizes={imgProps.sizes}
-      />
+      {avifVariants.length > 0 ? (
+        <source
+          type="image/avif"
+          srcSet={buildVariantSrcSet(avifVariants)}
+          sizes={imgProps.sizes}
+        />
+      ) : null}
+      {webpVariants.length > 0 ? (
+        <source
+          type="image/webp"
+          srcSet={buildVariantSrcSet(webpVariants)}
+          sizes={imgProps.sizes}
+        />
+      ) : null}
       {image}
     </picture>
   );

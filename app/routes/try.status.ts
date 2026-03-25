@@ -18,7 +18,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     select: {
       status: true,
       errorMessage: true,
-      images: { select: { pose: true, imageUrl: true } },
+      images: { select: { pose: true, imageUrl: true, assetManifest: true } },
     },
   });
   if (!outfit) {
