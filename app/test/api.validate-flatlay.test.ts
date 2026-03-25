@@ -30,7 +30,7 @@ vi.mock("../lib/observability.server", () => ({
   logServerEvent: mocks.logServerEvent,
 }));
 
-import { action } from "./api.validate-flatlay";
+import { action } from "../routes/api.validate-flatlay";
 
 describe("api.validate-flatlay action", () => {
   beforeEach(() => {
