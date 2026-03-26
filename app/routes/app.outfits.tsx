@@ -329,6 +329,16 @@ function ImageTile({
   onUpscale?: () => void;
 }) {
   const [error, setError] = useState(false);
+  const [optimisticUpscaling, setOptimisticUpscaling] = useState(false);
+  const isUpscaling = optimisticUpscaling || upscaleStatus === 'pending' || upscaleStatus === 'processing';
+
+  // Reset optimistic state once server confirms
+  useEffect(() => {
+    if (upscaleStatus === 'pending' || upscaleStatus === 'processing' || upscaleStatus === 'completed' || upscaleStatus === 'failed') {
+      setOptimisticUpscaling(false);
+    }
+  }, [upscaleStatus]);
+
   return (
     <div>
       <div
@@ -349,7 +359,8 @@ function ImageTile({
               style={{ aspectRatio: '2 / 3' }}
               loading={isLcp ? undefined : 'lazy'}
               decoding={isLcp ? undefined : 'async'}
-              fetchPriority={isLcp ? 'high' : undefined}
+              // @ts-expect-error React types use camelCase but React DOM warns unless lowercase
+              fetchpriority={isLcp ? 'high' : undefined}
               sizes="(min-width: 1024px) 400px, 90vw"
               placeholderClassName="w-full h-full"
             />
@@ -363,7 +374,8 @@ function ImageTile({
               style={{ aspectRatio: '2 / 3' }}
               loading={isLcp ? undefined : 'lazy'}
               decoding={isLcp ? undefined : 'async'}
-              fetchPriority={isLcp ? 'high' : undefined}
+              // @ts-expect-error React types use camelCase but React DOM warns unless lowercase
+              fetchpriority={isLcp ? 'high' : undefined}
               sizes="(min-width: 1024px) 400px, 90vw"
               onError={() => setError(true)}
             />
@@ -383,19 +395,22 @@ function ImageTile({
               HD
             </span>
           )}
-          {(upscaleStatus === 'pending' || upscaleStatus === 'processing') && (
-            <Loader2 className="w-3 h-3 text-krea-muted animate-spin" />
-          )}
         </div>
         <div className="flex items-center gap-0.5">
-          {onUpscale && !upscaleStatus && (
+          {isUpscaling && (
+            <span className="flex items-center gap-1 text-[9px] font-medium text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 leading-none">
+              <Loader2 className="w-2.5 h-2.5 animate-spin" />
+              Upscaling
+            </span>
+          )}
+          {onUpscale && (!upscaleStatus || upscaleStatus === 'failed') && !optimisticUpscaling && (
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); onUpscale(); }}
+              onClick={(e) => { e.stopPropagation(); setOptimisticUpscaling(true); onUpscale(); }}
               title="Upscale to HD"
-              className="p-1 rounded hover:bg-krea-border/40 transition-colors"
+              className="text-[9px] font-semibold text-krea-muted border border-krea-border rounded px-1.5 py-0.5 leading-none hover:bg-krea-border/40 hover:text-krea-text transition-colors"
             >
-              <ZoomIn className="w-3.5 h-3.5 text-krea-muted" />
+              HD
             </button>
           )}
           <button

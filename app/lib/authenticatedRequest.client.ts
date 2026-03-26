@@ -48,6 +48,13 @@ function shouldTreatAsSessionExpiry(response: Response) {
   }
 
   const contentType = (response.headers.get("Content-Type") ?? "").toLowerCase();
+
+  // A successful JSON response is never a session expiry, even if the
+  // request was redirected through Shopify's auth bounce.
+  if (response.ok && contentType.includes("application/json")) {
+    return false;
+  }
+
   return response.redirected || contentType.includes("text/html");
 }
 

@@ -2,7 +2,7 @@ import { task } from '@trigger.dev/sdk';
 import Replicate from 'replicate';
 import prisma from '../app/db.server';
 import { addUpscaledToManifest } from '../app/lib/imageAssetManifest.server';
-import { parsePoseImageAssetManifest } from '../app/lib/imageAssetManifest';
+import { parsePoseImageAssetManifest, type PoseImageAssetManifest } from '../app/lib/imageAssetManifest';
 import { logServerEvent } from '../app/lib/observability.server';
 
 // ── Payload ───────────────────────────────────────────────────────────────────
@@ -60,9 +60,6 @@ export const upscaleImageTask = task({
     }
 
     const manifest = parsePoseImageAssetManifest(image.assetManifest);
-    if (!manifest) {
-      throw new Error(`No valid asset manifest for GeneratedImage ${generatedImageId}`);
-    }
 
     // ── 2. Mark processing ────────────────────────────────────────────────────
     await prisma.generatedImage.update({
@@ -71,7 +68,8 @@ export const upscaleImageTask = task({
     });
 
     // ── 3. Download original PNG ──────────────────────────────────────────────
-    const originalUrl = manifest.original.url;
+    // Fall back to imageUrl if no asset manifest (older images pre-manifest)
+    const originalUrl = manifest?.original.url ?? image.imageUrl;
     const originalRes = await fetch(originalUrl);
     if (!originalRes.ok) {
       throw new Error(`Failed to fetch original image: HTTP ${originalRes.status}`);
@@ -138,7 +136,15 @@ export const upscaleImageTask = task({
     }
 
     // Re-parse manifest in case it was updated (but imageUrl is the same)
-    const currentManifest = parsePoseImageAssetManifest(currentImage.assetManifest) ?? manifest;
+    // If no manifest exists (older image), build a minimal base manifest
+    const currentManifest: PoseImageAssetManifest =
+      parsePoseImageAssetManifest(currentImage.assetManifest) ??
+      manifest ?? {
+        kind: 'pose-image-v1' as const,
+        original: { url: image.imageUrl, width: 800, height: 1200, contentType: 'image/png' },
+        variants: { avif: [], webp: [] },
+        downloadUrl: image.imageUrl,
+      };
 
     // ── 7. Generate upscaled variants and extend manifest ─────────────────────
     const pathnameStem = `outfits/${shopId}/${image.outfitId}/${image.pose}`;

@@ -31,6 +31,7 @@ export function GeneratedPoseImage({
   asset,
   label,
   placeholderClassName,
+  fetchPriority,
   ...imgProps
 }: GeneratedPoseImageProps) {
   const [baseFailed, setBaseFailed] = useState(false);
@@ -57,6 +58,8 @@ export function GeneratedPoseImage({
       src={resolvedUrl}
       alt={label}
       onError={() => setBaseFailed(true)}
+      // React SSR doesn't map camelCase fetchPriority to the DOM attribute
+      {...(fetchPriority ? { fetchpriority: fetchPriority } : {})}
       {...imgProps}
     />
   );
