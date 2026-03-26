@@ -4,7 +4,17 @@ import type { ComponentPropsWithoutRef } from "react";
 import {
   buildVariantSrcSet,
   parsePoseImageAssetManifest,
+  type PoseImageVariant,
 } from "../lib/imageAssetManifest";
+
+/** Deduplicate variants by width, preferring the upscaled (later) entry for shared widths. */
+function dedupeByWidth(variants: PoseImageVariant[]): PoseImageVariant[] {
+  const map = new Map<number, PoseImageVariant>();
+  for (const v of variants) {
+    map.set(v.width, v);
+  }
+  return Array.from(map.values()).sort((a, b) => a.width - b.width);
+}
 
 type GeneratedPoseImageProps = Omit<
   ComponentPropsWithoutRef<"img">,
@@ -51,8 +61,16 @@ export function GeneratedPoseImage({
     />
   );
 
-  const avifVariants = manifest?.variants.avif ?? [];
-  const webpVariants = manifest?.variants.webp ?? [];
+  // Merge upscaled variants (larger widths) into the base srcset so the browser
+  // picks the best variant for the viewport — mobile gets 320/640, desktop gets 1600+.
+  const avifVariants = dedupeByWidth([
+    ...(manifest?.variants.avif ?? []),
+    ...(manifest?.upscaled?.variants.avif ?? []),
+  ]);
+  const webpVariants = dedupeByWidth([
+    ...(manifest?.variants.webp ?? []),
+    ...(manifest?.upscaled?.variants.webp ?? []),
+  ]);
 
   if (avifVariants.length === 0 && webpVariants.length === 0) {
     return image;

@@ -39,16 +39,23 @@ type SyncOutfitToShopifyTriggerPayload = {
   shopifyProductId?: string;
 };
 
-async function triggerTaskWithLog<TPayload extends { outfitId: string; shopId: string }>(
-  taskId: "generate-outfit" | "regenerate-outfit" | "sync-outfit-to-shopify",
+type UpscaleImageTriggerPayload = {
+  generatedImageId: string;
+  shopId: string;
+  targetScale: 2 | 4;
+};
+
+async function triggerTaskWithLog<TPayload extends { shopId: string }>(
+  taskId: "generate-outfit" | "regenerate-outfit" | "sync-outfit-to-shopify" | "upscale-image",
   payload: TPayload,
 ) {
   const handle = await tasks.trigger(taskId, payload);
   logServerEvent("info", "trigger_job.enqueued", {
     taskId,
-    outfitId: payload.outfitId,
     shopId: payload.shopId,
     jobId: handle.id,
+    ...("outfitId" in payload ? { outfitId: (payload as any).outfitId } : {}),
+    ...("generatedImageId" in payload ? { generatedImageId: (payload as any).generatedImageId } : {}),
   });
   return handle;
 }
@@ -63,6 +70,10 @@ export function enqueueRegenerateOutfit(payload: RegenerateOutfitTriggerPayload)
 
 export function enqueueShopifySync(payload: SyncOutfitToShopifyTriggerPayload) {
   return triggerTaskWithLog("sync-outfit-to-shopify", payload);
+}
+
+export function enqueueUpscaleImage(payload: UpscaleImageTriggerPayload) {
+  return triggerTaskWithLog("upscale-image", payload);
 }
 
 export async function cancelRunSafely(runId: string) {

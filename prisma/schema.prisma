@@ -120,14 +120,17 @@ model Outfit {
 }
 
 model GeneratedImage {
-  id        String   @id @default(cuid())
-  shopId    String
-  outfitId  String
-  imageUrl  String   // Vercel Blob URL
+  id            String    @id @default(cuid())
+  shopId        String
+  outfitId      String
+  imageUrl      String    // Vercel Blob URL
   assetManifest Json?
-  pose      String   // front | three-quarter | back | torso-crop
-  styleId   String?  // styling direction preset
-  createdAt DateTime @default(now())
+  pose          String    // front | three-quarter | back | torso-crop
+  styleId       String?   // styling direction preset
+  upscaleStatus String?   // null | pending | processing | completed | failed
+  upscaleJobId  String?   // Trigger.dev runId for the upscale task
+  upscaledAt    DateTime? // timestamp for cache-busting and audit
+  createdAt     DateTime  @default(now())
 
   outfit Outfit @relation(fields: [outfitId], references: [id], onDelete: Cascade)
 

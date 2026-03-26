@@ -1,5 +1,6 @@
 import { task } from '@trigger.dev/sdk';
 import prisma from '../app/db.server';
+import { parsePoseImageAssetManifest } from '../app/lib/imageAssetManifest';
 import { logServerEvent } from '../app/lib/observability.server';
 
 // Match the API version used in shopify.server.ts (ApiVersion.October25)
@@ -86,12 +87,16 @@ export const syncOutfitToShopifyTask = task({
 
     if (ordered.length === 0) throw new Error('Outfit has no generated images to sync.');
 
-    // ── 4. Media: use image URLs so Shopify fetches them (no staged upload / S3) ─
-    const mediaInput = ordered.map((img) => ({
-      originalSource: img.imageUrl,
-      alt: img.pose,
-      mediaContentType: 'IMAGE',
-    }));
+    // ── 4. Media: prefer upscaled URL for best resolution on Shopify ──────────
+    const mediaInput = ordered.map((img) => {
+      const manifest = parsePoseImageAssetManifest(img.assetManifest);
+      const bestUrl = manifest?.upscaled?.original.url ?? img.imageUrl;
+      return {
+        originalSource: bestUrl,
+        alt: img.pose,
+        mediaContentType: 'IMAGE',
+      };
+    });
 
     // ── 5. Create product or reuse existing ───────────────────────────────────
     let productGid = payload.shopifyProductId;

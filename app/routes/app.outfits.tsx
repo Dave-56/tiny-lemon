@@ -18,7 +18,9 @@ import { BRAND_STYLE_PRESETS } from '../lib/pdpPresets';
 import { isSessionExpiredResponse, SESSION_EXPIRED_MESSAGE } from '../lib/authenticatedRequest.client';
 import { handleRegenerateOutfit } from '../lib/triggerGeneration.server';
 import { getEffectiveEntitlements } from '../lib/billing.server';
-import { cancelRunSafely, enqueueShopifySync } from '../lib/triggerJobs.server';
+import { cancelRunSafely, enqueueShopifySync, enqueueUpscaleImage } from '../lib/triggerJobs.server';
+import { canUpscale } from '../lib/plans';
+import { parsePoseImageAssetManifest } from '../lib/imageAssetManifest';
 import posthog from 'posthog-js';
 
 const SHOPIFY_SYNC_RECENCY_WINDOW_MS = 10 * 60 * 1000;
@@ -61,7 +63,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     BRAND_STYLE_PRESETS.map((p) => [p.id, p.label]),
   );
 
-  return { shop, outfits, modelNameMap, brandStyleLabelMap, isBeta: entitlements.isBeta };
+  const upscaleAllowed = canUpscale(entitlements.publicPlan, entitlements.isBeta);
+  return { shop, outfits, modelNameMap, brandStyleLabelMap, isBeta: entitlements.isBeta, upscaleAllowed };
 };
 
 // ── Action ─────────────────────────────────────────────────────────────────────
@@ -201,6 +204,52 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return Response.json({ ok: true });
   }
 
+  if (body.intent === 'upscale_image') {
+    const generatedImageId = body.generatedImageId as string;
+    if (!generatedImageId) return Response.json({ error: 'generatedImageId required' }, { status: 400 });
+    const entitlements = await getEffectiveEntitlements(shopId);
+    if (!canUpscale(entitlements.publicPlan, entitlements.isBeta)) {
+      return Response.json({ error: 'upgrade_required' }, { status: 402 });
+    }
+    const image = await prisma.generatedImage.findFirst({
+      where: { id: generatedImageId, shopId },
+      select: { id: true, upscaleStatus: true, outfit: { select: { status: true } } },
+    });
+    if (!image) return Response.json({ error: 'Not found' }, { status: 404 });
+    if (image.outfit.status !== 'completed') return Response.json({ error: 'Outfit not completed' }, { status: 400 });
+    if (image.upscaleStatus === 'pending' || image.upscaleStatus === 'processing' || image.upscaleStatus === 'completed') {
+      return Response.json({ ok: true, alreadyInProgress: true });
+    }
+    await prisma.generatedImage.update({ where: { id: image.id }, data: { upscaleStatus: 'pending' } });
+    const handle = await enqueueUpscaleImage({ generatedImageId: image.id, shopId, targetScale: 2 });
+    await prisma.generatedImage.update({ where: { id: image.id }, data: { upscaleJobId: handle.id } });
+    return Response.json({ ok: true });
+  }
+
+  if (body.intent === 'bulk_upscale') {
+    const outfitId = body.outfitId as string;
+    if (!outfitId) return Response.json({ error: 'outfitId required' }, { status: 400 });
+    const entitlements = await getEffectiveEntitlements(shopId);
+    if (!canUpscale(entitlements.publicPlan, entitlements.isBeta)) {
+      return Response.json({ error: 'upgrade_required' }, { status: 402 });
+    }
+    const outfit = await prisma.outfit.findFirst({
+      where: { id: outfitId, shopId },
+      select: { status: true, images: { select: { id: true, upscaleStatus: true } } },
+    });
+    if (!outfit) return Response.json({ error: 'Not found' }, { status: 404 });
+    if (outfit.status !== 'completed') return Response.json({ error: 'Outfit not completed' }, { status: 400 });
+    const toUpscale = outfit.images.filter(
+      (img) => !img.upscaleStatus || img.upscaleStatus === 'failed',
+    );
+    for (const img of toUpscale) {
+      await prisma.generatedImage.update({ where: { id: img.id }, data: { upscaleStatus: 'pending' } });
+      const handle = await enqueueUpscaleImage({ generatedImageId: img.id, shopId, targetScale: 2 });
+      await prisma.generatedImage.update({ where: { id: img.id }, data: { upscaleJobId: handle.id } });
+    }
+    return Response.json({ ok: true, upscaled: toUpscale.length });
+  }
+
   return Response.json({ error: 'Unknown intent' }, { status: 400 });
 };
 
@@ -267,6 +316,8 @@ function ImageTile({
   hasVariants = true,
   onLightbox,
   isLcp = false,
+  upscaleStatus,
+  onUpscale,
 }: {
   url: string;
   asset?: unknown;
@@ -274,6 +325,8 @@ function ImageTile({
   hasVariants?: boolean;
   onLightbox: () => void;
   isLcp?: boolean;
+  upscaleStatus?: string | null;
+  onUpscale?: () => void;
 }) {
   const [error, setError] = useState(false);
   return (
@@ -323,14 +376,36 @@ function ImageTile({
         </div>
       </div>
       <div className="flex items-center justify-between mt-1.5">
-        <p className="text-[10px] text-krea-muted">{label}</p>
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); downloadImage(url, `${label.toLowerCase().replace(/\s+/g, '-')}.png`); }}
-          className="p-1 rounded hover:bg-krea-border/40 transition-colors"
-        >
-          <Download className="w-3.5 h-3.5 text-krea-muted" />
-        </button>
+        <div className="flex items-center gap-1">
+          <p className="text-[10px] text-krea-muted">{label}</p>
+          {upscaleStatus === 'completed' && (
+            <span className="text-[9px] font-semibold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded px-1 py-0.5 leading-none">
+              HD
+            </span>
+          )}
+          {(upscaleStatus === 'pending' || upscaleStatus === 'processing') && (
+            <Loader2 className="w-3 h-3 text-krea-muted animate-spin" />
+          )}
+        </div>
+        <div className="flex items-center gap-0.5">
+          {onUpscale && !upscaleStatus && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onUpscale(); }}
+              title="Upscale to HD"
+              className="p-1 rounded hover:bg-krea-border/40 transition-colors"
+            >
+              <ZoomIn className="w-3.5 h-3.5 text-krea-muted" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); downloadImage(url, `${label.toLowerCase().replace(/\s+/g, '-')}.png`); }}
+            className="p-1 rounded hover:bg-krea-border/40 transition-colors"
+          >
+            <Download className="w-3.5 h-3.5 text-krea-muted" />
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -460,12 +535,33 @@ function Lightbox({
   const tq    = outfit.images.find((img) => img.pose === 'three-quarter');
   const back  = outfit.images.find((img) => img.pose === 'back');
 
-  const images: Array<{ url: string; label: string; asset?: unknown; hasVariants: boolean }> = [
-    ...(front ? [{ url: front.imageUrl, label: 'Front', asset: front.assetManifest, hasVariants: true }] : []),
-    ...(tq ? [{ url: tq.imageUrl, label: 'Three-quarter', asset: tq.assetManifest, hasVariants: true }] : []),
-    ...(back ? [{ url: back.imageUrl, label: 'Back', asset: back.assetManifest, hasVariants: true }] : []),
+  const images: Array<{ url: string; downloadUrl: string; label: string; asset?: unknown; hasVariants: boolean; isUpscaled: boolean }> = [
+    ...(front ? [{
+      url: front.imageUrl,
+      downloadUrl: parsePoseImageAssetManifest(front.assetManifest)?.upscaled?.downloadUrl ?? front.imageUrl,
+      label: 'Front',
+      asset: front.assetManifest,
+      hasVariants: true,
+      isUpscaled: front.upscaleStatus === 'completed',
+    }] : []),
+    ...(tq ? [{
+      url: tq.imageUrl,
+      downloadUrl: parsePoseImageAssetManifest(tq.assetManifest)?.upscaled?.downloadUrl ?? tq.imageUrl,
+      label: 'Three-quarter',
+      asset: tq.assetManifest,
+      hasVariants: true,
+      isUpscaled: tq.upscaleStatus === 'completed',
+    }] : []),
+    ...(back ? [{
+      url: back.imageUrl,
+      downloadUrl: parsePoseImageAssetManifest(back.assetManifest)?.upscaled?.downloadUrl ?? back.imageUrl,
+      label: 'Back',
+      asset: back.assetManifest,
+      hasVariants: true,
+      isUpscaled: back.upscaleStatus === 'completed',
+    }] : []),
     ...(outfit.cleanFlatLayUrl
-      ? [{ url: outfit.cleanFlatLayUrl, label: 'Flat lay', hasVariants: false }]
+      ? [{ url: outfit.cleanFlatLayUrl, downloadUrl: outfit.cleanFlatLayUrl, label: 'Flat lay', hasVariants: false, isUpscaled: false }]
       : []),
   ];
 
@@ -567,15 +663,20 @@ function Lightbox({
         onClick={(e) => e.stopPropagation()}
       >
         <p className="text-sm text-white/80">{current.label}</p>
+        {current.isUpscaled && (
+          <span className="text-[9px] font-semibold text-emerald-400 bg-emerald-900/50 border border-emerald-700 rounded px-1.5 py-0.5 leading-none">
+            HD
+          </span>
+        )}
         <span className="text-white/30">·</span>
         <p className="text-xs text-white/50">{index + 1} / {images.length}</p>
         <button
           type="button"
-          onClick={() => downloadImage(current.url, `${current.label.toLowerCase().replace(/\s+/g, '-')}.png`)}
+          onClick={() => downloadImage(current.downloadUrl, `${current.label.toLowerCase().replace(/\s+/g, '-')}${current.isUpscaled ? '-hd' : ''}.png`)}
           className="ml-2 flex items-center gap-1.5 text-xs text-white/70 hover:text-white border border-white/20 rounded-md px-3 py-1.5 transition-colors"
         >
           <Download className="w-3.5 h-3.5" />
-          Download
+          {current.isUpscaled ? 'Download HD' : 'Download'}
         </button>
       </div>
     </div>
@@ -661,6 +762,9 @@ function OutfitCard({
   onCancel,
   onPublish,
   onCancelSync,
+  upscaleAllowed,
+  onUpscaleImage,
+  onBulkUpscale,
 }: {
   outfit: OutfitWithImages;
   modelName: string | undefined;
@@ -675,6 +779,9 @@ function OutfitCard({
   onCancel?: (outfitId: string) => void;
   onPublish?: (outfitId: string) => void;
   onCancelSync?: (outfitId: string) => void;
+  upscaleAllowed?: boolean;
+  onUpscaleImage?: (generatedImageId: string) => void;
+  onBulkUpscale?: (outfitId: string) => void;
 }) {
   const status = (outfit as { status?: string }).status ?? 'completed';
   const syncStatus = (outfit as { shopifySyncStatus?: string | null }).shopifySyncStatus;
@@ -697,6 +804,8 @@ function OutfitCard({
     label: string;
     key: string;
     size: 'hero' | 'normal' | 'small';
+    generatedImageId?: string;
+    upscaleStatus?: string | null;
     hasVariants: boolean;
   };
   const front = outfit.images.find((img) => img.pose === 'front');
@@ -704,9 +813,9 @@ function OutfitCard({
   const back  = outfit.images.find((img) => img.pose === 'back');
 
   const cardShots: CardShot[] = [
-    ...(front ? [{ url: front.imageUrl, asset: front.assetManifest, label: 'Front', key: front.id, size: 'hero' as const, hasVariants: true }] : []),
-    ...(tq ? [{ url: tq.imageUrl, asset: tq.assetManifest, label: 'Three-quarter', key: tq.id, size: 'normal' as const, hasVariants: true }] : []),
-    ...(back ? [{ url: back.imageUrl, asset: back.assetManifest, label: 'Back', key: back.id, size: 'normal' as const, hasVariants: true }] : []),
+    ...(front ? [{ url: front.imageUrl, asset: front.assetManifest, label: 'Front', key: front.id, size: 'hero' as const, hasVariants: true, generatedImageId: front.id, upscaleStatus: front.upscaleStatus }] : []),
+    ...(tq ? [{ url: tq.imageUrl, asset: tq.assetManifest, label: 'Three-quarter', key: tq.id, size: 'normal' as const, hasVariants: true, generatedImageId: tq.id, upscaleStatus: tq.upscaleStatus }] : []),
+    ...(back ? [{ url: back.imageUrl, asset: back.assetManifest, label: 'Back', key: back.id, size: 'normal' as const, hasVariants: true, generatedImageId: back.id, upscaleStatus: back.upscaleStatus }] : []),
     ...(outfit.cleanFlatLayUrl
       ? [{
           url: outfit.cleanFlatLayUrl,
@@ -878,6 +987,32 @@ function OutfitCard({
             {downloading ? 'Zipping…' : 'Download all'}
           </button>
 
+          {status === OUTFIT_STATUS.completed && upscaleAllowed && onBulkUpscale && (() => {
+            const allUpscaled = outfit.images.every((img) => img.upscaleStatus === 'completed');
+            const anyUpscaling = outfit.images.some((img) => img.upscaleStatus === 'pending' || img.upscaleStatus === 'processing');
+            if (allUpscaled) return null;
+            return (
+              <button
+                type="button"
+                onClick={() => onBulkUpscale(outfit.id)}
+                disabled={anyUpscaling}
+                className="flex items-center gap-1.5 text-[11px] text-krea-muted border border-krea-border rounded-md px-2.5 py-1 hover:bg-krea-border/40 transition-colors disabled:opacity-50"
+              >
+                {anyUpscaling ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Upscaling…
+                  </>
+                ) : (
+                  <>
+                    <ZoomIn className="w-3 h-3" />
+                    Upscale all
+                  </>
+                )}
+              </button>
+            );
+          })()}
+
           {status === OUTFIT_STATUS.completed && (
             <ShopifyPublishButton outfit={outfit} onPublish={onPublish} />
           )}
@@ -1005,6 +1140,12 @@ function OutfitCard({
             hasVariants={shot.hasVariants}
             onLightbox={isInProgress ? () => {} : () => onLightbox(outfit.id, i)}
             isLcp={i === 0}
+            upscaleStatus={shot.upscaleStatus}
+            onUpscale={
+              upscaleAllowed && shot.generatedImageId && !isInProgress && onUpscaleImage
+                ? () => onUpscaleImage(shot.generatedImageId!)
+                : undefined
+            }
           />
         ))}
       </div>
@@ -1020,7 +1161,7 @@ function OutfitCard({
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function Outfits() {
-  const { shop, outfits, modelNameMap, brandStyleLabelMap, isBeta } = useLoaderData<typeof loader>();
+  const { shop, outfits, modelNameMap, brandStyleLabelMap, isBeta, upscaleAllowed } = useLoaderData<typeof loader>();
   const { revalidate } = useRevalidator();
   const authenticatedFetch = useAuthenticatedFetch();
 
@@ -1049,17 +1190,23 @@ export default function Outfits() {
     setSessionError(SESSION_EXPIRED_MESSAGE);
   }
 
-  // Poll when any outfit is generating or being synced to Shopify
-  const hasInProgress = outfits.some((o) => {
+  // Poll when any outfit is generating, being synced, or upscaling
+  const hasGenerating = outfits.some((o) => {
     const s = (o as { status?: string }).status;
     const syncS = (o as { shopifySyncStatus?: string | null }).shopifySyncStatus;
     return (s && s !== 'completed' && s !== 'failed') || syncS === 'syncing';
   });
+  const hasUpscaling = outfits.some((o) =>
+    o.images.some((img) => img.upscaleStatus === 'pending' || img.upscaleStatus === 'processing'),
+  );
+  const hasInProgress = hasGenerating || hasUpscaling;
+  // Tighter poll (2.5s) for upscale-only since Real-ESRGAN is fast (5-15s)
+  const pollInterval = hasGenerating ? 5000 : 2500;
   useEffect(() => {
     if (!hasInProgress) return;
-    const interval = setInterval(() => revalidate(), 5000);
+    const interval = setInterval(() => revalidate(), pollInterval);
     return () => clearInterval(interval);
-  }, [hasInProgress, revalidate]);
+  }, [hasInProgress, pollInterval, revalidate]);
 
   function toggleSelect(id: string) {
     setSelectedIds((s) => {
@@ -1178,6 +1325,28 @@ export default function Outfits() {
       if (isSessionExpiredResponse(res)) handleSessionExpired();
       return;
     }
+    revalidate();
+  }
+
+  async function upscaleImage(generatedImageId: string) {
+    setSessionError(null);
+    const res = await authenticatedFetch('/app/outfits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ intent: 'upscale_image', generatedImageId }),
+    });
+    if (!res.ok && isSessionExpiredResponse(res)) handleSessionExpired();
+    revalidate();
+  }
+
+  async function bulkUpscale(outfitId: string) {
+    setSessionError(null);
+    const res = await authenticatedFetch('/app/outfits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ intent: 'bulk_upscale', outfitId }),
+    });
+    if (!res.ok && isSessionExpiredResponse(res)) handleSessionExpired();
     revalidate();
   }
 
@@ -1300,6 +1469,9 @@ export default function Outfits() {
                 onCancel={cancelGeneration}
                 onPublish={publishOutfit}
                 onCancelSync={cancelSync}
+                upscaleAllowed={upscaleAllowed}
+                onUpscaleImage={upscaleAllowed ? upscaleImage : undefined}
+                onBulkUpscale={upscaleAllowed ? bulkUpscale : undefined}
               />
             ))}
           </div>

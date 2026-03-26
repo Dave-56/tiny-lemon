@@ -6,6 +6,21 @@ export interface PoseImageVariant {
   contentType: string;
 }
 
+export interface UpscaledImageBlock {
+  original: {
+    url: string;
+    width: number;
+    height: number;
+    contentType: string;
+  };
+  variants: {
+    avif: PoseImageVariant[];
+    webp: PoseImageVariant[];
+  };
+  downloadUrl: string;
+  scale: 2 | 4;
+}
+
 export interface PoseImageAssetManifest {
   kind: "pose-image-v1";
   original: {
@@ -19,6 +34,7 @@ export interface PoseImageAssetManifest {
     webp: PoseImageVariant[];
   };
   downloadUrl: string;
+  upscaled?: UpscaledImageBlock;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -61,7 +77,7 @@ export function parsePoseImageAssetManifest(
   if (typeof original.height !== "number") return null;
   if (typeof original.contentType !== "string") return null;
 
-  return {
+  const manifest: PoseImageAssetManifest = {
     kind: "pose-image-v1",
     original: {
       url: original.url,
@@ -75,6 +91,37 @@ export function parsePoseImageAssetManifest(
     },
     downloadUrl: value.downloadUrl,
   };
+
+  if (isRecord(value.upscaled)) {
+    const up = value.upscaled;
+    if (
+      isRecord(up.original) &&
+      typeof up.original.url === "string" &&
+      typeof up.original.width === "number" &&
+      typeof up.original.height === "number" &&
+      typeof up.original.contentType === "string" &&
+      isRecord(up.variants) &&
+      typeof up.downloadUrl === "string" &&
+      (up.scale === 2 || up.scale === 4)
+    ) {
+      manifest.upscaled = {
+        original: {
+          url: up.original.url,
+          width: up.original.width,
+          height: up.original.height,
+          contentType: up.original.contentType,
+        },
+        variants: {
+          avif: parseVariantList(up.variants.avif),
+          webp: parseVariantList(up.variants.webp),
+        },
+        downloadUrl: up.downloadUrl,
+        scale: up.scale as 2 | 4,
+      };
+    }
+  }
+
+  return manifest;
 }
 
 export function buildVariantSrcSet(variants: PoseImageVariant[]): string {
