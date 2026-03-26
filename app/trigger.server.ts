@@ -6,4 +6,4 @@
  * Required env vars (set in Vercel + Trigger.dev dashboard):
  *   TRIGGER_SECRET_KEY  — your Trigger.dev secret key
  */
-export { tasks, runs } from '@trigger.dev/sdk/v3';
+export { tasks, runs } from '@trigger.dev/sdk';

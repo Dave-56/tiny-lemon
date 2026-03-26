@@ -3,7 +3,6 @@ import { createHash } from "crypto";
 import { join } from "path";
 import prisma, { ensureShop } from "../db.server";
 import { uploadBufferToBlob } from "../blob.server";
-import { tasks } from "../trigger.server";
 import {
   getMonthlyUsage,
   getEffectiveEntitlements,
@@ -20,6 +19,10 @@ import {
   type OwnedRequestClaim,
 } from "./requestIdempotency.server";
 import { logServerEvent } from "./observability.server";
+import {
+  enqueueGenerateOutfit,
+  enqueueRegenerateOutfit,
+} from "./triggerJobs.server";
 
 export type TriggerGenerationBody = {
   skuName?: string;
@@ -319,7 +322,7 @@ export async function handleTriggerGeneration(
       );
     }
 
-    const handle = await tasks.trigger("generate-outfit", {
+    const handle = await enqueueGenerateOutfit({
       outfitId: outfit.id,
       shopId,
       rawFrontUrl,
@@ -535,7 +538,7 @@ export async function handleRegenerateOutfit(
       data: { status: "pending", errorMessage: null },
     });
 
-    const handle = await tasks.trigger("regenerate-outfit", {
+    const handle = await enqueueRegenerateOutfit({
       outfitId,
       shopId,
       userDirection: normalizedUserDirection ?? undefined,

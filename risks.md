@@ -88,10 +88,19 @@
 
 ### Phase 4. Trigger.dev cleanup/migration
 
-- [ ] Decide whether to stay on the current Trigger.dev version or migrate fully
-- [ ] Avoid mixed Trigger.dev usage patterns across the codebase
-- [ ] Centralize task-triggering helpers where it reduces duplication
-- [ ] Review retry semantics and document the intended billing policy for failed downstream jobs
+- [x] Decide whether to stay on the current Trigger.dev version or migrate fully
+- [x] Avoid mixed Trigger.dev usage patterns across the codebase
+- [x] Centralize task-triggering helpers where it reduces duplication
+- [x] Review retry semantics and document the intended billing policy for failed downstream jobs
+
+## Phase 4 Notes
+
+- Trigger.dev package usage is now standardized on `@trigger.dev/sdk` instead of deprecated `/v3` entrypoints in app/task/config code.
+- Rollout should still follow a migration-style sequence: verify locally, verify in staging, deploy the app backend, then deploy Trigger tasks.
+- During cutover, old runs and new runs may overlap briefly, so temporary concurrency can exceed normal steady-state expectations.
+- Shared Trigger helpers are intentionally narrow in [app/lib/triggerJobs.server.ts](/Users/preciousemakenemi/Downloads/test-fashion/create-a-model/tiny-lemon/app/lib/triggerJobs.server.ts): they only own enqueue/cancel calls, generic logging, and returned run IDs. Route/task-specific DB state transitions remain at the call sites.
+- Billing policy is now explicit: credits are consumed once enqueue succeeds, pre-enqueue failures refund reserved credits, retries do not reserve additional credits, and downstream Shopify sync failures do not auto-refund generation credits.
+- `npm run check:trigger-imports` now fails if deprecated `@trigger.dev/sdk/v3` imports reappear.
 
 ## Done So Far
 

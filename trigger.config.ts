@@ -1,4 +1,4 @@
-import { defineConfig } from '@trigger.dev/sdk/v3';
+import { defineConfig } from '@trigger.dev/sdk';
 import { prismaExtension } from '@trigger.dev/build/extensions/prisma';
 
 export default defineConfig({

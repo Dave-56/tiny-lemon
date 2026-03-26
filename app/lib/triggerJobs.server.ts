@@ -1,0 +1,75 @@
+import { runs, tasks } from "../trigger.server";
+import { logServerEvent } from "./observability.server";
+
+type GenerateOutfitTriggerPayload = {
+  outfitId: string;
+  shopId: string;
+  rawFrontUrl: string;
+  rawBackUrl?: string;
+  frontMime?: string;
+  backMime?: string;
+  modelImageUrl: string;
+  modelHeight?: string;
+  modelGender?: string;
+  styleId: string;
+  brandStyleId: string;
+  pricePoint?: string;
+  brandEnergy?: string;
+  primaryCategory?: string;
+  allowedPoses: string[];
+};
+
+type RegenerateOutfitTriggerPayload = {
+  outfitId: string;
+  shopId: string;
+  userDirection?: string;
+  modelImageUrl: string;
+  modelHeight?: string;
+  modelGender?: string;
+  styleId: string;
+  pricePoint?: string;
+  brandEnergy?: string;
+  primaryCategory?: string;
+  allowedPoses: string[];
+};
+
+type SyncOutfitToShopifyTriggerPayload = {
+  outfitId: string;
+  shopId: string;
+  shopifyProductId?: string;
+};
+
+async function triggerTaskWithLog<TPayload extends { outfitId: string; shopId: string }>(
+  taskId: "generate-outfit" | "regenerate-outfit" | "sync-outfit-to-shopify",
+  payload: TPayload,
+) {
+  const handle = await tasks.trigger(taskId, payload);
+  logServerEvent("info", "trigger_job.enqueued", {
+    taskId,
+    outfitId: payload.outfitId,
+    shopId: payload.shopId,
+    jobId: handle.id,
+  });
+  return handle;
+}
+
+export function enqueueGenerateOutfit(payload: GenerateOutfitTriggerPayload) {
+  return triggerTaskWithLog("generate-outfit", payload);
+}
+
+export function enqueueRegenerateOutfit(payload: RegenerateOutfitTriggerPayload) {
+  return triggerTaskWithLog("regenerate-outfit", payload);
+}
+
+export function enqueueShopifySync(payload: SyncOutfitToShopifyTriggerPayload) {
+  return triggerTaskWithLog("sync-outfit-to-shopify", payload);
+}
+
+export async function cancelRunSafely(runId: string) {
+  try {
+    await runs.cancel(runId);
+    logServerEvent("info", "trigger_job.cancelled", { jobId: runId });
+  } catch {
+    logServerEvent("info", "trigger_job.cancel_noop", { jobId: runId });
+  }
+}

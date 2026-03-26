@@ -8,7 +8,8 @@ const mocks = vi.hoisted(() => ({
   outfitUpdate: vi.fn(),
   ensureShop: vi.fn(),
   uploadBufferToBlob: vi.fn(),
-  triggerTask: vi.fn(),
+  enqueueGenerateOutfit: vi.fn(),
+  enqueueRegenerateOutfit: vi.fn(),
   reserveGenerations: vi.fn(),
   refundReservedGeneration: vi.fn(),
   getMonthlyUsage: vi.fn(),
@@ -36,8 +37,9 @@ vi.mock("../blob.server", () => ({
   uploadBufferToBlob: mocks.uploadBufferToBlob,
 }));
 
-vi.mock("../trigger.server", () => ({
-  tasks: { trigger: mocks.triggerTask },
+vi.mock("./triggerJobs.server", () => ({
+  enqueueGenerateOutfit: mocks.enqueueGenerateOutfit,
+  enqueueRegenerateOutfit: mocks.enqueueRegenerateOutfit,
 }));
 
 vi.mock("./billing.server", () => ({
@@ -85,7 +87,8 @@ describe("handleTriggerGeneration", () => {
     mocks.outfitUpsert.mockResolvedValue({ id: "outfit-123" });
     mocks.outfitUpdate.mockResolvedValue({});
     mocks.uploadBufferToBlob.mockResolvedValue("https://blob.example/outfit.png");
-    mocks.triggerTask.mockResolvedValue({ id: "run_123" });
+    mocks.enqueueGenerateOutfit.mockResolvedValue({ id: "run_123" });
+    mocks.enqueueRegenerateOutfit.mockResolvedValue({ id: "run_123" });
     mocks.reserveGenerations.mockResolvedValue({
       publicPlan: "Starter",
       isBeta: false,
@@ -135,7 +138,7 @@ describe("handleTriggerGeneration", () => {
     await expect(res.json()).resolves.toEqual({ error: "Model not found." });
     expect(mocks.reserveGenerations).not.toHaveBeenCalled();
     expect(mocks.outfitUpsert).not.toHaveBeenCalled();
-    expect(mocks.triggerTask).not.toHaveBeenCalled();
+    expect(mocks.enqueueGenerateOutfit).not.toHaveBeenCalled();
   });
 
   it("rejects models owned by another shop before reserving credits", async () => {
@@ -149,7 +152,7 @@ describe("handleTriggerGeneration", () => {
 
     expect(res.status).toBe(400);
     expect(mocks.reserveGenerations).not.toHaveBeenCalled();
-    expect(mocks.triggerTask).not.toHaveBeenCalled();
+    expect(mocks.enqueueGenerateOutfit).not.toHaveBeenCalled();
   });
 
   it("reuses an in-flight generate request before reserving credits", async () => {
@@ -175,7 +178,7 @@ describe("handleTriggerGeneration", () => {
     });
     expect(mocks.reserveGenerations).not.toHaveBeenCalled();
     expect(mocks.outfitUpsert).not.toHaveBeenCalled();
-    expect(mocks.triggerTask).not.toHaveBeenCalled();
+    expect(mocks.enqueueGenerateOutfit).not.toHaveBeenCalled();
   });
 
   it("uses the server-resolved preset model instead of client-supplied model data", async () => {
@@ -199,8 +202,7 @@ describe("handleTriggerGeneration", () => {
       runToken: "run-token-generate",
       jobId: "run_123",
     });
-    expect(mocks.triggerTask).toHaveBeenCalledWith(
-      "generate-outfit",
+    expect(mocks.enqueueGenerateOutfit).toHaveBeenCalledWith(
       expect.objectContaining({
         modelImageUrl:
           "https://axuxhuif6aiflbu8.public.blob.vercel-storage.com/preset-models/v3/model-01.png",
@@ -238,12 +240,12 @@ describe("handleTriggerGeneration", () => {
       message: "You've used all your generations this month. Upgrade to continue.",
     });
     expect(mocks.outfitUpsert).not.toHaveBeenCalled();
-    expect(mocks.triggerTask).not.toHaveBeenCalled();
+    expect(mocks.enqueueGenerateOutfit).not.toHaveBeenCalled();
   });
 
   it("refunds when enqueue fails after reservation succeeds", async () => {
     mocks.modelFindFirst.mockResolvedValue(null);
-    mocks.triggerTask.mockRejectedValueOnce(new Error("Trigger unavailable"));
+    mocks.enqueueGenerateOutfit.mockRejectedValueOnce(new Error("Trigger unavailable"));
 
     const res = await handleTriggerGeneration("shop-a.myshopify.com", {
       modelId: "model-01",
@@ -293,7 +295,7 @@ describe("handleRegenerateOutfit", () => {
       brandStyleId: "minimal",
     });
     mocks.outfitUpdate.mockResolvedValue({});
-    mocks.triggerTask.mockResolvedValue({ id: "run_123" });
+    mocks.enqueueRegenerateOutfit.mockResolvedValue({ id: "run_123" });
     mocks.reserveGenerations.mockResolvedValue({
       publicPlan: "Starter",
       isBeta: false,
@@ -346,12 +348,12 @@ describe("handleRegenerateOutfit", () => {
       jobId: "run_reused",
     });
     expect(mocks.reserveGenerations).not.toHaveBeenCalled();
-    expect(mocks.triggerTask).not.toHaveBeenCalled();
+    expect(mocks.enqueueRegenerateOutfit).not.toHaveBeenCalled();
   });
 
   it("refunds regenerate when enqueue fails after reservation succeeds", async () => {
     mocks.modelFindFirst.mockResolvedValue(null);
-    mocks.triggerTask.mockRejectedValueOnce(new Error("Trigger unavailable"));
+    mocks.enqueueRegenerateOutfit.mockRejectedValueOnce(new Error("Trigger unavailable"));
 
     const res = await handleRegenerateOutfit(
       "shop-a.myshopify.com",

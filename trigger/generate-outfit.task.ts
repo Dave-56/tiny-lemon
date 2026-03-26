@@ -1,4 +1,4 @@
-import { task } from '@trigger.dev/sdk/v3';
+import { task } from '@trigger.dev/sdk';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import prisma from '../app/db.server';
 import { uploadImageToBlob } from '../app/blob.server';

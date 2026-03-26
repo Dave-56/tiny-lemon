@@ -1,4 +1,4 @@
-import { task } from '@trigger.dev/sdk/v3';
+import { task } from '@trigger.dev/sdk';
 import prisma from '../app/db.server';
 import { logServerEvent } from '../app/lib/observability.server';
 

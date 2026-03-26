@@ -18,7 +18,7 @@ import { BRAND_STYLE_PRESETS } from '../lib/pdpPresets';
 import { isSessionExpiredResponse, SESSION_EXPIRED_MESSAGE } from '../lib/authenticatedRequest.client';
 import { handleRegenerateOutfit } from '../lib/triggerGeneration.server';
 import { getEffectiveEntitlements } from '../lib/billing.server';
-import { tasks, runs } from '../trigger.server';
+import { cancelRunSafely, enqueueShopifySync } from '../lib/triggerJobs.server';
 import posthog from 'posthog-js';
 
 const SHOPIFY_SYNC_RECENCY_WINDOW_MS = 10 * 60 * 1000;
@@ -116,7 +116,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     });
     if (!outfit) return Response.json({ error: 'Not found' }, { status: 404 });
     if (outfit.jobId) {
-      try { await runs.cancel(outfit.jobId); } catch { /* already finished */ }
+      await cancelRunSafely(outfit.jobId);
     }
     await prisma.outfit.update({
       where: { id: outfitId },
@@ -152,7 +152,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       });
       return Response.json({ ok: true, reused: true });
     }
-    const handle = await tasks.trigger('sync-outfit-to-shopify', {
+    const handle = await enqueueShopifySync({
       outfitId,
       shopId,
       shopifyProductId: outfit.shopifyProductId ?? undefined,
@@ -188,11 +188,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
     }
     if (outfit.jobId) {
-      try {
-        await runs.cancel(outfit.jobId);
-      } catch (e) {
-        // Run may already be finished (404) — still mark outfit cancelled
-      }
+      await cancelRunSafely(outfit.jobId);
     }
     await prisma.outfit.update({
       where: { id: outfitId, shopId },

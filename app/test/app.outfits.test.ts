@@ -4,8 +4,9 @@ const mocks = vi.hoisted(() => ({
   authenticateAdmin: vi.fn(),
   outfitFindFirst: vi.fn(),
   outfitUpdate: vi.fn(),
-  triggerTask: vi.fn(),
-  runsCancel: vi.fn(),
+  enqueueShopifySync: vi.fn(),
+  cancelRunSafely: vi.fn(),
+  handleRegenerateOutfit: vi.fn(),
 }));
 
 vi.mock("fs", async (importOriginal) => {
@@ -31,13 +32,13 @@ vi.mock("../db.server", () => ({
   },
 }));
 
-vi.mock("../trigger.server", () => ({
-  tasks: { trigger: mocks.triggerTask },
-  runs: { cancel: mocks.runsCancel },
+vi.mock("../lib/triggerJobs.server", () => ({
+  enqueueShopifySync: mocks.enqueueShopifySync,
+  cancelRunSafely: mocks.cancelRunSafely,
 }));
 
 vi.mock("../lib/triggerGeneration.server", () => ({
-  handleRegenerateOutfit: vi.fn(),
+  handleRegenerateOutfit: mocks.handleRegenerateOutfit,
 }));
 
 import { action } from "../routes/app.outfits";
@@ -49,7 +50,8 @@ describe("app.outfits action publish_to_shopify", () => {
       session: { shop: "shop-a.myshopify.com" },
     });
     mocks.outfitUpdate.mockResolvedValue({});
-    mocks.triggerTask.mockResolvedValue({ id: "run_123" });
+    mocks.enqueueShopifySync.mockResolvedValue({ id: "run_123" });
+    mocks.cancelRunSafely.mockResolvedValue(undefined);
   });
 
   function makeRequest(body: Record<string, unknown>) {
@@ -79,7 +81,7 @@ describe("app.outfits action publish_to_shopify", () => {
 
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({ ok: true, reused: true });
-    expect(mocks.triggerTask).not.toHaveBeenCalled();
+    expect(mocks.enqueueShopifySync).not.toHaveBeenCalled();
     expect(mocks.outfitUpdate).not.toHaveBeenCalled();
   });
 
@@ -102,7 +104,7 @@ describe("app.outfits action publish_to_shopify", () => {
 
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({ ok: true });
-    expect(mocks.triggerTask).toHaveBeenCalledWith("sync-outfit-to-shopify", {
+    expect(mocks.enqueueShopifySync).toHaveBeenCalledWith({
       outfitId: "outfit-123",
       shopId: "shop-a.myshopify.com",
       shopifyProductId: "gid://shopify/Product/123",
@@ -110,6 +112,57 @@ describe("app.outfits action publish_to_shopify", () => {
     expect(mocks.outfitUpdate).toHaveBeenCalledWith({
       where: { id: "outfit-123" },
       data: { shopifySyncStatus: "syncing", jobId: "run_123" },
+    });
+  });
+
+  it("swallows already-finished run cancellation during sync cancel", async () => {
+    mocks.outfitFindFirst.mockResolvedValueOnce({
+      jobId: "run_finished",
+    });
+
+    const res = await action({
+      request: makeRequest({
+        intent: "cancel_sync",
+        outfitId: "outfit-123",
+      }),
+      params: {},
+      context: {},
+    } as any);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ ok: true });
+    expect(mocks.cancelRunSafely).toHaveBeenCalledWith("run_finished");
+    expect(mocks.outfitUpdate).toHaveBeenCalledWith({
+      where: { id: "outfit-123" },
+      data: { shopifySyncStatus: null },
+    });
+  });
+
+  it("swallows already-finished run cancellation during generation cancel", async () => {
+    mocks.outfitFindFirst.mockResolvedValueOnce({
+      status: "pending",
+      jobId: "run_finished",
+    });
+
+    const res = await action({
+      request: makeRequest({
+        intent: "cancel_generation",
+        outfitId: "outfit-123",
+      }),
+      params: {},
+      context: {},
+    } as any);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ ok: true });
+    expect(mocks.cancelRunSafely).toHaveBeenCalledWith("run_finished");
+    expect(mocks.outfitUpdate).toHaveBeenCalledWith({
+      where: { id: "outfit-123", shopId: "shop-a.myshopify.com" },
+      data: {
+        status: "failed",
+        errorMessage: "Cancelled by user",
+        jobId: null,
+      },
     });
   });
 });

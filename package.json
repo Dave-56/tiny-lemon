@@ -19,6 +19,7 @@
     "graphql-codegen": "graphql-codegen",
     "vite": "vite",
     "typecheck": "react-router typegen && tsc --noEmit",
+    "check:trigger-imports": "sh -c 'if rg -n \"@trigger\\\\.dev/sdk/v3\" app trigger; then echo \"Deprecated Trigger.dev /v3 imports found\"; exit 1; fi'",
     "test": "vitest run",
     "test:watch": "vitest",
     "seed:presets": "npx tsx scripts/generate-preset-previews.ts",
