@@ -18,10 +18,11 @@ import { BRAND_STYLE_PRESETS } from '../lib/pdpPresets';
 import { isSessionExpiredResponse, SESSION_EXPIRED_MESSAGE } from '../lib/authenticatedRequest.client';
 import { handleRegenerateOutfit } from '../lib/triggerGeneration.server';
 import { getEffectiveEntitlements } from '../lib/billing.server';
-import { cancelRunSafely, enqueueShopifySync, enqueueUpscaleImage } from '../lib/triggerJobs.server';
+import { cancelRunSafely, enqueueShopifySync } from '../lib/triggerJobs.server';
 import { canUpscale } from '../lib/plans';
 import { parsePoseImageAssetManifest } from '../lib/imageAssetManifest';
 import posthog from 'posthog-js';
+import { handleBulkUpscaleRequest, handleSingleUpscaleRequest } from '../lib/upscaleOrchestration.server';
 
 const SHOPIFY_SYNC_RECENCY_WINDOW_MS = 10 * 60 * 1000;
 
@@ -205,49 +206,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   if (body.intent === 'upscale_image') {
-    const generatedImageId = body.generatedImageId as string;
-    if (!generatedImageId) return Response.json({ error: 'generatedImageId required' }, { status: 400 });
-    const entitlements = await getEffectiveEntitlements(shopId);
-    if (!canUpscale(entitlements.publicPlan, entitlements.isBeta)) {
-      return Response.json({ error: 'upgrade_required' }, { status: 402 });
-    }
-    const image = await prisma.generatedImage.findFirst({
-      where: { id: generatedImageId, shopId },
-      select: { id: true, upscaleStatus: true, outfit: { select: { status: true } } },
+    return handleSingleUpscaleRequest({
+      generatedImageId: body.generatedImageId as string,
+      shopId,
+      targetScale: 2,
     });
-    if (!image) return Response.json({ error: 'Not found' }, { status: 404 });
-    if (image.outfit.status !== 'completed') return Response.json({ error: 'Outfit not completed' }, { status: 400 });
-    if (image.upscaleStatus === 'pending' || image.upscaleStatus === 'processing' || image.upscaleStatus === 'completed') {
-      return Response.json({ ok: true, alreadyInProgress: true });
-    }
-    await prisma.generatedImage.update({ where: { id: image.id }, data: { upscaleStatus: 'pending' } });
-    const handle = await enqueueUpscaleImage({ generatedImageId: image.id, shopId, targetScale: 2 });
-    await prisma.generatedImage.update({ where: { id: image.id }, data: { upscaleJobId: handle.id } });
-    return Response.json({ ok: true });
   }
 
   if (body.intent === 'bulk_upscale') {
-    const outfitId = body.outfitId as string;
-    if (!outfitId) return Response.json({ error: 'outfitId required' }, { status: 400 });
-    const entitlements = await getEffectiveEntitlements(shopId);
-    if (!canUpscale(entitlements.publicPlan, entitlements.isBeta)) {
-      return Response.json({ error: 'upgrade_required' }, { status: 402 });
-    }
-    const outfit = await prisma.outfit.findFirst({
-      where: { id: outfitId, shopId },
-      select: { status: true, images: { select: { id: true, upscaleStatus: true } } },
+    return handleBulkUpscaleRequest({
+      outfitId: body.outfitId as string,
+      shopId,
+      targetScale: 2,
     });
-    if (!outfit) return Response.json({ error: 'Not found' }, { status: 404 });
-    if (outfit.status !== 'completed') return Response.json({ error: 'Outfit not completed' }, { status: 400 });
-    const toUpscale = outfit.images.filter(
-      (img) => !img.upscaleStatus || img.upscaleStatus === 'failed',
-    );
-    for (const img of toUpscale) {
-      await prisma.generatedImage.update({ where: { id: img.id }, data: { upscaleStatus: 'pending' } });
-      const handle = await enqueueUpscaleImage({ generatedImageId: img.id, shopId, targetScale: 2 });
-      await prisma.generatedImage.update({ where: { id: img.id }, data: { upscaleJobId: handle.id } });
-    }
-    return Response.json({ ok: true, upscaled: toUpscale.length });
   }
 
   return Response.json({ error: 'Unknown intent' }, { status: 400 });
@@ -768,6 +739,7 @@ function OutfitCard({
   modelName,
   brandStyleLabel,
   isDeleting,
+  optimisticBulkUpscaling,
   selected,
   onDelete,
   onRename,
@@ -785,6 +757,7 @@ function OutfitCard({
   modelName: string | undefined;
   brandStyleLabel: string;
   isDeleting: boolean;
+  optimisticBulkUpscaling?: boolean;
   selected: boolean;
   onDelete: (id: string) => void;
   onRename: (id: string, name: string) => Promise<{ ok: boolean; error?: string }>;
@@ -802,6 +775,10 @@ function OutfitCard({
   const syncStatus = (outfit as { shopifySyncStatus?: string | null }).shopifySyncStatus;
   const isInProgress = status !== OUTFIT_STATUS.completed && status !== OUTFIT_STATUS.failed;
   const canRegenerate = (status === OUTFIT_STATUS.completed || status === OUTFIT_STATUS.failed) && onRegenerate;
+  const anyUpscaling =
+    optimisticBulkUpscaling ||
+    outfit.images.some((img) => img.upscaleStatus === 'pending' || img.upscaleStatus === 'processing');
+  const allUpscaled = outfit.images.length > 0 && outfit.images.every((img) => img.upscaleStatus === 'completed');
   const [menuOpen, setMenuOpen]         = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [renaming, setRenaming]         = useState(false);
@@ -995,7 +972,7 @@ function OutfitCard({
           <button
             type="button"
             onClick={handleDownloadAll}
-            disabled={downloading || isInProgress}
+            disabled={downloading || isInProgress || anyUpscaling}
             className="flex items-center gap-1.5 text-[11px] text-krea-muted border border-krea-border rounded-md px-2.5 py-1 hover:bg-krea-border/40 transition-colors disabled:opacity-50"
           >
             <Download className="w-3 h-3" />
@@ -1003,8 +980,6 @@ function OutfitCard({
           </button>
 
           {status === OUTFIT_STATUS.completed && upscaleAllowed && onBulkUpscale && (() => {
-            const allUpscaled = outfit.images.every((img) => img.upscaleStatus === 'completed');
-            const anyUpscaling = outfit.images.some((img) => img.upscaleStatus === 'pending' || img.upscaleStatus === 'processing');
             if (allUpscaled) return null;
             return (
               <button
@@ -1198,6 +1173,7 @@ export default function Outfits() {
   const [lightbox, setLightbox]       = useState<{ outfitId: string; index: number } | null>(null);
   const [regenerateModal, setRegenerateModal] = useState<{ outfitId: string; outfitName: string } | null>(null);
   const [sessionError, setSessionError] = useState<string | null>(null);
+  const [optimisticBulkUpscalingIds, setOptimisticBulkUpscalingIds] = useState<Set<string>>(new Set());
 
   const closeLightbox = useCallback(() => setLightbox(null), []);
 
@@ -1205,15 +1181,44 @@ export default function Outfits() {
     setSessionError(SESSION_EXPIRED_MESSAGE);
   }
 
+  useEffect(() => {
+    setOptimisticBulkUpscalingIds((current) => {
+      if (current.size === 0) return current;
+
+      let changed = false;
+      const next = new Set(current);
+
+      for (const outfit of outfits) {
+        if (!next.has(outfit.id)) continue;
+
+        const hasServerUpscaling = outfit.images.some(
+          (img) => img.upscaleStatus === 'pending' || img.upscaleStatus === 'processing',
+        );
+        const allUpscaled = outfit.images.length > 0 && outfit.images.every(
+          (img) => img.upscaleStatus === 'completed',
+        );
+
+        if (hasServerUpscaling || allUpscaled) {
+          next.delete(outfit.id);
+          changed = true;
+        }
+      }
+
+      return changed ? next : current;
+    });
+  }, [outfits]);
+
   // Poll when any outfit is generating, being synced, or upscaling
   const hasGenerating = outfits.some((o) => {
     const s = (o as { status?: string }).status;
     const syncS = (o as { shopifySyncStatus?: string | null }).shopifySyncStatus;
     return (s && s !== 'completed' && s !== 'failed') || syncS === 'syncing';
   });
-  const hasUpscaling = outfits.some((o) =>
-    o.images.some((img) => img.upscaleStatus === 'pending' || img.upscaleStatus === 'processing'),
-  );
+  const hasUpscaling =
+    optimisticBulkUpscalingIds.size > 0 ||
+    outfits.some((o) =>
+      o.images.some((img) => img.upscaleStatus === 'pending' || img.upscaleStatus === 'processing'),
+    );
   const hasInProgress = hasGenerating || hasUpscaling;
   // Tighter poll (2.5s) for upscale-only since Real-ESRGAN is fast (5-15s)
   const pollInterval = hasGenerating ? 5000 : 2500;
@@ -1359,12 +1364,18 @@ export default function Outfits() {
 
   async function bulkUpscale(outfitId: string) {
     setSessionError(null);
+    setOptimisticBulkUpscalingIds((current) => new Set(current).add(outfitId));
     const res = await authenticatedFetch('/api/bulk-upscale', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ outfitId }),
     });
     if (!res.ok) {
+      setOptimisticBulkUpscalingIds((current) => {
+        const next = new Set(current);
+        next.delete(outfitId);
+        return next;
+      });
       if (isSessionExpiredResponse(res)) handleSessionExpired();
       return;
     }
@@ -1481,6 +1492,7 @@ export default function Outfits() {
                   'Minimal Clarity'
                 }
                 isDeleting={deletingIds.has(outfit.id)}
+                optimisticBulkUpscaling={optimisticBulkUpscalingIds.has(outfit.id)}
                 selected={selectedIds.has(outfit.id)}
                 onDelete={deleteOutfit}
                 onRename={renameOutfit}

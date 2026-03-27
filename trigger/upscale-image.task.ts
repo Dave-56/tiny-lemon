@@ -1,9 +1,14 @@
-import { task } from '@trigger.dev/sdk';
+import { task, wait } from '@trigger.dev/sdk';
 import Replicate from 'replicate';
 import prisma from '../app/db.server';
 import { addUpscaledToManifest } from '../app/lib/imageAssetManifest.server';
 import { parsePoseImageAssetManifest, type PoseImageAssetManifest } from '../app/lib/imageAssetManifest';
 import { logServerEvent } from '../app/lib/observability.server';
+import {
+  consumeReplicatePredictionCreateSlot,
+  getReplicatePredictionCreateWindowMs,
+  getReplicateThrottleRetryAfterMs,
+} from '../app/lib/replicatePredictionThrottle.server';
 
 // ── Payload ───────────────────────────────────────────────────────────────────
 
@@ -67,28 +72,24 @@ export const upscaleImageTask = task({
       data: { upscaleStatus: 'processing' },
     });
 
-    // ── 3. Download original PNG ──────────────────────────────────────────────
+    // ── 3. Prepare source and wait for provider slot ──────────────────────────
     // Fall back to imageUrl if no asset manifest (older images pre-manifest)
     const originalUrl = manifest?.original.url ?? image.imageUrl;
-    const originalRes = await fetch(originalUrl);
-    if (!originalRes.ok) {
-      throw new Error(`Failed to fetch original image: HTTP ${originalRes.status}`);
-    }
-    const originalBuffer = Buffer.from(await originalRes.arrayBuffer());
 
     // ── 4. Run super-resolution via Replicate ─────────────────────────────────
     const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN! });
 
-    const output = await replicate.run(
-      'nightmareai/real-esrgan:f121d640bd286e1fdc67f9799164c1d5be36ff74576ee11c803ae5b665dd46aa',
-      {
-        input: {
-          image: originalUrl,
-          scale: targetScale,
-          face_enhance: false,
-        },
-      },
-    );
+    const output = await runReplicateUpscaleWithThrottle({
+      replicate,
+      payload,
+      sourceImageUrl: image.imageUrl,
+      originalUrl,
+      generatedImageId,
+      targetScale,
+    });
+    if (output == null) {
+      return { generatedImageId, status: 'aborted_stale' };
+    }
 
     // Replicate returns a URL string or ReadableStream for this model
     let upscaledBuffer: Buffer;
@@ -128,6 +129,7 @@ export const upscaleImageTask = task({
       select: { imageUrl: true, assetManifest: true },
     });
     if (!currentImage || currentImage.imageUrl !== image.imageUrl) {
+      await clearUpscaleStateAfterStaleAbort(generatedImageId);
       logServerEvent('info', 'upscale.aborted_stale', {
         generatedImageId,
         reason: 'Image was regenerated during upscale',
@@ -174,3 +176,107 @@ export const upscaleImageTask = task({
     return { generatedImageId, status: 'completed' };
   },
 });
+
+const MAX_REPLICATE_THROTTLE_RETRIES = 6;
+
+async function isImageStillCurrent(generatedImageId: string, sourceImageUrl: string) {
+  const currentImage = await prisma.generatedImage.findFirst({
+    where: { id: generatedImageId },
+    select: { imageUrl: true },
+  });
+
+  return currentImage?.imageUrl === sourceImageUrl;
+}
+
+async function clearUpscaleStateAfterStaleAbort(generatedImageId: string) {
+  await prisma.generatedImage
+    .update({
+      where: { id: generatedImageId },
+      data: {
+        upscaleStatus: null,
+        upscaleJobId: null,
+      },
+    })
+    .catch(() => undefined);
+}
+
+async function waitForReplicatePredictionSlot(payload: UpscaleImagePayload) {
+  while (true) {
+    const decision = await consumeReplicatePredictionCreateSlot();
+    if (decision.allowed) {
+      return;
+    }
+
+    const waitMs = Math.max(
+      1000,
+      decision.retryAfterMs ?? getReplicatePredictionCreateWindowMs(),
+    );
+    logServerEvent('info', 'upscale.replicate_slot_wait', {
+      generatedImageId: payload.generatedImageId,
+      shopId: payload.shopId,
+      retryAfterMs: waitMs,
+    });
+    await wait.for({ seconds: Math.ceil(waitMs / 1000) });
+  }
+}
+
+async function runReplicateUpscaleWithThrottle(args: {
+  replicate: Replicate;
+  payload: UpscaleImagePayload;
+  sourceImageUrl: string;
+  originalUrl: string;
+  generatedImageId: string;
+  targetScale: 2 | 4;
+}) {
+  for (let attempt = 1; attempt <= MAX_REPLICATE_THROTTLE_RETRIES; attempt += 1) {
+    const stillCurrent = await isImageStillCurrent(args.generatedImageId, args.sourceImageUrl);
+    if (!stillCurrent) {
+      await clearUpscaleStateAfterStaleAbort(args.generatedImageId);
+      logServerEvent('info', 'upscale.aborted_stale', {
+        generatedImageId: args.generatedImageId,
+        reason: 'Image was regenerated before provider execution',
+      });
+      return null;
+    }
+
+    await waitForReplicatePredictionSlot(args.payload);
+
+    const freshCheck = await isImageStillCurrent(args.generatedImageId, args.sourceImageUrl);
+    if (!freshCheck) {
+      await clearUpscaleStateAfterStaleAbort(args.generatedImageId);
+      logServerEvent('info', 'upscale.aborted_stale', {
+        generatedImageId: args.generatedImageId,
+        reason: 'Image was regenerated while waiting for provider capacity',
+      });
+      return null;
+    }
+
+    try {
+      return await args.replicate.run(
+        'nightmareai/real-esrgan:f121d640bd286e1fdc67f9799164c1d5be36ff74576ee11c803ae5b665dd46aa',
+        {
+          input: {
+            image: args.originalUrl,
+            scale: args.targetScale,
+            face_enhance: false,
+          },
+        },
+      );
+    } catch (error) {
+      const retryAfterMs = getReplicateThrottleRetryAfterMs(error);
+      if (retryAfterMs == null || attempt === MAX_REPLICATE_THROTTLE_RETRIES) {
+        throw error;
+      }
+
+      logServerEvent('warn', 'upscale.replicate_429_retry', {
+        generatedImageId: args.generatedImageId,
+        shopId: args.payload.shopId,
+        retryAfterMs,
+        attempt,
+      });
+      await wait.for({ seconds: Math.ceil(retryAfterMs / 1000) });
+    }
+  }
+
+  return null;
+}

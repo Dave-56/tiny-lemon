@@ -1,10 +1,6 @@
 import type { ActionFunctionArgs } from "react-router";
-import prisma from "../db.server";
-import { getEffectiveEntitlements } from "../lib/billing.server";
-import { canUpscale } from "../lib/plans";
 import { getShopFromSessionToken } from "../lib/sessionToken.server";
-import { enqueueUpscaleImage } from "../lib/triggerJobs.server";
-import { logServerEvent } from "../lib/observability.server";
+import { handleBulkUpscaleRequest } from "../lib/upscaleOrchestration.server";
 
 export const config = { maxDuration: 15 };
 
@@ -54,67 +50,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     );
   }
 
-  const targetScale = body.targetScale === 4 ? 4 : 2;
-
-  const entitlements = await getEffectiveEntitlements(shopId);
-  if (!canUpscale(entitlements.publicPlan, entitlements.isBeta)) {
-    return Response.json(
-      { error: "upgrade_required", message: "Upgrade to Growth or Scale to upscale images." },
-      { status: 402 },
-    );
-  }
-
-  const outfit = await prisma.outfit.findFirst({
-    where: { id: body.outfitId, shopId },
-    select: {
-      status: true,
-      images: { select: { id: true, upscaleStatus: true } },
-    },
-  });
-
-  if (!outfit) {
-    return Response.json({ error: "Outfit not found" }, { status: 404 });
-  }
-
-  if (outfit.status !== "completed") {
-    return Response.json(
-      { error: "Outfit must be completed before upscaling" },
-      { status: 400 },
-    );
-  }
-
-  const toUpscale = outfit.images.filter(
-    (img) => !img.upscaleStatus || img.upscaleStatus === "failed",
-  );
-
-  for (const img of toUpscale) {
-    await prisma.generatedImage.update({
-      where: { id: img.id },
-      data: { upscaleStatus: "pending" },
-    });
-
-    const handle = await enqueueUpscaleImage({
-      generatedImageId: img.id,
-      shopId,
-      targetScale,
-    });
-
-    await prisma.generatedImage.update({
-      where: { id: img.id },
-      data: { upscaleJobId: handle.id },
-    });
-  }
-
-  logServerEvent("info", "upscale.bulk_enqueued", {
+  return handleBulkUpscaleRequest({
     outfitId: body.outfitId,
     shopId,
-    targetScale,
-    count: toUpscale.length,
-  });
-
-  return Response.json({
-    ok: true,
-    outfitId: body.outfitId,
-    upscaled: toUpscale.length,
+    targetScale: body.targetScale === 4 ? 4 : 2,
   });
 };
