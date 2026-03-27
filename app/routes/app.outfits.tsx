@@ -1345,23 +1345,29 @@ export default function Outfits() {
 
   async function upscaleImage(generatedImageId: string) {
     setSessionError(null);
-    const res = await authenticatedFetch('/app/outfits', {
+    const res = await authenticatedFetch('/api/upscale-image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ intent: 'upscale_image', generatedImageId }),
+      body: JSON.stringify({ generatedImageId }),
     });
-    if (!res.ok && isSessionExpiredResponse(res)) handleSessionExpired();
+    if (!res.ok) {
+      if (isSessionExpiredResponse(res)) handleSessionExpired();
+      return;
+    }
     revalidate();
   }
 
   async function bulkUpscale(outfitId: string) {
     setSessionError(null);
-    const res = await authenticatedFetch('/app/outfits', {
+    const res = await authenticatedFetch('/api/bulk-upscale', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ intent: 'bulk_upscale', outfitId }),
+      body: JSON.stringify({ outfitId }),
     });
-    if (!res.ok && isSessionExpiredResponse(res)) handleSessionExpired();
+    if (!res.ok) {
+      if (isSessionExpiredResponse(res)) handleSessionExpired();
+      return;
+    }
     revalidate();
   }
 
