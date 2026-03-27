@@ -20,6 +20,10 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
       status: true,
       errorMessage: true,
       cleanFlatLayUrl: true,
+      videoStatus: true,
+      videoUrl: true,
+      videoErrorMessage: true,
+      videoGeneratedAt: true,
       images: { select: { id: true, pose: true, imageUrl: true, assetManifest: true } },
     },
   });
@@ -30,6 +34,10 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     status: outfit.status,
     errorMessage: outfit.errorMessage ?? null,
     cleanFlatLayUrl: outfit.cleanFlatLayUrl ?? null,
+    videoStatus: outfit.videoStatus ?? null,
+    videoUrl: outfit.videoUrl ?? null,
+    videoErrorMessage: outfit.videoErrorMessage ?? null,
+    videoGeneratedAt: outfit.videoGeneratedAt ?? null,
     images: outfit.images,
   });
 };

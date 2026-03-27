@@ -9,6 +9,7 @@ import {
 import { createPoseAssetManifest } from '../app/lib/imageAssetManifest.server';
 import { normalizeReferenceImageServer } from '../app/lib/normalizeReferenceImage.server';
 import { logServerEvent } from '../app/lib/observability.server';
+import { clearOutfitVideoState } from '../app/lib/videoOrchestration.server';
 import { PDP_STYLE_PRESETS, BRAND_STYLE_PRESETS } from '../app/lib/pdpPresets';
 import type { GarmentSpec } from '../app/lib/garmentSpec';
 import type { PoseImageAssetManifest } from '../app/lib/imageAssetManifest';
@@ -422,6 +423,10 @@ export const regenerateOutfitTask = task({
         styleId,
       });
     }
+
+    // Clear any existing video state (cancel in-flight job, reset fields)
+    // before replacing images — stale video should not survive regeneration.
+    await clearOutfitVideoState(outfitId);
 
     await prisma.$transaction(async (tx) => {
       for (const image of newImages) {

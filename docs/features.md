@@ -20,21 +20,28 @@
 
 ## P1 — Short Fashion Video Generation
 
-**Goal:** Generate 5-second silent fashion clips (subtle turns, walking, posing) from generated images — giving merchants video content for product pages, Reels, and TikTok Shop.
+**Goal:** Generate short silent fashion clips from completed outfit images so beta merchants can test video content for product pages, Reels, and TikTok Shop.
+
+**V1 scope:**
+- Beta-only
+- 5-second silent MP4
+- Generated per outfit
+- Uses completed generated outfit images as references
+- Manual trigger from the outfits page
+- Output stored in Vercel Blob and previewed in-app
+- Shopify sync excluded from V1
 
 **Approach:**
-- Image-to-video generation using a provider like Runway Gen-4, Kling, Minimax, or Veo
-- Input: generated pose image + motion prompt derived from garment spec and model attributes
-- New Trigger.dev task (`generate-video`) — longer duration, higher cost per generation
-- Output hosted on Vercel Blob, streamable MP4
+- Add a new Trigger.dev task (`generate-video`)
+- Use a provider adapter so we can evaluate Replicate and other providers without rewriting app orchestration
+- Reuse the existing orchestration + polling pattern from image upscaling
 
 **Key considerations:**
-- Garment consistency across frames (logos, patterns, colors must not drift)
-- Motion types: subtle turn, walk forward/back, 3/4 rotation
-- No audio
-- Gated to Scale plan
-- Evaluate provider quality specifically for fashion/apparel before committing
-- Reuse polling UI pattern from image generation
+- Garment consistency across frames
+- Stable face/body identity
+- Support subtle motions only in V1: turn, pose shift, slight walk
+- Clear video state when source images are regenerated
+- Beta feedback and quality evaluation come before billing or plan packaging
 
 ---
 

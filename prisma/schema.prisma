@@ -113,6 +113,11 @@ model Outfit {
   shopifyProductUrl    String?   // Shopify admin URL for deep-linking
   shopifySyncedAt      DateTime? // timestamp of last successful sync
   shopifySyncStatus    String?   // syncing | synced | stale | failed
+  videoStatus          String?   // null | pending | processing | completed | failed
+  videoJobId           String?   // Trigger.dev runId for generate-video task
+  videoUrl             String?   // Vercel Blob MP4 URL
+  videoErrorMessage    String?   // failure reason from video generation
+  videoGeneratedAt     DateTime? // timestamp of last successful video generation
   createdAt            DateTime  @default(now())
 
   shop   Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)

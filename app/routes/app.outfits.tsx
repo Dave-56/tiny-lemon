@@ -7,7 +7,7 @@ import { boundary } from '@shopify/shopify-app-react-router/server';
 import {
   Download, MoreHorizontal, ZoomIn, X, Trash2, Loader2,
   ChevronLeft, ChevronRight, Image as ImageIcon, RefreshCw,
-  Upload, ExternalLink,
+  Upload, ExternalLink, Video, Play,
 } from 'lucide-react';
 import { zipSync } from 'fflate';
 import { useAuthenticatedFetch } from '../contexts/AuthenticatedFetchContext';
@@ -19,7 +19,7 @@ import { isSessionExpiredResponse, SESSION_EXPIRED_MESSAGE } from '../lib/authen
 import { handleRegenerateOutfit } from '../lib/triggerGeneration.server';
 import { getEffectiveEntitlements } from '../lib/billing.server';
 import { cancelRunSafely, enqueueShopifySync } from '../lib/triggerJobs.server';
-import { canUpscale } from '../lib/plans';
+import { canUpscale, canGenerateVideo } from '../lib/plans';
 import { parsePoseImageAssetManifest } from '../lib/imageAssetManifest';
 import posthog from 'posthog-js';
 import { handleBulkUpscaleRequest, handleSingleUpscaleRequest } from '../lib/upscaleOrchestration.server';
@@ -65,7 +65,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   );
 
   const upscaleAllowed = canUpscale(entitlements.publicPlan, entitlements.isBeta);
-  return { shop, outfits, modelNameMap, brandStyleLabelMap, isBeta: entitlements.isBeta, upscaleAllowed };
+  const videoAllowed = canGenerateVideo(entitlements.publicPlan, entitlements.isBeta);
+  return { shop, outfits, modelNameMap, brandStyleLabelMap, isBeta: entitlements.isBeta, upscaleAllowed, videoAllowed };
 };
 
 // ── Action ─────────────────────────────────────────────────────────────────────
@@ -752,6 +753,8 @@ function OutfitCard({
   upscaleAllowed,
   onUpscaleImage,
   onBulkUpscale,
+  videoAllowed,
+  onGenerateVideo,
 }: {
   outfit: OutfitWithImages;
   modelName: string | undefined;
@@ -770,6 +773,8 @@ function OutfitCard({
   upscaleAllowed?: boolean;
   onUpscaleImage?: (generatedImageId: string) => void;
   onBulkUpscale?: (outfitId: string) => void;
+  videoAllowed?: boolean;
+  onGenerateVideo?: (outfitId: string) => void;
 }) {
   const status = (outfit as { status?: string }).status ?? 'completed';
   const syncStatus = (outfit as { shopifySyncStatus?: string | null }).shopifySyncStatus;
@@ -779,6 +784,11 @@ function OutfitCard({
     optimisticBulkUpscaling ||
     outfit.images.some((img) => img.upscaleStatus === 'pending' || img.upscaleStatus === 'processing');
   const allUpscaled = outfit.images.length > 0 && outfit.images.every((img) => img.upscaleStatus === 'completed');
+  const videoStatus = (outfit as { videoStatus?: string | null }).videoStatus ?? null;
+  const videoUrl = (outfit as { videoUrl?: string | null }).videoUrl ?? null;
+  const isVideoGenerating = videoStatus === 'pending' || videoStatus === 'processing';
+  const hasVideo = videoStatus === 'completed' && !!videoUrl;
+  const canStartVideo = videoAllowed && onGenerateVideo && status === OUTFIT_STATUS.completed && !isVideoGenerating && !hasVideo;
   const [menuOpen, setMenuOpen]         = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [renaming, setRenaming]         = useState(false);
@@ -1003,6 +1013,33 @@ function OutfitCard({
             );
           })()}
 
+          {canStartVideo && (
+            <button
+              type="button"
+              onClick={() => onGenerateVideo!(outfit.id)}
+              className="flex items-center gap-1.5 text-[11px] text-krea-muted border border-krea-border rounded-md px-2.5 py-1 hover:bg-krea-border/40 transition-colors"
+            >
+              <Video className="w-3 h-3" />
+              Generate video
+            </button>
+          )}
+          {isVideoGenerating && (
+            <span className="flex items-center gap-1.5 text-[11px] text-krea-muted">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Generating video…
+            </span>
+          )}
+          {videoStatus === 'failed' && onGenerateVideo && (
+            <button
+              type="button"
+              onClick={() => onGenerateVideo(outfit.id)}
+              className="flex items-center gap-1.5 text-[11px] text-red-400 border border-red-400/30 rounded-md px-2.5 py-1 hover:bg-red-400/10 transition-colors"
+            >
+              <Video className="w-3 h-3" />
+              Retry video
+            </button>
+          )}
+
           {status === OUTFIT_STATUS.completed && (
             <ShopifyPublishButton outfit={outfit} onPublish={onPublish} />
           )}
@@ -1139,6 +1176,38 @@ function OutfitCard({
           />
         ))}
       </div>
+
+      {/* Video player */}
+      {hasVideo && videoUrl && (
+        <div className="px-4 pb-4">
+          <div className="rounded-lg overflow-hidden border border-krea-border bg-black">
+            <video
+              src={videoUrl}
+              autoPlay
+              loop
+              muted
+              playsInline
+              poster={front?.imageUrl}
+              className="w-full max-h-[300px] object-contain"
+            />
+            <div className="flex items-center justify-between bg-krea-border/20 px-3 py-1.5">
+              <span className="flex items-center gap-1.5 text-[11px] text-krea-muted">
+                <Play className="w-3 h-3" />
+                Fashion video
+              </span>
+              <a
+                href={videoUrl}
+                download
+                className="text-[11px] text-krea-muted hover:text-krea-text transition-colors flex items-center gap-1"
+              >
+                <Download className="w-3 h-3" />
+                Download MP4
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
       {status === OUTFIT_STATUS.failed && (outfit as { errorMessage?: string | null }).errorMessage && (
         <p className="px-4 pb-3 text-xs text-red-500">
           {(outfit as { errorMessage: string }).errorMessage}
@@ -1151,7 +1220,7 @@ function OutfitCard({
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function Outfits() {
-  const { shop, outfits, modelNameMap, brandStyleLabelMap, isBeta, upscaleAllowed } = useLoaderData<typeof loader>();
+  const { shop, outfits, modelNameMap, brandStyleLabelMap, isBeta, upscaleAllowed, videoAllowed } = useLoaderData<typeof loader>();
   const { revalidate } = useRevalidator();
   const authenticatedFetch = useAuthenticatedFetch();
 
@@ -1219,9 +1288,13 @@ export default function Outfits() {
     outfits.some((o) =>
       o.images.some((img) => img.upscaleStatus === 'pending' || img.upscaleStatus === 'processing'),
     );
-  const hasInProgress = hasGenerating || hasUpscaling;
+  const hasVideoGenerating = outfits.some(
+    (o) => o.videoStatus === 'pending' || o.videoStatus === 'processing',
+  );
+  const hasInProgress = hasGenerating || hasUpscaling || hasVideoGenerating;
   // Tighter poll (2.5s) for upscale-only since Real-ESRGAN is fast (5-15s)
-  const pollInterval = hasGenerating ? 5000 : 2500;
+  // Video generation uses 5s like image generation (takes 60-180s)
+  const pollInterval = hasGenerating || hasVideoGenerating ? 5000 : 2500;
   useEffect(() => {
     if (!hasInProgress) return;
     const interval = setInterval(() => revalidate(), pollInterval);
@@ -1382,6 +1455,17 @@ export default function Outfits() {
     revalidate();
   }
 
+  async function generateVideo(outfitId: string) {
+    setSessionError(null);
+    const res = await authenticatedFetch('/api/generate-video', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ outfitId }),
+    });
+    if (!res.ok && isSessionExpiredResponse(res)) handleSessionExpired();
+    if (res.ok) revalidate();
+  }
+
   async function deleteSelectedOutfits() {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
@@ -1505,6 +1589,8 @@ export default function Outfits() {
                 upscaleAllowed={upscaleAllowed}
                 onUpscaleImage={upscaleAllowed ? upscaleImage : undefined}
                 onBulkUpscale={upscaleAllowed ? bulkUpscale : undefined}
+                videoAllowed={videoAllowed}
+                onGenerateVideo={videoAllowed ? generateVideo : undefined}
               />
             ))}
           </div>
