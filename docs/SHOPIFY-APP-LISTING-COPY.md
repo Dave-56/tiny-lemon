@@ -26,28 +26,28 @@ You must add at least 1 tag per field (or check “Not applicable” if it truly
 ### Introduction (max 100 characters)
 
 ```
-Your own realistic models and custom photoshoots, like big brands. Start with flat-lay today.
+On-model photos and short fashion videos from flat-lays. No shoot needed.
 ```
-*(87 chars. No “Shopify.” Vision: any brand gets Zara/H&M/Mr. P–style shoots; flat-lay supported now, mannequin and on-model next.)*
+*(74 chars.)*
 
 ---
 
 ### App details (max 500 characters)
 
 ```
-Tiny Lemon gives every brand what big names have: your own realistic models and customized photoshoots without the cost of a studio. We support flat-lay input today—turn a single flat-lay into front, three-quarter, and back studio angles in minutes. Soon: mannequin shots, on-model photos, and more inputs. Images match your brand style and sync straight to your products from the app. Built for fashion and apparel brands that want consistent, pro-level imagery across every product.
+Stop waiting on photoshoots. Upload a flat-lay from your factory or supplier and get polished on-model product photos in under 60 seconds — front, three-quarter, and back angles. Then generate a short branded fashion video from the same images — ready for PDPs, Reels, or TikTok. Choose a styling direction, build a custom model, and push everything directly to your products. Built for fashion brands that want pro imagery and motion content without a real shoot.
 ```
-*(~320 chars. No “Shopify.” Vision + flat-lay now, more inputs later.)*
+*(~475 chars.)*
 
 ---
 
 ### Features (3–5 items, max 80 chars each)
 
-1. `Turn flat-lays into front, 3/4, and back studio angles in under 60 seconds.`
-2. `Add generated images straight to your products from the app—no export or manual upload.`
-3. `Custom models and brand style profiles so every shot matches your aesthetic.`
-4. `Free tier to try: 3 generations/month, no credit card required.`
-5. `High-res output and optional detail close-ups, flat lay, and lifestyle imagery.`
+1. `Flat-lay to front, 3/4, and back on-model shots in under 60 seconds`
+2. `Generate short branded fashion videos from your outfit images`
+3. `Push images and video directly to your Shopify products — no export`
+4. `Custom model builder + 6 brand styling directions for consistency`
+5. `Free tier to try, high-res output, upscaling, and one-click downloads`
 
 ---
 
@@ -120,7 +120,7 @@ Leave blank, or add e.g. **Vercel** if you want to mention hosting. Do not list 
 ### App card subtitle (max 62 characters)
 
 ```
-Flat-lay to studio shots in 60 seconds. No photographer, no shoot.
+Flat-lay to on-model photos and fashion video in 60 seconds.
 ```
 *(61 chars)*
 
@@ -180,6 +180,73 @@ To test Tiny Lemon:
 6. Optional: try “Model builder” and “Brand style” to see custom model and style options.
 7. Billing: use “Billing” in the app to see plans; test upgrade flow if needed.
 ```
+
+---
+
+## Extended marketing copy (for landing pages, ads, blog)
+
+### Headline
+
+**Stop waiting on photoshoots. Start selling faster.**
+
+### Value proposition
+
+You have the garment. You have the flat-lay from your factory or supplier. Tiny Lemon turns that flat-lay into polished, on-model product photos — the kind that actually convert — without booking a photographer, a model, or a studio. Then it goes further: generate a short branded fashion video from those same images, ready for your PDP, Reels, or TikTok Shop.
+
+### How it works
+
+1. Upload a flat-lay photo of your garment
+2. Tiny Lemon generates on-model shots in multiple angles — front, three-quarter, and back
+3. Add the images to your Shopify products and publish
+
+That's it. Minutes, not weeks.
+
+### Built for fashion brands, not generic AI
+
+This is not a general-purpose image generator. Tiny Lemon is purpose-built for apparel PDP imagery. The AI understands fabric, fit, and garment construction so your product looks like the real thing — not a hallucinated version of it.
+
+### Your brand, your model, your look
+
+Choose from 6 styling directions — Editorial Cool, Minimal Clarity, Street Aesthetic, and more — so every generated photo matches your brand identity. Use the Model Builder to create and save a custom model that appears consistently across your entire catalog. No more mismatched product pages.
+
+### Short fashion videos — no video shoot
+
+Once your outfit images are ready, generate a 5-second branded fashion clip with one click. Motion is shaped by your brand style, so the video feels like yours. Use it on product pages, Instagram Reels, TikTok Shop, or paid creative. More output per SKU, zero extra production.
+
+### Publish to Shopify in one click
+
+Generated images and videos sync directly to your Shopify products as draft listings. No downloading, no manual uploads, no broken workflows. Your catalog stays in one place.
+
+### Plans that scale with you
+
+- **Free** — 3 generations/month, front angle, watermarked. Try it with zero commitment.
+- **Starter ($39/mo)** — 30 generations, full 3-angle sets, high-res, unwatermarked. Perfect for indie brands adding new SKUs.
+- **Growth ($99/mo)** — 100 generations, detail close-ups, flat lay output, multiple backgrounds, priority queue. For brands running seasonal drops.
+- **Scale ($249/mo)** — 300 generations, lifestyle imagery, unlimited models and brand profiles, credit rollover. For catalogs with 50+ SKUs per season.
+
+### Why merchants switch to Tiny Lemon
+
+- Cut product photo and video costs by 80–90% compared to traditional shoots
+- Go from sample to live listing in the same day
+- Get photos and short video from one flat-lay — more content per SKU
+- Maintain visual consistency across hundreds of SKUs
+- No need to coordinate photographers, models, studios, or retouchers
+- Works with flat-lays from your factory, supplier, or your own shoot — any background
+
+### Key features reference
+
+| Feature | Description |
+|---|---|
+| Flat-lay to on-model | Upload a flat-lay, get professional on-model photos with accurate fabric and fit |
+| Multi-angle generation | Front hero, three-quarter (45°), and back views from a single upload |
+| Brand styling directions | 6 preset styles (Editorial Cool, Minimal Clarity, Street Aesthetic, etc.) to match your brand |
+| Custom Model Builder | Generate and save a consistent model for your brand across all products |
+| One-click Shopify sync | Push generated images directly to Shopify product listings |
+| High-res output | Up to 1K resolution in 2:3 aspect ratio (Starter and above) |
+| Image upscaling | Upscale to even higher resolution for hero placements (Growth and above) |
+| Short fashion video | Generate a 5-second branded clip from your outfit images — for PDPs, Reels, TikTok |
+| Flat-lay validation | Advisory check ensures your upload will produce the best results |
+| Batch-friendly | Generate for your entire collection without repeat setup |
 
 ---
 
