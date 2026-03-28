@@ -18,6 +18,29 @@ interface GenerateVideoPayload {
   brandStyleId: string;
 }
 
+function buildImageFingerprint(
+  images: Array<{
+    id: string;
+    imageUrl: string;
+    pose: string;
+    assetManifest: unknown;
+    upscaleStatus: string | null;
+  }>,
+): string {
+  return images
+    .map((img) => {
+      const manifest = parsePoseImageAssetManifest(img.assetManifest);
+      const isUpscaled = img.upscaleStatus === 'completed' && !!manifest?.upscaled;
+      const sourceUrl = isUpscaled
+        ? manifest!.upscaled!.original.url
+        : (manifest?.original.url ?? img.imageUrl);
+
+      return `${img.id}:${img.pose}:${img.upscaleStatus ?? 'null'}:${sourceUrl}`;
+    })
+    .sort()
+    .join('|');
+}
+
 function logTaskLifecycle(
   event: 'task.started' | 'task.completed' | 'task.failed_final',
   payload: GenerateVideoPayload,
@@ -103,10 +126,7 @@ export const generateVideoTask = task({
     });
 
     // ── 4. Capture fingerprint for staleness check ────────────────────────────
-    const imageFingerprint = outfit.images
-      .map((img) => `${img.id}:${img.imageUrl}`)
-      .sort()
-      .join('|');
+    const imageFingerprint = buildImageFingerprint(outfit.images);
 
     // ── 5. Build motion prompt ────────────────────────────────────────────────
     const { prompt, negativePrompt } = buildVideoMotionPrompt(brandStyleId);
@@ -124,15 +144,20 @@ export const generateVideoTask = task({
     const currentOutfit = await prisma.outfit.findFirst({
       where: { id: outfitId },
       select: {
-        images: { select: { id: true, imageUrl: true } },
+        images: {
+          select: {
+            id: true,
+            imageUrl: true,
+            pose: true,
+            assetManifest: true,
+            upscaleStatus: true,
+          },
+        },
       },
     });
 
     const currentFingerprint = currentOutfit
-      ? currentOutfit.images
-          .map((img) => `${img.id}:${img.imageUrl}`)
-          .sort()
-          .join('|')
+      ? buildImageFingerprint(currentOutfit.images)
       : '';
 
     if (currentFingerprint !== imageFingerprint) {

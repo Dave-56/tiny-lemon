@@ -490,11 +490,11 @@ function VideoTile({
 }) {
   const helperText =
     state === "idle"
-      ? "Usually a couple of minutes. Runs in the background."
+      ? "Usually about 2 minutes. Runs in the background."
       : state === "queued"
         ? "Queued up. You can keep working while we start it."
         : state === "generating"
-          ? "Generating now. Usually finishes in a couple of minutes."
+          ? "Generating now. Usually finishes in about 2 minutes."
           : state === "failed"
             ? "Video did not finish this time. Safe to retry."
             : generatedAt
@@ -1491,16 +1491,7 @@ function OutfitCard({
                 <Video className="w-3 h-3" />
                 Generate video
               </button>
-              <span className="text-[11px] text-krea-muted">
-                Usually a couple of minutes.
-              </span>
             </>
-          )}
-          {isVideoGenerating && (
-            <span className="flex items-center gap-1.5 text-[11px] text-krea-muted">
-              <Loader2 className="w-3 h-3 animate-spin" />
-              Video in progress.
-            </span>
           )}
           {videoStatus === "failed" && onGenerateVideo && (
             <>

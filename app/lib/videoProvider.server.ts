@@ -33,24 +33,29 @@ export interface VideoProvider {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-const PREFERRED_POSE_ORDER = ["front", "three-quarter", "back"];
+const PREFERRED_POSE_ORDER = ["front", "three-quarter", "back"] as const;
 type SupportedVideoAspectRatio = "16:9" | "9:16" | "1:1";
+const UNKNOWN_POSE_INDEX = PREFERRED_POSE_ORDER.length;
 
-/**
- * Pick the single best hero image for single-image providers.
- * Prefers front > three-quarter > back, and upscaled variants over originals.
- */
-function pickHeroImage(images: OutfitSourceImage[]): OutfitSourceImage {
-  const sorted = [...images].sort((a, b) => {
-    const aIdx = PREFERRED_POSE_ORDER.indexOf(a.pose);
-    const bIdx = PREFERRED_POSE_ORDER.indexOf(b.pose);
-    const poseDiff =
-      (aIdx === -1 ? 99 : aIdx) - (bIdx === -1 ? 99 : bIdx);
-    if (poseDiff !== 0) return poseDiff;
-    // Prefer upscaled
-    return (b.isUpscaled ? 1 : 0) - (a.isUpscaled ? 1 : 0);
-  });
-  return sorted[0];
+const POSE_SCORE: Record<string, number> = {
+  front: 24,
+  "three-quarter": 24,
+  back: 8,
+};
+const UPSCALE_SCORE_BONUS = 12;
+
+export interface ScoredVideoSourceImage {
+  image: OutfitSourceImage;
+  poseScore: number;
+  upscaleBonus: number;
+  totalScore: number;
+  poseRank: number;
+}
+
+export interface VideoSourceSelection {
+  hero: OutfitSourceImage;
+  orderedImages: OutfitSourceImage[];
+  scoredImages: ScoredVideoSourceImage[];
 }
 
 // ── Kling v3 via Replicate (single-image mode) ──────────────────────────────
@@ -68,14 +73,50 @@ function getProviderMode(model: `${string}/${string}`): VideoProviderMode {
   return "single-image";
 }
 
-function sortSourceImages(images: OutfitSourceImage[]): OutfitSourceImage[] {
-  return [...images].sort((a, b) => {
-    const aIdx = PREFERRED_POSE_ORDER.indexOf(a.pose);
-    const bIdx = PREFERRED_POSE_ORDER.indexOf(b.pose);
-    const poseDiff = (aIdx === -1 ? 99 : aIdx) - (bIdx === -1 ? 99 : bIdx);
-    if (poseDiff !== 0) return poseDiff;
-    return (b.isUpscaled ? 1 : 0) - (a.isUpscaled ? 1 : 0);
-  });
+function getPoseRank(pose: string): number {
+  const idx = PREFERRED_POSE_ORDER.indexOf(
+    pose as (typeof PREFERRED_POSE_ORDER)[number],
+  );
+  return idx === -1 ? UNKNOWN_POSE_INDEX : idx;
+}
+
+function scoreSourceImage(image: OutfitSourceImage): ScoredVideoSourceImage {
+  const poseScore = POSE_SCORE[image.pose] ?? 0;
+  const upscaleBonus = image.isUpscaled ? UPSCALE_SCORE_BONUS : 0;
+
+  return {
+    image,
+    poseScore,
+    upscaleBonus,
+    totalScore: poseScore + upscaleBonus,
+    poseRank: getPoseRank(image.pose),
+  };
+}
+
+export function selectVideoSourceImages(
+  images: OutfitSourceImage[],
+): VideoSourceSelection {
+  if (images.length === 0) {
+    throw new Error("selectVideoSourceImages requires at least one source image");
+  }
+
+  const scoredImages = images
+    .map(scoreSourceImage)
+    .sort((a, b) => {
+      const scoreDiff = b.totalScore - a.totalScore;
+      if (scoreDiff !== 0) return scoreDiff;
+
+      const rankDiff = a.poseRank - b.poseRank;
+      if (rankDiff !== 0) return rankDiff;
+
+      return a.image.url.localeCompare(b.image.url);
+    });
+
+  return {
+    hero: scoredImages[0]!.image,
+    orderedImages: scoredImages.map((entry) => entry.image),
+    scoredImages,
+  };
 }
 
 async function waitForReplicatePredictionSlot(model: `${string}/${string}`) {
@@ -104,13 +145,12 @@ export function buildProviderInput(
   model: `${string}/${string}`,
   input: VideoProviderInput,
 ): Record<string, unknown> {
-  const orderedImages = sortSourceImages(input.sourceImages);
-  const hero = pickHeroImage(orderedImages);
+  const selection = selectVideoSourceImages(input.sourceImages);
   const mode = getProviderMode(model);
 
   const providerInput: Record<string, unknown> = {
     prompt: input.motionPrompt,
-    start_image: hero.url,
+    start_image: selection.hero.url,
     duration: input.durationSeconds,
     aspect_ratio: getSupportedAspectRatio(),
   };
@@ -120,10 +160,10 @@ export function buildProviderInput(
   }
 
   if (mode === "multi-reference") {
-    providerInput.reference_images = orderedImages.map((image) => image.url);
+    providerInput.reference_images = selection.orderedImages.map((image) => image.url);
     providerInput.prompt = [
       "Use <<<image_1>>> as the primary subject reference and maintain the same garment and identity.",
-      orderedImages.length > 1
+      selection.orderedImages.length > 1
         ? "Use the remaining reference images for consistency of silhouette, styling, and garment details."
         : "",
       input.motionPrompt,
@@ -147,15 +187,23 @@ export class KlingReplicateProvider implements VideoProvider {
   }
 
   async generate(input: VideoProviderInput): Promise<VideoProviderResult> {
-    const hero = pickHeroImage(input.sourceImages);
+    const selection = selectVideoSourceImages(input.sourceImages);
     const mode = getProviderMode(this.model);
 
     logServerEvent("info", "video.provider_started", {
       model: this.model,
       mode,
-      heroImagePose: hero.pose,
-      heroIsUpscaled: hero.isUpscaled,
+      heroImagePose: selection.hero.pose,
+      heroIsUpscaled: selection.hero.isUpscaled,
       sourceImageCount: input.sourceImages.length,
+      orderedPoses: selection.orderedImages.map((image) => image.pose),
+      scoreBreakdown: selection.scoredImages.map((entry) => ({
+        pose: entry.image.pose,
+        isUpscaled: entry.image.isUpscaled,
+        poseScore: entry.poseScore,
+        upscaleBonus: entry.upscaleBonus,
+        totalScore: entry.totalScore,
+      })),
     });
 
     const providerInput = buildProviderInput(this.model, input);
@@ -192,7 +240,7 @@ export class KlingReplicateProvider implements VideoProvider {
 
     logServerEvent("info", "video.provider_success", {
       model: this.model,
-      heroImagePose: hero.pose,
+      heroImagePose: selection.hero.pose,
     });
 
     return {
