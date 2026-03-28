@@ -473,46 +473,149 @@ function ImageTile({
 }
 
 function VideoTile({
+  state,
   url,
   label,
+  generatedAt,
+  onGenerate,
 }: {
-  url: string;
+  state: "idle" | "queued" | "generating" | "ready" | "failed";
+  url?: string | null;
   label: string;
+  generatedAt?: string | Date | null;
+  onGenerate?: () => void;
 }) {
+  const helperText =
+    state === "idle"
+      ? "Usually a couple of minutes. Runs in the background."
+      : state === "queued"
+        ? "Queued up. You can keep working while we start it."
+        : state === "generating"
+          ? "Generating now. Usually finishes in a couple of minutes."
+          : state === "failed"
+            ? "Video did not finish this time. Safe to retry."
+            : generatedAt
+              ? "Video ready."
+              : "Video ready.";
+
+  const statusBadge =
+    state === "queued"
+      ? "Queued"
+      : state === "generating"
+        ? "Generating"
+        : state === "failed"
+          ? "Failed"
+          : state === "ready"
+            ? "Ready"
+            : null;
+
   return (
     <div>
-      <div className="group relative h-[300px] rounded-lg overflow-hidden border border-krea-border bg-black">
-        <video
-          src={url}
-          autoPlay
-          loop
-          muted
-          playsInline
-          className="block w-full h-full object-contain"
-        />
-        <div className="absolute inset-0 bg-black/15 flex items-center justify-center transition-opacity opacity-100 md:opacity-0 md:group-hover:opacity-100 pointer-events-none">
-          <div className="p-2 rounded-full bg-white/90">
-            <Play className="w-4 h-4 text-krea-text" />
+      <div
+        className={`group relative h-[300px] rounded-lg overflow-hidden border border-krea-border ${
+          state === "ready" ? "bg-black" : "bg-krea-border/10"
+        }`}
+      >
+        {state === "ready" && url ? (
+          <>
+            <video
+              src={url}
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="block w-full h-full object-contain"
+            />
+            <div className="absolute inset-0 bg-black/15 flex items-center justify-center transition-opacity opacity-100 md:opacity-0 md:group-hover:opacity-100 pointer-events-none">
+              <div className="p-2 rounded-full bg-white/90">
+                <Play className="w-4 h-4 text-krea-text" />
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center">
+            <div className="rounded-full border border-krea-border bg-white p-3">
+              {state === "queued" || state === "generating" ? (
+                <Loader2 className="h-5 w-5 animate-spin text-krea-text" />
+              ) : (
+                <Video className="h-5 w-5 text-krea-text" />
+              )}
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-krea-text">
+                {state === "idle"
+                  ? "Video preview"
+                  : state === "queued"
+                    ? "Video queued"
+                    : state === "generating"
+                      ? "Generating video"
+                      : "Video unavailable"}
+              </p>
+              <p
+                className="text-xs text-krea-muted"
+                role="status"
+                aria-live="polite"
+              >
+                {helperText}
+              </p>
+            </div>
+            {(state === "idle" || state === "failed") && onGenerate && (
+              <button
+                type="button"
+                onClick={onGenerate}
+                className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] transition-colors ${
+                  state === "failed"
+                    ? "border-red-300 text-red-500 hover:bg-red-50"
+                    : "border-krea-border text-krea-muted hover:bg-krea-border/40"
+                }`}
+              >
+                <Video className="h-3 w-3" />
+                {state === "failed" ? "Retry video" : "Generate video"}
+              </button>
+            )}
           </div>
-        </div>
+        )}
       </div>
       <div className="flex items-center justify-between mt-1.5">
         <div className="flex items-center gap-1">
           <p className="text-[10px] text-krea-muted">{label}</p>
-          <span className="text-[9px] font-semibold text-sky-600 bg-sky-50 border border-sky-200 rounded px-1 py-0.5 leading-none">
-            MP4
-          </span>
+          {statusBadge ? (
+            <span
+              className={`text-[9px] font-semibold rounded px-1 py-0.5 leading-none border ${
+                state === "ready"
+                  ? "text-emerald-600 bg-emerald-50 border-emerald-200"
+                  : state === "failed"
+                    ? "text-red-500 bg-red-50 border-red-200"
+                    : "text-sky-600 bg-sky-50 border-sky-200"
+              }`}
+            >
+              {statusBadge}
+            </span>
+          ) : (
+            <span className="text-[9px] font-semibold text-sky-600 bg-sky-50 border border-sky-200 rounded px-1 py-0.5 leading-none">
+              MP4
+            </span>
+          )}
         </div>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            downloadFile(url, `${label.toLowerCase().replace(/\s+/g, "-")}.mp4`);
-          }}
-          className="p-1 rounded hover:bg-krea-border/40 transition-colors"
-        >
-          <Download className="w-3.5 h-3.5 text-krea-muted" />
-        </button>
+        {state === "ready" && url ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              downloadFile(
+                url,
+                `${label.toLowerCase().replace(/\s+/g, "-")}.mp4`,
+              );
+            }}
+            className="p-1 rounded hover:bg-krea-border/40 transition-colors"
+          >
+            <Download className="w-3.5 h-3.5 text-krea-muted" />
+          </button>
+        ) : (
+          <span className="text-[10px] text-krea-muted">
+            {state === "idle" ? "Optional" : ""}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -978,11 +1081,26 @@ function OutfitCard({
   const videoStatus =
     (outfit as { videoStatus?: string | null }).videoStatus ?? null;
   const videoUrl = (outfit as { videoUrl?: string | null }).videoUrl ?? null;
+  const videoGeneratedAt =
+    (outfit as { videoGeneratedAt?: string | Date | null }).videoGeneratedAt ??
+    null;
   const isVideoGenerating =
     optimisticVideoGenerating ||
     videoStatus === "pending" ||
     videoStatus === "processing";
   const hasVideo = videoStatus === "completed" && !!videoUrl;
+  const shouldShowVideoTile =
+    Boolean(videoAllowed) && status === OUTFIT_STATUS.completed;
+  const videoTileState: "idle" | "queued" | "generating" | "ready" | "failed" =
+    hasVideo
+      ? "ready"
+      : optimisticVideoGenerating || videoStatus === "pending"
+        ? "queued"
+        : videoStatus === "processing"
+          ? "generating"
+          : videoStatus === "failed"
+            ? "failed"
+            : "idle";
   const canStartVideo =
     videoAllowed &&
     onGenerateVideo &&
@@ -1014,10 +1132,12 @@ function OutfitCard({
       }
     | {
         kind: "video";
-        url: string;
+        url?: string | null;
         label: string;
         key: string;
         size: "hero" | "normal" | "small";
+        state: "idle" | "queued" | "generating" | "ready" | "failed";
+        generatedAt?: string | Date | null;
       };
   const front = outfit.images.find((img) => img.pose === "front");
   const tq = outfit.images.find((img) => img.pose === "three-quarter");
@@ -1081,7 +1201,7 @@ function OutfitCard({
           },
         ]
       : []),
-    ...(hasVideo && videoUrl
+    ...(shouldShowVideoTile
       ? [
           {
             kind: "video" as const,
@@ -1089,6 +1209,8 @@ function OutfitCard({
             label: "Video",
             key: "video",
             size: "normal" as const,
+            state: videoTileState,
+            generatedAt: videoGeneratedAt,
           },
         ]
       : []),
@@ -1151,10 +1273,12 @@ function OutfitCard({
     setMenuOpen(false);
     setDownloading(true);
     try {
-      const entries = cardShots.map((s) => ({
-        url: s.url,
-        filename: `${s.label.toLowerCase().replace(/\s+/g, "-")}.${s.kind === "video" ? "mp4" : "png"}`,
-      }));
+      const entries = cardShots
+        .filter((s) => Boolean(s.url))
+        .map((s) => ({
+          url: s.url!,
+          filename: `${s.label.toLowerCase().replace(/\s+/g, "-")}.${s.kind === "video" ? "mp4" : "png"}`,
+        }));
       await downloadAsZip(outfit.name || "outfit", entries);
     } finally {
       setDownloading(false);
@@ -1295,30 +1419,40 @@ function OutfitCard({
             })()}
 
           {canStartVideo && (
-            <button
-              type="button"
-              onClick={() => onGenerateVideo!(outfit.id)}
-              className="flex items-center gap-1.5 text-[11px] text-krea-muted border border-krea-border rounded-md px-2.5 py-1 hover:bg-krea-border/40 transition-colors"
-            >
-              <Video className="w-3 h-3" />
-              Generate video
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => onGenerateVideo!(outfit.id)}
+                className="flex items-center gap-1.5 text-[11px] text-krea-muted border border-krea-border rounded-md px-2.5 py-1 hover:bg-krea-border/40 transition-colors"
+              >
+                <Video className="w-3 h-3" />
+                Generate video
+              </button>
+              <span className="text-[11px] text-krea-muted">
+                Usually a couple of minutes.
+              </span>
+            </>
           )}
           {isVideoGenerating && (
             <span className="flex items-center gap-1.5 text-[11px] text-krea-muted">
               <Loader2 className="w-3 h-3 animate-spin" />
-              Generating video…
+              Video in progress.
             </span>
           )}
           {videoStatus === "failed" && onGenerateVideo && (
-            <button
-              type="button"
-              onClick={() => onGenerateVideo(outfit.id)}
-              className="flex items-center gap-1.5 text-[11px] text-red-400 border border-red-400/30 rounded-md px-2.5 py-1 hover:bg-red-400/10 transition-colors"
-            >
-              <Video className="w-3 h-3" />
-              Retry video
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => onGenerateVideo(outfit.id)}
+                className="flex items-center gap-1.5 text-[11px] text-red-400 border border-red-400/30 rounded-md px-2.5 py-1 hover:bg-red-400/10 transition-colors"
+              >
+                <Video className="w-3 h-3" />
+                Retry video
+              </button>
+              <span className="text-[11px] text-krea-muted">
+                Safe to retry.
+              </span>
+            </>
           )}
 
           {status === OUTFIT_STATUS.completed && (
@@ -1458,7 +1592,18 @@ function OutfitCard({
       >
         {cardShots.map((shot, i) => (
           shot.kind === "video" ? (
-            <VideoTile key={shot.key} url={shot.url} label={shot.label} />
+            <VideoTile
+              key={shot.key}
+              state={shot.state}
+              url={shot.url}
+              label={shot.label}
+              generatedAt={shot.generatedAt}
+              onGenerate={
+                shot.state === "idle" || shot.state === "failed"
+                  ? () => onGenerateVideo?.(outfit.id)
+                  : undefined
+              }
+            />
           ) : (
             <ImageTile
               key={shot.key}
@@ -1513,6 +1658,7 @@ export default function Outfits() {
   const authenticatedFetch = useAuthenticatedFetch();
 
   const prevStatusRef = useRef<Record<string, string>>({});
+  const prevVideoStatusRef = useRef<Record<string, string | null>>({});
   useEffect(() => {
     for (const outfit of outfits) {
       const prev = prevStatusRef.current[outfit.id];
@@ -1520,6 +1666,38 @@ export default function Outfits() {
         posthog.capture("generation_completed", { shop, outfitId: outfit.id });
       }
       prevStatusRef.current[outfit.id] = outfit.status ?? "";
+    }
+  }, [outfits, shop]);
+
+  useEffect(() => {
+    for (const outfit of outfits) {
+      const prev = prevVideoStatusRef.current[outfit.id] ?? null;
+      const current = outfit.videoStatus ?? null;
+
+      if (prev !== current) {
+        if ((prev === null || prev === "failed") && current === "pending") {
+          posthog.capture("video_generate_queued", {
+            shop,
+            outfitId: outfit.id,
+          });
+        }
+
+        if (current === "completed" && outfit.videoUrl) {
+          posthog.capture("video_generate_ready", {
+            shop,
+            outfitId: outfit.id,
+          });
+        }
+
+        if (current === "failed") {
+          posthog.capture("video_generate_failed", {
+            shop,
+            outfitId: outfit.id,
+          });
+        }
+      }
+
+      prevVideoStatusRef.current[outfit.id] = current;
     }
   }, [outfits, shop]);
 
@@ -1812,6 +1990,12 @@ export default function Outfits() {
 
   async function generateVideo(outfitId: string) {
     setSessionError(null);
+    const outfit = outfits.find((item) => item.id === outfitId);
+    posthog.capture("video_generate_clicked", {
+      shop,
+      outfitId,
+      attempt: outfit?.videoStatus === "failed" ? "retry" : "new",
+    });
     setOptimisticVideoGeneratingIds((current) =>
       new Set(current).add(outfitId),
     );
