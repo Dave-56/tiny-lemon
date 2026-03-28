@@ -3,6 +3,7 @@ import { canGenerateVideo } from "./plans";
 import { getEffectiveEntitlements } from "./billing.server";
 import { enqueueGenerateVideo, cancelRunSafely } from "./triggerJobs.server";
 import { logServerEvent } from "./observability.server";
+import { Prisma } from "@prisma/client";
 
 // ── Response types ───────────────────────────────────────────────────────────
 
@@ -77,6 +78,22 @@ export async function clearOutfitVideoState(outfitId: string): Promise<void> {
   }
 
   await prisma.outfit.update({
+    where: { id: outfitId },
+    data: {
+      videoStatus: null,
+      videoJobId: null,
+      videoUrl: null,
+      videoErrorMessage: null,
+      videoGeneratedAt: null,
+    },
+  });
+}
+
+export async function clearOutfitVideoStateInTransaction(
+  tx: Prisma.TransactionClient,
+  outfitId: string,
+): Promise<void> {
+  await tx.outfit.update({
     where: { id: outfitId },
     data: {
       videoStatus: null,

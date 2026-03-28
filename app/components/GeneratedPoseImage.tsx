@@ -3,9 +3,14 @@ import type { ComponentPropsWithoutRef } from "react";
 
 import {
   buildVariantSrcSet,
+  getManifestDisplayFallback,
   parsePoseImageAssetManifest,
   type PoseImageVariant,
 } from "../lib/imageAssetManifest";
+import {
+  getPoseImagePreset,
+  type PoseImagePresetId,
+} from "../lib/poseImagePolicy";
 
 /** Deduplicate variants by width, preferring the upscaled (later) entry for shared widths. */
 function dedupeByWidth(variants: PoseImageVariant[]): PoseImageVariant[] {
@@ -23,6 +28,7 @@ type GeneratedPoseImageProps = Omit<
   url?: string;
   asset?: unknown;
   label: string;
+  preset?: PoseImagePresetId;
   placeholderClassName?: string;
 };
 
@@ -30,15 +36,29 @@ export function GeneratedPoseImage({
   url,
   asset,
   label,
+  preset,
   placeholderClassName,
   fetchPriority,
   ...imgProps
 }: GeneratedPoseImageProps) {
+  const [manifestFailed, setManifestFailed] = useState(false);
   const [baseFailed, setBaseFailed] = useState(false);
   const manifest = parsePoseImageAssetManifest(asset);
-  const resolvedUrl = manifest?.original.url ?? url;
+  const displayFallback = manifest
+    ? getManifestDisplayFallback(manifest)
+    : null;
+  const manifestUrl = displayFallback?.url ?? manifest?.original.url;
+  const fallbackUrl = url && url !== manifestUrl ? url : undefined;
+  const shouldUseManifest = Boolean(manifestUrl) && !manifestFailed;
+  const resolvedUrl = shouldUseManifest
+    ? manifestUrl
+    : (fallbackUrl ?? manifestUrl ?? url);
+  const resolvedSizes = preset
+    ? getPoseImagePreset(preset).sizes
+    : imgProps.sizes;
 
   useEffect(() => {
+    setManifestFailed(false);
     setBaseFailed(false);
   }, [asset, url]);
 
@@ -57,15 +77,22 @@ export function GeneratedPoseImage({
       key={resolvedUrl}
       src={resolvedUrl}
       alt={label}
-      onError={() => setBaseFailed(true)}
+      onError={() => {
+        if (shouldUseManifest && fallbackUrl) {
+          setManifestFailed(true);
+          return;
+        }
+        setBaseFailed(true);
+      }}
       // React SSR doesn't map camelCase fetchPriority to the DOM attribute
       {...(fetchPriority ? { fetchpriority: fetchPriority } : {})}
       {...imgProps}
+      sizes={resolvedSizes}
     />
   );
 
-  // Merge upscaled variants (larger widths) into the base srcset so the browser
-  // picks the best variant for the viewport — mobile gets 320/640, desktop gets 1600+.
+  // Merge base and upscaled variants so responsive selection follows the shared
+  // image policy instead of per-callsite guesses.
   const avifVariants = dedupeByWidth([
     ...(manifest?.variants.avif ?? []),
     ...(manifest?.upscaled?.variants.avif ?? []),
@@ -75,7 +102,10 @@ export function GeneratedPoseImage({
     ...(manifest?.upscaled?.variants.webp ?? []),
   ]);
 
-  if (avifVariants.length === 0 && webpVariants.length === 0) {
+  if (
+    !shouldUseManifest ||
+    (avifVariants.length === 0 && webpVariants.length === 0)
+  ) {
     return image;
   }
 
@@ -85,14 +115,14 @@ export function GeneratedPoseImage({
         <source
           type="image/avif"
           srcSet={buildVariantSrcSet(avifVariants)}
-          sizes={imgProps.sizes}
+          sizes={resolvedSizes}
         />
       ) : null}
       {webpVariants.length > 0 ? (
         <source
           type="image/webp"
           srcSet={buildVariantSrcSet(webpVariants)}
-          sizes={imgProps.sizes}
+          sizes={resolvedSizes}
         />
       ) : null}
       {image}

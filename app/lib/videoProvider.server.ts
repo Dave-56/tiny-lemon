@@ -3,6 +3,7 @@ import { wait } from "@trigger.dev/sdk";
 import { logServerEvent } from "./observability.server";
 import {
   consumeReplicatePredictionCreateSlot,
+  getReplicatePredictionCreateWindowMs,
   getReplicateThrottleRetryAfterMs,
 } from "./replicatePredictionThrottle.server";
 
@@ -33,6 +34,7 @@ export interface VideoProvider {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const PREFERRED_POSE_ORDER = ["front", "three-quarter", "back"];
+type SupportedVideoAspectRatio = "16:9" | "9:16" | "1:1";
 
 /**
  * Pick the single best hero image for single-image providers.
@@ -55,6 +57,83 @@ function pickHeroImage(images: OutfitSourceImage[]): OutfitSourceImage {
 
 const DEFAULT_KLING_MODEL =
   "kwaivgi/kling-v3-video" as `${string}/${string}`;
+const MAX_REPLICATE_VIDEO_RETRIES = 6;
+
+type VideoProviderMode = "single-image" | "multi-reference";
+
+function getProviderMode(model: `${string}/${string}`): VideoProviderMode {
+  if (model.includes("omni")) {
+    return "multi-reference";
+  }
+  return "single-image";
+}
+
+function sortSourceImages(images: OutfitSourceImage[]): OutfitSourceImage[] {
+  return [...images].sort((a, b) => {
+    const aIdx = PREFERRED_POSE_ORDER.indexOf(a.pose);
+    const bIdx = PREFERRED_POSE_ORDER.indexOf(b.pose);
+    const poseDiff = (aIdx === -1 ? 99 : aIdx) - (bIdx === -1 ? 99 : bIdx);
+    if (poseDiff !== 0) return poseDiff;
+    return (b.isUpscaled ? 1 : 0) - (a.isUpscaled ? 1 : 0);
+  });
+}
+
+async function waitForReplicatePredictionSlot(model: `${string}/${string}`) {
+  while (true) {
+    const slot = await consumeReplicatePredictionCreateSlot();
+    if (slot.allowed) {
+      return;
+    }
+
+    const retryMs = Math.max(
+      1000,
+      slot.retryAfterMs ?? getReplicatePredictionCreateWindowMs(),
+    );
+    logServerEvent("info", "video.provider_throttled", { retryMs, model });
+    await wait.for({ seconds: Math.ceil(retryMs / 1000) });
+  }
+}
+
+function getSupportedAspectRatio(): SupportedVideoAspectRatio {
+  // Outfit source renders are portrait (roughly 2:3), and Kling only accepts
+  // 16:9, 9:16, or 1:1. 9:16 is the closest supported fit for fashion clips.
+  return "9:16";
+}
+
+export function buildProviderInput(
+  model: `${string}/${string}`,
+  input: VideoProviderInput,
+): Record<string, unknown> {
+  const orderedImages = sortSourceImages(input.sourceImages);
+  const hero = pickHeroImage(orderedImages);
+  const mode = getProviderMode(model);
+
+  const providerInput: Record<string, unknown> = {
+    prompt: input.motionPrompt,
+    start_image: hero.url,
+    duration: input.durationSeconds,
+    aspect_ratio: getSupportedAspectRatio(),
+  };
+
+  if (input.negativePrompt) {
+    providerInput.negative_prompt = input.negativePrompt;
+  }
+
+  if (mode === "multi-reference") {
+    providerInput.reference_images = orderedImages.map((image) => image.url);
+    providerInput.prompt = [
+      "Use <<<image_1>>> as the primary subject reference and maintain the same garment and identity.",
+      orderedImages.length > 1
+        ? "Use the remaining reference images for consistency of silhouette, styling, and garment details."
+        : "",
+      input.motionPrompt,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  return providerInput;
+}
 
 export class KlingReplicateProvider implements VideoProvider {
   private replicate: Replicate;
@@ -69,49 +148,37 @@ export class KlingReplicateProvider implements VideoProvider {
 
   async generate(input: VideoProviderInput): Promise<VideoProviderResult> {
     const hero = pickHeroImage(input.sourceImages);
+    const mode = getProviderMode(this.model);
 
     logServerEvent("info", "video.provider_started", {
       model: this.model,
+      mode,
       heroImagePose: hero.pose,
       heroIsUpscaled: hero.isUpscaled,
       sourceImageCount: input.sourceImages.length,
     });
 
-    // Throttle: wait for a Replicate prediction slot
-    const slot = await consumeReplicatePredictionCreateSlot();
-    if (!slot.allowed) {
-      const retryMs = slot.retryAfterMs ?? 10_000;
-      logServerEvent("info", "video.provider_throttled", { retryMs });
-      await wait.for({ seconds: Math.ceil(retryMs / 1000) });
-    }
+    const providerInput = buildProviderInput(this.model, input);
 
-    const providerInput: Record<string, unknown> = {
-      prompt: input.motionPrompt,
-      start_image: hero.url,
-      duration: input.durationSeconds,
-      aspect_ratio: "2:3",
-    };
+    let output: unknown = null;
+    for (let attempt = 1; attempt <= MAX_REPLICATE_VIDEO_RETRIES; attempt += 1) {
+      await waitForReplicatePredictionSlot(this.model);
 
-    if (input.negativePrompt) {
-      providerInput.negative_prompt = input.negativePrompt;
-    }
+      try {
+        output = await this.replicate.run(this.model, { input: providerInput });
+        break;
+      } catch (error) {
+        const retryMs = getReplicateThrottleRetryAfterMs(error);
+        if (retryMs == null || attempt === MAX_REPLICATE_VIDEO_RETRIES) {
+          throw error;
+        }
 
-    let output: unknown;
-    try {
-      output = await this.replicate.run(this.model, { input: providerInput });
-    } catch (error) {
-      const retryMs = getReplicateThrottleRetryAfterMs(error);
-      if (retryMs != null) {
         logServerEvent("info", "video.provider_rate_limited", {
           retryMs,
           model: this.model,
+          attempt,
         });
         await wait.for({ seconds: Math.ceil(retryMs / 1000) });
-        output = await this.replicate.run(this.model, {
-          input: providerInput,
-        });
-      } else {
-        throw error;
       }
     }
 

@@ -9,7 +9,10 @@ import {
 import { createPoseAssetManifest } from '../app/lib/imageAssetManifest.server';
 import { normalizeReferenceImageServer } from '../app/lib/normalizeReferenceImage.server';
 import { logServerEvent } from '../app/lib/observability.server';
-import { clearOutfitVideoState } from '../app/lib/videoOrchestration.server';
+import {
+  clearOutfitVideoStateInTransaction,
+} from '../app/lib/videoOrchestration.server';
+import { cancelRunSafely } from '../app/lib/triggerJobs.server';
 import { PDP_STYLE_PRESETS, BRAND_STYLE_PRESETS } from '../app/lib/pdpPresets';
 import type { GarmentSpec } from '../app/lib/garmentSpec';
 import type { PoseImageAssetManifest } from '../app/lib/imageAssetManifest';
@@ -161,6 +164,8 @@ export const regenerateOutfitTask = task({
         cleanBackFlatLayUrl: true,
         garmentSpec: true,
         brandStyleId: true,
+        videoStatus: true,
+        videoJobId: true,
       },
     });
     if (!outfit?.cleanFlatLayUrl) {
@@ -424,11 +429,19 @@ export const regenerateOutfitTask = task({
       });
     }
 
-    // Clear any existing video state (cancel in-flight job, reset fields)
-    // before replacing images — stale video should not survive regeneration.
-    await clearOutfitVideoState(outfitId);
+    // Cancel any in-flight video run before replacing images.
+    // The DB invalidation itself happens inside the transaction below so we
+    // don't lose the existing video if regeneration fails before commit.
+    if (
+      outfit.videoJobId &&
+      (outfit.videoStatus === 'pending' || outfit.videoStatus === 'processing')
+    ) {
+      await cancelRunSafely(outfit.videoJobId);
+    }
 
     await prisma.$transaction(async (tx) => {
+      await clearOutfitVideoStateInTransaction(tx, outfitId);
+
       for (const image of newImages) {
         await upsertGeneratedImageByPose(tx.generatedImage, image, 'regenerate-outfit');
       }

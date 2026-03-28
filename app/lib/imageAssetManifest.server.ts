@@ -1,12 +1,42 @@
 import sharp from "sharp";
 
 import { uploadImageToBlob, uploadImageVariant } from "../blob.server";
-import type { PoseImageAssetManifest, PoseImageVariant, UpscaledImageBlock } from "./imageAssetManifest";
+import type {
+  PoseImageAssetManifest,
+  PoseImageVariant,
+  UpscaledImageBlock,
+} from "./imageAssetManifest";
+import {
+  getBaseVariantWidths,
+  getDefaultDisplayFallbackWidth,
+  getUpscaledDisplayFallbackWidth,
+  getUpscaledVariantWidths,
+} from "./poseImagePolicy";
 
-const DEFAULT_VARIANT_WIDTHS = [320, 640, 800] as const;
+async function createWebpDisplayFallback(
+  pngBuffer: Buffer,
+  pathnameStem: string,
+  width: number,
+  fallbackWidth: number,
+): Promise<{ url: string; width: number; contentType: "image/webp" }> {
+  const safeWidth = Math.min(fallbackWidth, width);
+  const fallbackBuffer = await sharp(pngBuffer)
+    .resize({ width: safeWidth, withoutEnlargement: true })
+    .webp({ quality: 65 })
+    .toBuffer();
+  const fallbackUrl = await uploadImageVariant(
+    fallbackBuffer,
+    `${pathnameStem}-${safeWidth}w.display.webp`,
+    "image/webp",
+    31536000,
+  );
 
-const UPSCALED_VARIANT_WIDTHS_2X = [320, 640, 800, 1200, 1600] as const;
-const UPSCALED_VARIANT_WIDTHS_4X = [320, 640, 800, 1600, 2048, 3200] as const;
+  return {
+    url: fallbackUrl,
+    width: safeWidth,
+    contentType: "image/webp",
+  };
+}
 
 export async function createPoseAssetManifest({
   pngBuffer,
@@ -19,19 +49,29 @@ export async function createPoseAssetManifest({
   width: number;
   height: number;
 }): Promise<PoseImageAssetManifest> {
+  const variantWidths = getBaseVariantWidths(width);
   const originalUrl = await uploadImageToBlob(
     pngBuffer,
     `${pathnameStem}.png`,
     "image/png",
-    86400,
+    31536000,
     "inline",
+  );
+  const displayFallback = await createWebpDisplayFallback(
+    pngBuffer,
+    pathnameStem,
+    width,
+    getDefaultDisplayFallbackWidth(width),
   );
 
   const avif: PoseImageVariant[] = [];
   const webp: PoseImageVariant[] = [];
 
-  for (const variantWidth of DEFAULT_VARIANT_WIDTHS) {
-    const resized = sharp(pngBuffer).resize({ width: variantWidth });
+  for (const variantWidth of variantWidths) {
+    const resized = sharp(pngBuffer).resize({
+      width: variantWidth,
+      withoutEnlargement: true,
+    });
 
     const avifBuffer = await resized
       .clone()
@@ -49,10 +89,7 @@ export async function createPoseAssetManifest({
       contentType: "image/avif",
     });
 
-    const webpBuffer = await resized
-      .clone()
-      .webp({ quality: 60 })
-      .toBuffer();
+    const webpBuffer = await resized.clone().webp({ quality: 60 }).toBuffer();
     const webpUrl = await uploadImageVariant(
       webpBuffer,
       `${pathnameStem}-${variantWidth}w.webp`,
@@ -67,13 +104,14 @@ export async function createPoseAssetManifest({
   }
 
   return {
-    kind: "pose-image-v1",
+    kind: "pose-image-v2",
     original: {
       url: originalUrl,
       width,
       height,
       contentType: "image/png",
     },
+    displayFallback,
     variants: { avif, webp },
     downloadUrl: originalUrl,
   };
@@ -95,23 +133,31 @@ export async function addUpscaledToManifest({
   scale: 2 | 4;
 }): Promise<PoseImageAssetManifest> {
   const upscaledStem = `${pathnameStem}-upscaled-${scale}x`;
+  const variantWidths = getUpscaledVariantWidths(width);
 
   const originalUrl = await uploadImageToBlob(
     upscaledPngBuffer,
     `${upscaledStem}.png`,
     "image/png",
-    86400,
+    31536000,
     "inline",
   );
-
-  const variantWidths = scale === 2 ? UPSCALED_VARIANT_WIDTHS_2X : UPSCALED_VARIANT_WIDTHS_4X;
+  const displayFallback = await createWebpDisplayFallback(
+    upscaledPngBuffer,
+    upscaledStem,
+    width,
+    getUpscaledDisplayFallbackWidth(width),
+  );
   const avif: PoseImageVariant[] = [];
   const webp: PoseImageVariant[] = [];
 
   for (const variantWidth of variantWidths) {
     if (variantWidth > width) continue;
 
-    const resized = sharp(upscaledPngBuffer).resize({ width: variantWidth });
+    const resized = sharp(upscaledPngBuffer).resize({
+      width: variantWidth,
+      withoutEnlargement: true,
+    });
 
     const avifBuffer = await resized
       .clone()
@@ -129,10 +175,7 @@ export async function addUpscaledToManifest({
       contentType: "image/avif",
     });
 
-    const webpBuffer = await resized
-      .clone()
-      .webp({ quality: 60 })
-      .toBuffer();
+    const webpBuffer = await resized.clone().webp({ quality: 60 }).toBuffer();
     const webpUrl = await uploadImageVariant(
       webpBuffer,
       `${upscaledStem}-${variantWidth}w.webp`,
@@ -153,6 +196,7 @@ export async function addUpscaledToManifest({
       height,
       contentType: "image/png",
     },
+    displayFallback,
     variants: { avif, webp },
     downloadUrl: originalUrl,
     scale,

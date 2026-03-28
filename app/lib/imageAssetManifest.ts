@@ -6,6 +6,12 @@ export interface PoseImageVariant {
   contentType: string;
 }
 
+export interface PoseImageDisplayFallback {
+  url: string;
+  width: number;
+  contentType: string;
+}
+
 export interface UpscaledImageBlock {
   original: {
     url: string;
@@ -13,6 +19,7 @@ export interface UpscaledImageBlock {
     height: number;
     contentType: string;
   };
+  displayFallback: PoseImageDisplayFallback;
   variants: {
     avif: PoseImageVariant[];
     webp: PoseImageVariant[];
@@ -22,13 +29,14 @@ export interface UpscaledImageBlock {
 }
 
 export interface PoseImageAssetManifest {
-  kind: "pose-image-v1";
+  kind: "pose-image-v1" | "pose-image-v2";
   original: {
     url: string;
     width: number;
     height: number;
     contentType: string;
   };
+  displayFallback: PoseImageDisplayFallback;
   variants: {
     avif: PoseImageVariant[];
     webp: PoseImageVariant[];
@@ -62,11 +70,43 @@ function parseVariantList(value: unknown): PoseImageVariant[] {
     .sort((a, b) => a.width - b.width);
 }
 
+function parseDisplayFallback(
+  value: unknown,
+  original: { url: string; width: number; contentType: string },
+): PoseImageDisplayFallback {
+  if (!isRecord(value)) {
+    return {
+      url: original.url,
+      width: original.width,
+      contentType: original.contentType,
+    };
+  }
+
+  if (
+    typeof value.url !== "string" ||
+    typeof value.width !== "number" ||
+    typeof value.contentType !== "string"
+  ) {
+    return {
+      url: original.url,
+      width: original.width,
+      contentType: original.contentType,
+    };
+  }
+
+  return {
+    url: value.url,
+    width: value.width,
+    contentType: value.contentType,
+  };
+}
+
 export function parsePoseImageAssetManifest(
   value: unknown,
 ): PoseImageAssetManifest | null {
   if (!isRecord(value)) return null;
-  if (value.kind !== "pose-image-v1") return null;
+  if (value.kind !== "pose-image-v1" && value.kind !== "pose-image-v2")
+    return null;
   if (!isRecord(value.original)) return null;
   if (!isRecord(value.variants)) return null;
   if (typeof value.downloadUrl !== "string") return null;
@@ -77,14 +117,20 @@ export function parsePoseImageAssetManifest(
   if (typeof original.height !== "number") return null;
   if (typeof original.contentType !== "string") return null;
 
+  const parsedOriginal = {
+    url: original.url,
+    width: original.width,
+    height: original.height,
+    contentType: original.contentType,
+  };
+
   const manifest: PoseImageAssetManifest = {
-    kind: "pose-image-v1",
-    original: {
-      url: original.url,
-      width: original.width,
-      height: original.height,
-      contentType: original.contentType,
-    },
+    kind: value.kind,
+    original: parsedOriginal,
+    displayFallback: parseDisplayFallback(
+      value.displayFallback,
+      parsedOriginal,
+    ),
     variants: {
       avif: parseVariantList(value.variants.avif),
       webp: parseVariantList(value.variants.webp),
@@ -104,13 +150,19 @@ export function parsePoseImageAssetManifest(
       typeof up.downloadUrl === "string" &&
       (up.scale === 2 || up.scale === 4)
     ) {
+      const upscaledOriginal = {
+        url: up.original.url,
+        width: up.original.width,
+        height: up.original.height,
+        contentType: up.original.contentType,
+      };
+
       manifest.upscaled = {
-        original: {
-          url: up.original.url,
-          width: up.original.width,
-          height: up.original.height,
-          contentType: up.original.contentType,
-        },
+        original: upscaledOriginal,
+        displayFallback: parseDisplayFallback(
+          up.displayFallback,
+          upscaledOriginal,
+        ),
         variants: {
           avif: parseVariantList(up.variants.avif),
           webp: parseVariantList(up.variants.webp),
@@ -124,6 +176,14 @@ export function parsePoseImageAssetManifest(
   return manifest;
 }
 
+export function getManifestDisplayFallback(
+  manifest: PoseImageAssetManifest,
+): PoseImageDisplayFallback {
+  return manifest.upscaled?.displayFallback ?? manifest.displayFallback;
+}
+
 export function buildVariantSrcSet(variants: PoseImageVariant[]): string {
-  return variants.map((variant) => `${variant.url} ${variant.width}w`).join(", ");
+  return variants
+    .map((variant) => `${variant.url} ${variant.width}w`)
+    .join(", ");
 }
