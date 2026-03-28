@@ -28,6 +28,7 @@ import {
   ExternalLink,
   Video,
   Play,
+  Maximize,
 } from "lucide-react";
 import { zipSync } from "fflate";
 import { useAuthenticatedFetch } from "../contexts/AuthenticatedFetchContext";
@@ -478,12 +479,14 @@ function VideoTile({
   label,
   generatedAt,
   onGenerate,
+  onOpen,
 }: {
   state: "idle" | "queued" | "generating" | "ready" | "failed";
   url?: string | null;
   label: string;
   generatedAt?: string | Date | null;
   onGenerate?: () => void;
+  onOpen?: () => void;
 }) {
   const helperText =
     state === "idle"
@@ -514,7 +517,8 @@ function VideoTile({
       <div
         className={`group relative h-[300px] rounded-lg overflow-hidden border border-krea-border ${
           state === "ready" ? "bg-black" : "bg-krea-border/10"
-        }`}
+        } ${state === "ready" && onOpen ? "cursor-pointer" : ""}`}
+        onClick={state === "ready" && onOpen ? onOpen : undefined}
       >
         {state === "ready" && url ? (
           <>
@@ -753,18 +757,29 @@ function Lightbox({
   const front = outfit.images.find((img) => img.pose === "front");
   const tq = outfit.images.find((img) => img.pose === "three-quarter");
   const back = outfit.images.find((img) => img.pose === "back");
+  const videoUrl = (outfit as { videoUrl?: string | null }).videoUrl ?? null;
 
-  const images: Array<{
-    url: string;
-    downloadUrl: string;
-    label: string;
-    asset?: unknown;
-    hasVariants: boolean;
-    isUpscaled: boolean;
-  }> = [
+  const assets: Array<
+    | {
+        kind: "image";
+        url: string;
+        downloadUrl: string;
+        label: string;
+        asset?: unknown;
+        hasVariants: boolean;
+        isUpscaled: boolean;
+      }
+    | {
+        kind: "video";
+        url: string;
+        downloadUrl: string;
+        label: string;
+      }
+  > = [
     ...(front
       ? [
           {
+            kind: "image" as const,
             url: front.imageUrl,
             downloadUrl:
               parsePoseImageAssetManifest(front.assetManifest)?.upscaled
@@ -779,6 +794,7 @@ function Lightbox({
     ...(tq
       ? [
           {
+            kind: "image" as const,
             url: tq.imageUrl,
             downloadUrl:
               parsePoseImageAssetManifest(tq.assetManifest)?.upscaled
@@ -793,6 +809,7 @@ function Lightbox({
     ...(back
       ? [
           {
+            kind: "image" as const,
             url: back.imageUrl,
             downloadUrl:
               parsePoseImageAssetManifest(back.assetManifest)?.upscaled
@@ -807,6 +824,7 @@ function Lightbox({
     ...(outfit.cleanFlatLayUrl
       ? [
           {
+            kind: "image" as const,
             url: outfit.cleanFlatLayUrl,
             downloadUrl: outfit.cleanFlatLayUrl,
             label: "Flat lay",
@@ -815,23 +833,40 @@ function Lightbox({
           },
         ]
       : []),
+    ...(videoUrl
+      ? [
+          {
+            kind: "video" as const,
+            url: videoUrl,
+            downloadUrl: videoUrl,
+            label: "Video",
+          },
+        ]
+      : []),
   ];
 
   const [index, setIndex] = useState(initialIndex);
-  const current = images[index];
+  const current = assets[index];
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "ArrowLeft")
-        setIndex((i) => (i - 1 + images.length) % images.length);
-      if (e.key === "ArrowRight") setIndex((i) => (i + 1) % images.length);
+        setIndex((i) => (i - 1 + assets.length) % assets.length);
+      if (e.key === "ArrowRight") setIndex((i) => (i + 1) % assets.length);
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [images.length, onClose]);
+  }, [assets.length, onClose]);
 
   if (!current) return null;
+
+  async function openFullscreen() {
+    const element = videoRef.current;
+    if (!element || document.fullscreenElement) return;
+    await element.requestFullscreen?.();
+  }
 
   return (
     <div
@@ -872,16 +907,16 @@ function Lightbox({
         <button
           type="button"
           onClick={() =>
-            setIndex((i) => (i - 1 + images.length) % images.length)
+            setIndex((i) => (i - 1 + assets.length) % assets.length)
           }
           className="p-2 rounded-full hover:bg-white/10 transition-colors shrink-0"
-          style={{ visibility: images.length > 1 ? "visible" : "hidden" }}
+          style={{ visibility: assets.length > 1 ? "visible" : "hidden" }}
         >
           <ChevronLeft className="w-6 h-6 text-white" />
         </button>
 
         <div className="flex items-center justify-center max-h-full max-w-lg w-full">
-          {current.hasVariants ? (
+          {current.kind === "image" && current.hasVariants ? (
             <GeneratedPoseImage
               asset={current.asset}
               url={current.url}
@@ -892,7 +927,7 @@ function Lightbox({
               style={{ maxHeight: "calc(100vh - 200px)" }}
               placeholderClassName="w-full max-w-lg rounded-lg bg-krea-border/30"
             />
-          ) : (
+          ) : current.kind === "image" ? (
             <img
               key={current.url}
               src={current.url}
@@ -901,14 +936,36 @@ function Lightbox({
               className="block max-w-full object-contain rounded-lg"
               style={{ maxHeight: "calc(100vh - 200px)" }}
             />
+          ) : (
+            <div className="relative w-full max-w-4xl">
+              <video
+                key={current.url}
+                ref={videoRef}
+                src={current.url}
+                controls
+                autoPlay
+                loop
+                muted
+                playsInline
+                className="block max-h-[calc(100vh-200px)] w-full rounded-lg bg-black object-contain"
+              />
+              <button
+                type="button"
+                onClick={openFullscreen}
+                className="absolute right-3 top-3 flex items-center gap-1.5 rounded-md border border-white/20 bg-black/45 px-3 py-1.5 text-xs text-white/85 hover:bg-black/60 transition-colors"
+              >
+                <Maximize className="w-3.5 h-3.5" />
+                Fullscreen
+              </button>
+            </div>
           )}
         </div>
 
         <button
           type="button"
-          onClick={() => setIndex((i) => (i + 1) % images.length)}
+          onClick={() => setIndex((i) => (i + 1) % assets.length)}
           className="p-2 rounded-full hover:bg-white/10 transition-colors shrink-0"
-          style={{ visibility: images.length > 1 ? "visible" : "hidden" }}
+          style={{ visibility: assets.length > 1 ? "visible" : "hidden" }}
         >
           <ChevronRight className="w-6 h-6 text-white" />
         </button>
@@ -920,27 +977,33 @@ function Lightbox({
         onClick={(e) => e.stopPropagation()}
       >
         <p className="text-sm text-white/80">{current.label}</p>
-        {current.isUpscaled && (
+        {current.kind === "image" && current.isUpscaled && (
           <span className="text-[9px] font-semibold text-emerald-400 bg-emerald-900/50 border border-emerald-700 rounded px-1.5 py-0.5 leading-none">
             HD
           </span>
         )}
         <span className="text-white/30">·</span>
         <p className="text-xs text-white/50">
-          {index + 1} / {images.length}
+          {index + 1} / {assets.length}
         </p>
         <button
           type="button"
           onClick={() =>
             downloadFile(
               current.downloadUrl,
-              `${current.label.toLowerCase().replace(/\s+/g, "-")}${current.isUpscaled ? "-hd" : ""}.png`,
+              current.kind === "video"
+                ? `${current.label.toLowerCase().replace(/\s+/g, "-")}.mp4`
+                : `${current.label.toLowerCase().replace(/\s+/g, "-")}${current.isUpscaled ? "-hd" : ""}.png`,
             )
           }
           className="ml-2 flex items-center gap-1.5 text-xs text-white/70 hover:text-white border border-white/20 rounded-md px-3 py-1.5 transition-colors"
         >
           <Download className="w-3.5 h-3.5" />
-          {current.isUpscaled ? "Download HD" : "Download"}
+          {current.kind === "video"
+            ? "Download MP4"
+            : current.isUpscaled
+              ? "Download HD"
+              : "Download"}
         </button>
       </div>
     </div>
@@ -1598,6 +1661,11 @@ function OutfitCard({
               url={shot.url}
               label={shot.label}
               generatedAt={shot.generatedAt}
+              onOpen={
+                shot.state === "ready"
+                  ? () => onLightbox(outfit.id, i)
+                  : undefined
+              }
               onGenerate={
                 shot.state === "idle" || shot.state === "failed"
                   ? () => onGenerateVideo?.(outfit.id)
