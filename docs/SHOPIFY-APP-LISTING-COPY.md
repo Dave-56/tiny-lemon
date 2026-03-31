@@ -43,11 +43,11 @@ Tiny Lemon gives every brand what big names have: your own realistic models and 
 
 ### Features (3–5 items, max 80 chars each)
 
-1. `Turn flat-lays into front, 3/4, and back studio angles in under 60 seconds.`
-2. `Add generated images straight to your products from the app—no export or manual upload.`
-3. `Custom models and brand style profiles so every shot matches your aesthetic.`
-4. `Free tier to try: 3 generations/month, no credit card required.`
-5. `High-res output and optional detail close-ups, flat lay, and lifestyle imagery.`
+1. `Turn flat-lays into front, 3/4, and back studio angles from a single upload`
+2. `Add generated images straight to your products — no export needed`
+3. `Custom models and brand style profiles so every shot matches your look`
+4. `Try risk-free — high-res output, detail close-ups, and lifestyle imagery`
+5. `Built for fashion brands that want consistent, pro-level product photos`
 
 ---
 
@@ -120,7 +120,7 @@ Leave blank, or add e.g. **Vercel** if you want to mention hosting. Do not list 
 ### App card subtitle (max 62 characters)
 
 ```
-Flat-lay to studio shots in 60 seconds. No photographer, no shoot.
+Flat-lay to studio shots — no photographer, no shoot needed.
 ```
 *(61 chars)*
 
