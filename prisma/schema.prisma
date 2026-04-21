@@ -111,12 +111,21 @@ model Outfit {
   errorMessage         String?   // failure reason, set on task failure
   shopifyProductId     String?   // GID: "gid://shopify/Product/123"
   shopifyProductUrl    String?   // Shopify admin URL for deep-linking
+  shopifyProductCreatedByApp Boolean @default(false) // true when this app created the product (safe to overwrite media); false when merchant picked an existing product
   shopifySyncedAt      DateTime? // timestamp of last successful sync
   shopifySyncStatus    String?   // syncing | synced | stale | failed
+  videoStatus          String?   // null | pending | processing | completed | failed
+  videoJobId           String?   // Trigger.dev runId for generate-video task
+  videoUrl             String?   // Vercel Blob MP4 URL
+  videoErrorMessage    String?   // failure reason from video generation
+  videoGeneratedAt     DateTime? // timestamp of last successful video generation
+  deletedAt            DateTime?
   createdAt            DateTime  @default(now())
 
   shop   Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
   images GeneratedImage[]
+
+  @@index([shopId, deletedAt, createdAt])
 }
 
 model GeneratedImage {

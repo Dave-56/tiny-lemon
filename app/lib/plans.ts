@@ -14,3 +14,11 @@ export function canUpscale(plan: string, isBeta: boolean): boolean {
   if (isBeta) return true;
   return UPSCALE_ALLOWED_PLANS.has(plan);
 }
+
+/**
+ * Whether the given plan (or beta status) allows video generation.
+ * Beta-only for V1.
+ */
+export function canGenerateVideo(plan: string, isBeta: boolean): boolean {
+  return isBeta;
+}

@@ -1,5 +1,5 @@
 import type { LoaderFunctionArgs, MetaFunction } from "react-router";
-import { redirect, Form, Link, useLoaderData } from "react-router";
+import { redirect, Link, useLoaderData } from "react-router";
 
 import { login } from "../../shopify.server";
 import { BeforeAfterSlider } from "../../components/BeforeAfterSlider";
@@ -37,14 +37,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const origin = new URL(request.url).origin;
   return { showForm: Boolean(login), installUrl, origin };
 };
-
-function normalizeShopDomain(value: string): string {
-  const trimmed = value.trim().toLowerCase().replace(/^https?:\/\//, "").split("/")[0] ?? "";
-  if (!trimmed) return "";
-  if (trimmed.endsWith(".myshopify.com")) return trimmed;
-  if (trimmed.includes(".myshopify.com")) return trimmed;
-  return `${trimmed.replace(/\.myshopify\.com$/i, "")}.myshopify.com`;
-}
 
 export default function LandingPage() {
   const { showForm, installUrl } = useLoaderData<typeof loader>();
@@ -241,8 +233,7 @@ export default function LandingPage() {
         <section id="login" className={styles.loginSection}>
           <h2 className={styles.loginTitle}>Get started</h2>
           <p className={styles.loginSubtext}>
-            New to Tiny Lemon? Add the app to your store. Already use it? Log in
-            below.
+            Add Tiny Lemon to your Shopify store in one click.
           </p>
           {showForm && (
             <a
@@ -254,37 +245,9 @@ export default function LandingPage() {
             </a>
           )}
           {showForm && (
-            <>
-              <p className={styles.loginDivider}>Already have the app?</p>
-              <Form
-                className={styles.form}
-                method="post"
-                action="/auth/login"
-                onSubmit={(e) => {
-                  const form = e.currentTarget;
-                  const shopInput = form.querySelector<HTMLInputElement>('input[name="shop"]');
-                  if (shopInput?.value) {
-                    shopInput.value = normalizeShopDomain(shopInput.value);
-                  }
-                }}
-              >
-                <label className={styles.label}>
-                  <span className={styles.labelText}>Shop domain</span>
-                  <input
-                    className={styles.input}
-                    type="text"
-                    name="shop"
-                    placeholder="my-store.myshopify.com"
-                    required
-                    pattern="[a-z0-9][a-z0-9-]*\.myshopify\.com"
-                    title="Enter your Shopify store domain (e.g. my-store.myshopify.com)"
-                  />
-                </label>
-                <button type="submit" className={styles.btnGhost}>
-                  Log in
-                </button>
-              </Form>
-            </>
+            <p className={styles.loginDivider}>
+              Already installed? Open Tiny Lemon from your Shopify admin under Apps.
+            </p>
           )}
         </section>
       </main>

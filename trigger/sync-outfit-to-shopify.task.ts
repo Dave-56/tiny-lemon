@@ -3,8 +3,8 @@ import prisma from '../app/db.server';
 import { parsePoseImageAssetManifest } from '../app/lib/imageAssetManifest';
 import { logServerEvent } from '../app/lib/observability.server';
 
-// Match the API version used in shopify.server.ts (ApiVersion.October25)
-const SHOPIFY_API_VERSION = '2025-10';
+// Match the API version used in shopify.server.ts (ApiVersion.April26)
+const SHOPIFY_API_VERSION = '2026-04';
 
 // ── Payload ───────────────────────────────────────────────────────────────────
 
@@ -99,7 +99,11 @@ export const syncOutfitToShopifyTask = task({
     });
 
     // ── 5. Create product or reuse existing ───────────────────────────────────
+    // `ownedByApp` gates destructive media deletion: only products this app created
+    // on behalf of the outfit are safe to overwrite. Merchant-picked products retain
+    // their existing media — we append ours alongside.
     let productGid = payload.shopifyProductId;
+    let ownedByApp: boolean;
     if (!productGid) {
       const createData = await shopifyGraphQL(shopId, accessToken, `
         mutation productCreate($product: ProductCreateInput!) {
@@ -113,42 +117,47 @@ export const syncOutfitToShopifyTask = task({
       const createErrors = (createData.productCreate as { userErrors: Array<{ message: string }> }).userErrors;
       if (createErrors?.length) throw new Error(`productCreate error: ${createErrors[0].message}`);
       productGid = (createData.productCreate as { product: { id: string } }).product.id;
+      ownedByApp = true;
+    } else {
+      ownedByApp = outfit.shopifyProductCreatedByApp === true;
     }
 
-    // ── 6. Query existing media IDs (needed for productDeleteMedia) ───────────
-    const mediaQueryData = await shopifyGraphQL(shopId, accessToken, `
-      query getProductMedia($id: ID!) {
-        product(id: $id) {
-          media(first: 50) {
-            edges { node { id } }
+    // ── 6. Delete old media before attaching new (only for app-owned products) ─
+    // Merchant-picked products keep their existing photos — we append ours alongside.
+    if (ownedByApp) {
+      const mediaQueryData = await shopifyGraphQL(shopId, accessToken, `
+        query getProductMedia($id: ID!) {
+          product(id: $id) {
+            media(first: 50) {
+              edges { node { id } }
+            }
           }
         }
+      `, { id: productGid });
+
+      const existingMediaIds = (
+        (mediaQueryData.product as { media: { edges: Array<{ node: { id: string } }> } } | null)
+          ?.media?.edges ?? []
+      ).map((e) => e.node.id);
+
+      if (existingMediaIds.length > 0) {
+        const deleteData = await shopifyGraphQL(shopId, accessToken, `
+          mutation productDeleteMedia($productId: ID!, $mediaIds: [ID!]!) {
+            productDeleteMedia(productId: $productId, mediaIds: $mediaIds) {
+              deletedMediaIds
+              mediaUserErrors { field message }
+            }
+          }
+        `, { productId: productGid, mediaIds: existingMediaIds });
+
+        const deleteErrors = (
+          deleteData.productDeleteMedia as { mediaUserErrors: Array<{ message: string }> }
+        ).mediaUserErrors;
+        if (deleteErrors?.length) throw new Error(`productDeleteMedia error: ${deleteErrors[0].message}`);
       }
-    `, { id: productGid });
-
-    const existingMediaIds = (
-      (mediaQueryData.product as { media: { edges: Array<{ node: { id: string } }> } } | null)
-        ?.media?.edges ?? []
-    ).map((e) => e.node.id);
-
-    // ── 7. Delete old media before attaching new ──────────────────────────────
-    if (existingMediaIds.length > 0) {
-      const deleteData = await shopifyGraphQL(shopId, accessToken, `
-        mutation productDeleteMedia($productId: ID!, $mediaIds: [ID!]!) {
-          productDeleteMedia(productId: $productId, mediaIds: $mediaIds) {
-            deletedMediaIds
-            mediaUserErrors { field message }
-          }
-        }
-      `, { productId: productGid, mediaIds: existingMediaIds });
-
-      const deleteErrors = (
-        deleteData.productDeleteMedia as { mediaUserErrors: Array<{ message: string }> }
-      ).mediaUserErrors;
-      if (deleteErrors?.length) throw new Error(`productDeleteMedia error: ${deleteErrors[0].message}`);
     }
 
-    // ── 8. Attach new images (Shopify fetches from originalSource URLs) ────────
+    // ── 7. Attach new images (Shopify fetches from originalSource URLs) ────────
     const attachData = await shopifyGraphQL(shopId, accessToken, `
       mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
         productCreateMedia(productId: $productId, media: $media) {
@@ -164,7 +173,7 @@ export const syncOutfitToShopifyTask = task({
     ).mediaUserErrors;
     if (mediaErrors?.length) throw new Error(`productCreateMedia error: ${mediaErrors[0].message}`);
 
-    // ── 9. Persist results ───────────────────────────────────────────────────
+    // ── 8. Persist results ───────────────────────────────────────────────────
     const numericId = productGid.split('/').pop();
     const shopifyProductUrl = `https://${shopId}/admin/products/${numericId}`;
 
@@ -173,6 +182,7 @@ export const syncOutfitToShopifyTask = task({
       data: {
         shopifyProductId: productGid,
         shopifyProductUrl,
+        shopifyProductCreatedByApp: ownedByApp,
         shopifySyncStatus: 'synced',
         shopifySyncedAt: new Date(),
       },

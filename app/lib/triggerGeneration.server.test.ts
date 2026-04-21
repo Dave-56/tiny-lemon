@@ -282,6 +282,79 @@ describe("handleTriggerGeneration", () => {
     expect(mocks.refundReservedGeneration).not.toHaveBeenCalled();
     expect(mocks.markRequestFailed).not.toHaveBeenCalled();
   });
+
+  it("rejects a malformed shopifyProductId without reserving credits", async () => {
+    mocks.modelFindFirst.mockResolvedValue(null);
+
+    const res = await handleTriggerGeneration("shop-a.myshopify.com", {
+      modelId: "model-01",
+      frontB64: "ZmFrZQ==",
+      shopifyProductId: "not-a-gid",
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({ error: "Invalid shopifyProductId" });
+    expect(mocks.claimGenerateRequestIdempotency).not.toHaveBeenCalled();
+    expect(mocks.reserveGenerations).not.toHaveBeenCalled();
+    expect(mocks.outfitUpsert).not.toHaveBeenCalled();
+  });
+
+  it("persists shopifyProductId on the outfit and varies the idempotency key by product", async () => {
+    mocks.modelFindFirst.mockResolvedValue(null);
+
+    const resA = await handleTriggerGeneration("shop-a.myshopify.com", {
+      modelId: "model-01",
+      frontB64: "ZmFrZQ==",
+      shopifyProductId: "gid://shopify/Product/111",
+    });
+    expect(resA.status).toBe(200);
+    const upsertCallA = mocks.outfitUpsert.mock.calls.at(-1)?.[0];
+    expect(upsertCallA.create.shopifyProductId).toBe("gid://shopify/Product/111");
+    expect(upsertCallA.update.shopifyProductId).toBe("gid://shopify/Product/111");
+    const keyA = mocks.claimGenerateRequestIdempotency.mock.calls.at(-1)?.[0].requestKey as string;
+
+    vi.clearAllMocks();
+    // Re-seed defaults that clearAllMocks wiped.
+    mocks.modelFindFirst.mockResolvedValue(null);
+    mocks.outfitUpsert.mockResolvedValue({ id: "outfit-123" });
+    mocks.outfitUpdate.mockResolvedValue({});
+    mocks.uploadBufferToBlob.mockResolvedValue("https://blob.example/outfit.png");
+    mocks.enqueueGenerateOutfit.mockResolvedValue({ id: "run_123" });
+    mocks.reserveGenerations.mockResolvedValue({
+      publicPlan: "Starter",
+      isBeta: false,
+      betaStatus: null,
+      effectiveLimit: 30,
+      effectiveAngles: ["front", "three-quarter", "back"],
+      showUpgradePrompt: true,
+    });
+    mocks.getEffectiveEntitlements.mockResolvedValue({
+      publicPlan: "Starter",
+      isBeta: false,
+      betaStatus: null,
+      effectiveLimit: 30,
+      effectiveAngles: ["front", "three-quarter", "back"],
+      showUpgradePrompt: true,
+    });
+    mocks.claimGenerateRequestIdempotency.mockResolvedValue({
+      disposition: "owned",
+      outfitId: "outfit-123",
+      jobId: null,
+      runToken: "run-token-generate",
+      status: "pending",
+    });
+    mocks.markRequestEnqueued.mockResolvedValue(true);
+
+    const resB = await handleTriggerGeneration("shop-a.myshopify.com", {
+      modelId: "model-01",
+      frontB64: "ZmFrZQ==",
+      shopifyProductId: "gid://shopify/Product/222",
+    });
+    expect(resB.status).toBe(200);
+    const keyB = mocks.claimGenerateRequestIdempotency.mock.calls.at(-1)?.[0].requestKey as string;
+
+    expect(keyA).not.toEqual(keyB);
+  });
 });
 
 describe("handleRegenerateOutfit", () => {

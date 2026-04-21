@@ -36,6 +36,11 @@
 - Trigger code currently uses `@trigger.dev/sdk/v3` imports while repo guidance prefers `@trigger.dev/sdk`.
 - User impact: future work can drift into mixed patterns, making maintenance and upgrades riskier.
 
+### 8. Deprecated Shopify product media mutations
+- [trigger/sync-outfit-to-shopify.task.ts](/Users/preciousemakenemi/Downloads/test-fashion/create-a-model/tiny-lemon/trigger/sync-outfit-to-shopify.task.ts) uses `productCreateMedia` and `productDeleteMedia`, both marked deprecated in Admin API 2026-04 in favor of `productUpdate` with inline media fields.
+- User impact: syncs keep working today but will break on a future API version bump.
+- Action: migrate to `productUpdate`'s media inputs (or its replacement) the next time this task is touched; gate behind a pre-change integration run against a dev store.
+
 ## Recommended Priority Order
 
 1. Auth/session hardening, server-side validation, billing correctness, and idempotency

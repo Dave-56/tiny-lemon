@@ -51,13 +51,20 @@ type BulkUpscaleImagesTriggerPayload = {
   targetScale: 2 | 4;
 };
 
+type GenerateVideoTriggerPayload = {
+  outfitId: string;
+  shopId: string;
+  brandStyleId: string;
+};
+
 async function triggerTaskWithLog<TPayload extends { shopId: string }>(
   taskId:
     | "generate-outfit"
     | "regenerate-outfit"
     | "sync-outfit-to-shopify"
     | "upscale-image"
-    | "bulk-upscale-images",
+    | "bulk-upscale-images"
+    | "generate-video",
   payload: TPayload,
 ) {
   const handle = await tasks.trigger(taskId, payload);
@@ -89,6 +96,10 @@ export function enqueueUpscaleImage(payload: UpscaleImageTriggerPayload) {
 
 export function enqueueBulkUpscaleImages(payload: BulkUpscaleImagesTriggerPayload) {
   return triggerTaskWithLog("bulk-upscale-images", payload);
+}
+
+export function enqueueGenerateVideo(payload: GenerateVideoTriggerPayload) {
+  return triggerTaskWithLog("generate-video", payload);
 }
 
 export async function cancelRunSafely(runId: string) {

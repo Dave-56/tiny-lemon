@@ -258,6 +258,18 @@ export const POSE_GEOMETRY: Record<SpecPose, string> = {
   back: "Camera positioned directly behind the model, at eye level. Model's back fully visible.",
 };
 
+const HAND_SAFETY_BLOCK =
+  'Hand safety (critical): Keep hands fully visible and clearly shaped. Keep hands away from the torso, waistband, pockets, and hem. Do not let hands touch or cover the garment. Fingers must look natural and separated. No distorted fingers, fused hands, or hidden hands unless intentionally requested.';
+
+const DEFAULT_POSE_INSTRUCTIONS: Record<SpecPose, string> = {
+  front:
+    'Standing naturally with weight balanced and posture relaxed. Both arms rest naturally at the sides with a small visible gap from the torso. Both hands fully visible, fingers natural, not touching clothing.',
+  'three-quarter':
+    'Natural three-quarter stance with relaxed asymmetry and shoulders softly turned. Both arms remain relaxed with a clear gap from the torso. Hands stay fully visible and away from the waistband and garment.',
+  back:
+    'Standing naturally from the rear angle with arms relaxed slightly away from the body. Hands remain visible from the rear angle when possible, with fingers natural and away from the garment.',
+};
+
 const FRAMING_BLOCK =
   'Full body from head to toe. Do not crop the head or feet; the entire body must be visible. 2:3 portrait framing. Center the model with even margins on all sides.';
 
@@ -325,9 +337,9 @@ export function buildPromptFromSpec(
   const genderLock = getGenderLock(modelGender);
 
   if (pose === 'front') {
-    const poseInstruction = effectiveFrontSnippet ?? 'Standing naturally, neutral pose, arms relaxed at sides.';
+    const poseInstruction = effectiveFrontSnippet ?? DEFAULT_POSE_INSTRUCTIONS.front;
     // Inject gender lock after base and before camera geometry.
-    return `${base} ${genderLock}${POSE_GEOMETRY.front} ${poseInstruction} Full body, ${effectiveBackdrop}. ${FRAMING_BLOCK} ${tail}\n\n${buildStylingBlock(styling)}`;
+    return `${base} ${genderLock}${POSE_GEOMETRY.front} ${poseInstruction} ${HAND_SAFETY_BLOCK} Full body, ${effectiveBackdrop}. ${FRAMING_BLOCK} ${tail}\n\n${buildStylingBlock(styling)}`;
   }
 
   // For turns 2/3, prepend an image enumeration header.
@@ -359,13 +371,13 @@ export function buildPromptFromSpec(
 
   if (pose === 'three-quarter') {
     const bodyLanguage = effectiveThreeQuarterSnippet
-      ?? `Natural stance, face turned toward camera.${energyCue}`;
+      ?? `${DEFAULT_POSE_INSTRUCTIONS['three-quarter']}${energyCue ? ` ${energyCue}` : ''}`;
     // Insert gender lock immediately after imageHeader so it scopes turns 2/3.
     const headerWithLock = genderLock ? `${imageHeader}${genderLock}\n` : imageHeader;
-    return `${headerWithLock}Same person, same garment. ${POSE_GEOMETRY['three-quarter']} ${bodyLanguage} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
+    return `${headerWithLock}Same person, same garment. ${POSE_GEOMETRY['three-quarter']} ${bodyLanguage} ${HAND_SAFETY_BLOCK} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
   }
   const bodyLanguage = effectiveBackSnippet
-    ?? `Head turned to one side looking over shoulder, profile visible.${energyCue}`;
+    ?? `${DEFAULT_POSE_INSTRUCTIONS.back} Head turned to one side looking over shoulder, profile visible.${energyCue ? ` ${energyCue}` : ''}`;
   const headerWithLock = genderLock ? `${imageHeader}${genderLock}\n` : imageHeader;
-  return `${headerWithLock}Same person, same garment. ${POSE_GEOMETRY.back} ${bodyLanguage} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
+  return `${headerWithLock}Same person, same garment. ${POSE_GEOMETRY.back} ${bodyLanguage} ${HAND_SAFETY_BLOCK} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
 }
