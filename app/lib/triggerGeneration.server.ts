@@ -36,6 +36,8 @@ export type TriggerGenerationBody = {
   frontMime?: string;
   backB64?: string | null;
   backMime?: string | null;
+  /** Optional Shopify product GID (`gid://shopify/Product/…`). Picker-selected target. */
+  shopifyProductId?: string | null;
 };
 
 type ResolvedModel = {
@@ -121,6 +123,7 @@ function buildGenerateRequestKey(body: {
   frontMime?: string;
   backB64?: string | null;
   backMime?: string | null;
+  shopifyProductId?: string | null;
 }) {
   return createHash("sha256")
     .update(
@@ -133,6 +136,7 @@ function buildGenerateRequestKey(body: {
         backMime: normalizeOptionalInput(body.backMime),
         frontDigest: digestBase64Payload(body.frontB64),
         backDigest: digestBase64Payload(body.backB64),
+        shopifyProductId: normalizeOptionalInput(body.shopifyProductId),
       })
     )
     .digest("hex");
@@ -198,6 +202,11 @@ export async function handleTriggerGeneration(
   const frontMime = body.frontMime ?? "image/png";
   const backB64 = body.backB64 ?? null;
   const backMime = body.backMime ?? null;
+  const rawShopifyProductId = normalizeOptionalInput(body.shopifyProductId);
+  if (rawShopifyProductId && !rawShopifyProductId.startsWith("gid://shopify/Product/")) {
+    return Response.json({ error: "Invalid shopifyProductId" }, { status: 400 });
+  }
+  const shopifyProductId = rawShopifyProductId;
   const reservation = createReservationContext("generate", modelId);
   let idempotencyClaim: OwnedRequestClaim | null = null;
   let requestKey: string | null = null;
@@ -219,6 +228,7 @@ export async function handleTriggerGeneration(
       frontMime,
       backB64,
       backMime,
+      shopifyProductId,
     });
     const claim = await claimGenerateRequestIdempotency({
       shopId,
@@ -295,6 +305,8 @@ export async function handleTriggerGeneration(
         modelId: resolvedModel.modelId,
         brandStyleId,
         status: "pending",
+        shopifyProductId: shopifyProductId ?? null,
+        shopifyProductCreatedByApp: false,
       } as import("@prisma/client").Prisma.OutfitUncheckedCreateInput,
       update: {
         name: skuName,
@@ -303,6 +315,8 @@ export async function handleTriggerGeneration(
         brandStyleId,
         status: "pending",
         errorMessage: null,
+        shopifyProductId: shopifyProductId ?? null,
+        shopifyProductCreatedByApp: false,
       },
     });
 
@@ -431,7 +445,7 @@ export async function handleRegenerateOutfit(
   userDirection?: string
 ): Promise<Response> {
   const outfit = await prisma.outfit.findFirst({
-    where: { id: outfitId, shopId },
+    where: { id: outfitId, shopId, deletedAt: null },
     select: {
       status: true,
       cleanFlatLayUrl: true,

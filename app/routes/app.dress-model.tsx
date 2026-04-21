@@ -15,6 +15,7 @@ import {
   Link,
 } from "react-router";
 import { usePendingItems } from "../contexts/PendingItemsContext";
+import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { GeneratedPoseImage } from "../components/GeneratedPoseImage";
 import { useAuthenticatedFetch } from "../contexts/AuthenticatedFetchContext";
@@ -48,12 +49,12 @@ import posthog from "posthog-js";
 // ── Loader ────────────────────────────────────────────────────────────────────
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const shop = session.shop;
 
   await ensureShop(shop);
 
-  const [brandStyle, entitlements, used, customModels, wouldUseLive] =
+  const [brandStyle, entitlements, used, customModels, wouldUseLive, adminProducts] =
     await Promise.all([
       prisma.brandStyle.findUnique({ where: { shopId: shop } }),
       getEffectiveEntitlements(shop),
@@ -75,6 +76,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         where: { shopId: shop, category: "would_use_live" },
         select: { id: true },
       }),
+      // Admin API: surface existing products needing photos. This is intentionally
+      // loaded on the main screen so reviewers see Shopify API usage immediately —
+      // and so merchants can publish AI photos straight into real products.
+      loadPhotolessProducts(admin),
     ]);
 
   return {
@@ -88,8 +93,68 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     supportEmail: getSupportEmail(),
     wouldUseLiveCaptured: Boolean(wouldUseLive),
     customModels,
+    productsTotalCount: adminProducts.totalCount,
+    photolessProducts: adminProducts.photoless,
   };
 };
+
+type PhotolessProduct = {
+  id: string;
+  title: string;
+  handle: string;
+  mediaCount: number;
+  imageUrl: string | null;
+};
+
+async function loadPhotolessProducts(
+  admin: { graphql: (query: string) => Promise<globalThis.Response> },
+): Promise<{ totalCount: number; photoless: PhotolessProduct[] }> {
+  try {
+    const res = await admin.graphql(`#graphql
+      query DressModelProducts {
+        productsCount(query: "status:active") { count }
+        products(first: 12, query: "status:active", sortKey: UPDATED_AT, reverse: true) {
+          edges { node {
+            id
+            title
+            handle
+            mediaCount { count }
+            featuredMedia { preview { image { url } } }
+          } }
+        }
+      }
+    `);
+    const body = (await res.json()) as {
+      data?: {
+        productsCount?: { count: number };
+        products?: {
+          edges: Array<{
+            node: {
+              id: string;
+              title: string;
+              handle: string;
+              mediaCount?: { count: number } | null;
+              featuredMedia?: { preview?: { image?: { url?: string } | null } | null } | null;
+            };
+          }>;
+        };
+      };
+    };
+    const totalCount = body.data?.productsCount?.count ?? 0;
+    const photoless = (body.data?.products?.edges ?? [])
+      .map((e) => ({
+        id: e.node.id,
+        title: e.node.title,
+        handle: e.node.handle,
+        mediaCount: e.node.mediaCount?.count ?? 0,
+        imageUrl: e.node.featuredMedia?.preview?.image?.url ?? null,
+      }))
+      .filter((p) => p.mediaCount <= 1);
+    return { totalCount, photoless };
+  } catch {
+    return { totalCount: 0, photoless: [] };
+  }
+}
 
 // ── Action ────────────────────────────────────────────────────────────────────
 
@@ -113,6 +178,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       frontMime: (body.frontMime as string) ?? "image/png",
       backB64: body.backB64 as string | null,
       backMime: body.backMime as string | null,
+      shopifyProductId: (body.shopifyProductId as string | null | undefined) ?? null,
     });
   }
 
@@ -120,7 +186,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (intent === "poll_status") {
     const outfitId = body.outfitId as string;
     const outfit = await prisma.outfit.findFirst({
-      where: { id: outfitId, shopId },
+      where: { id: outfitId, shopId, deletedAt: null },
       select: {
         status: true,
         errorMessage: true,
@@ -141,10 +207,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (intent === "delete_outfit") {
     const outfitId = body.outfitId as string;
     const outfit = await prisma.outfit.findFirst({
-      where: { id: outfitId, shopId },
+      where: { id: outfitId, shopId, deletedAt: null },
     });
     if (!outfit) return Response.json({ error: "Not found" }, { status: 404 });
-    await prisma.outfit.delete({ where: { id: outfitId } });
+    await prisma.outfit.update({ where: { id: outfitId }, data: { deletedAt: new Date() } });
     return Response.json({ ok: true });
   }
 
@@ -517,12 +583,37 @@ export default function DressModel() {
     isBeta,
     supportEmail,
     wouldUseLiveCaptured,
+    productsTotalCount,
+    photolessProducts,
   } = useLoaderData<typeof loader>();
   const authenticatedFetch = useAuthenticatedFetch();
+  const shopify = useAppBridge();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
   const pendingItemsCtx = usePendingItems();
+
+  const [pickedProduct, setPickedProduct] = useState<{
+    id: string;
+    title: string;
+    imageUrl: string | null;
+  } | null>(null);
+
+  const openProductPicker = useCallback(async () => {
+    const selection = await shopify.resourcePicker({
+      type: "product",
+      multiple: false,
+      action: "select",
+    });
+    const first = selection?.[0];
+    if (!first) return;
+    setPickedProduct({
+      id: first.id,
+      title: (first as { title?: string }).title ?? "Selected product",
+      imageUrl:
+        (first as { images?: Array<{ originalSrc?: string }> }).images?.[0]?.originalSrc ?? null,
+    });
+  }, [shopify]);
 
   const [presetModels, setPresetModels] = useState<PresetModelEntry[]>([]);
   // Priority: URL param > router state (passed from brand-style) > context (survived nav) > first custom model
@@ -1081,6 +1172,7 @@ export default function DressModel() {
             frontMime,
             backB64,
             backMime,
+            shopifyProductId: pickedProduct?.id ?? null,
           });
 
           posthog.capture("generation_triggered", {
@@ -1210,6 +1302,53 @@ export default function DressModel() {
               </div>
             </div>
           )}
+
+          {/* ── Publish target (optional) ── */}
+          <div className="space-y-2">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-krea-muted">
+              Publish to (optional)
+            </p>
+            {pickedProduct ? (
+              <div className="flex items-center gap-3 rounded-xl border border-krea-border bg-white px-3 py-2">
+                {pickedProduct.imageUrl ? (
+                  <img
+                    src={pickedProduct.imageUrl}
+                    alt=""
+                    className="w-10 h-10 rounded-md object-cover"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-md bg-krea-border/40" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm truncate">{pickedProduct.title}</p>
+                  <p className="text-xs text-krea-muted">We'll publish photos to this product</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPickedProduct(null)}
+                  className="p-1 text-krea-muted hover:text-krea-text"
+                  aria-label="Clear selected product"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={openProductPicker}
+                className="w-full rounded-xl border border-krea-border bg-white px-3 py-2 text-left text-sm hover:border-krea-accent/40"
+              >
+                <span className="font-medium">Publish these photos to an existing product</span>
+                <span className="block text-xs text-krea-muted mt-0.5">
+                  {productsTotalCount > 0
+                    ? photolessProducts.length > 0
+                      ? `${photolessProducts.length} ${photolessProducts.length === 1 ? "product is" : "products are"} missing photos — pick one or create a new draft`
+                      : `Pick from ${productsTotalCount} existing ${productsTotalCount === 1 ? "product" : "products"} — or we'll create a new draft`
+                    : "We'll create a new draft product"}
+                </span>
+              </button>
+            )}
+          </div>
 
           {/* ── Flat lay upload ── */}
           <div className="space-y-4">
