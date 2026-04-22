@@ -74,7 +74,6 @@ const PLANS = [
     generations: 3,
     angles: 'Front only',
     features: ['3 generations / month', 'Front angle only', '1 brand style profile'],
-    cta: null,
   },
   {
     id: BILLING_PLANS.Starter,
@@ -83,7 +82,6 @@ const PLANS = [
     generations: 30,
     angles: 'Front · 3/4 · Back',
     features: ['30 generations / month', 'Full 3-angle structural set', 'High-res output', '1 brand style profile'],
-    cta: 'Upgrade to Starter',
   },
   {
     id: BILLING_PLANS.Growth,
@@ -92,7 +90,6 @@ const PLANS = [
     generations: 100,
     angles: 'Front · 3/4 · Back',
     features: ['100 generations / month', 'Full 3-angle structural set', 'Detail close-up generation', 'Flat lay output', '2 brand style profiles'],
-    cta: 'Upgrade to Growth',
   },
   {
     id: BILLING_PLANS.Scale,
@@ -101,7 +98,6 @@ const PLANS = [
     generations: 300,
     angles: 'Front · 3/4 · Back',
     features: ['300 generations / month', 'Full 3-angle structural set', 'Detail close-up generation', 'Flat lay output', 'Lifestyle image generation', 'Unlimited brand style profiles', 'Credit rollover (up to 1 month)'],
-    cta: 'Upgrade to Scale',
   },
 ] as const;
 
@@ -198,15 +194,15 @@ export default function Billing() {
                     <div className="h-8 flex items-center">
                       <span className="text-xs font-medium text-krea-accent">Current plan</span>
                     </div>
-                  ) : p.cta ? (
+                  ) : (
                     <button
                       type="button"
                       onClick={handlePlanSubmit}
                       className="w-full h-8 rounded-md bg-krea-accent text-white text-xs font-medium flex items-center justify-center gap-2 hover:opacity-90 active:scale-95 transition-all"
                     >
-                      {p.cta}
+                      Switch to {p.label}
                     </button>
-                  ) : null}
+                  )}
                 </div>
               );
             })}
