@@ -250,8 +250,108 @@ export class KlingReplicateProvider implements VideoProvider {
   }
 }
 
+// ── Kling v3 via fal.ai (single-image mode) ────────────────────────────────
+
+const FAL_KLING_V3_STANDARD = "fal-ai/kling-video/v3/standard/image-to-video";
+const FAL_KLING_V3_PRO = "fal-ai/kling-video/v3/pro/image-to-video";
+
+type FalKlingTier = "standard" | "pro";
+
+function getFalModelId(tier: FalKlingTier): string {
+  return tier === "pro" ? FAL_KLING_V3_PRO : FAL_KLING_V3_STANDARD;
+}
+
+export function buildFalProviderInput(
+  input: VideoProviderInput,
+): Record<string, unknown> {
+  const selection = selectVideoSourceImages(input.sourceImages);
+
+  const providerInput: Record<string, unknown> = {
+    prompt: input.motionPrompt,
+    start_image_url: selection.hero.url,
+    duration: String(input.durationSeconds),
+    generate_audio: false,
+  };
+
+  if (input.negativePrompt) {
+    providerInput.negative_prompt = input.negativePrompt;
+  }
+
+  return providerInput;
+}
+
+export class FalKlingProvider implements VideoProvider {
+  private tier: FalKlingTier;
+  private modelId: string;
+
+  constructor() {
+    const tierEnv = process.env.FAL_KLING_TIER?.toLowerCase();
+    this.tier = tierEnv === "pro" ? "pro" : "standard";
+    this.modelId = getFalModelId(this.tier);
+  }
+
+  async generate(input: VideoProviderInput): Promise<VideoProviderResult> {
+    // Dynamic import — @fal-ai/client reads FAL_KEY from env automatically
+    const { fal } = await import("@fal-ai/client");
+
+    const selection = selectVideoSourceImages(input.sourceImages);
+
+    logServerEvent("info", "video.provider_started", {
+      provider: "fal",
+      model: this.modelId,
+      tier: this.tier,
+      heroImagePose: selection.hero.pose,
+      heroIsUpscaled: selection.hero.isUpscaled,
+      sourceImageCount: input.sourceImages.length,
+      orderedPoses: selection.orderedImages.map((image) => image.pose),
+      scoreBreakdown: selection.scoredImages.map((entry) => ({
+        pose: entry.image.pose,
+        isUpscaled: entry.image.isUpscaled,
+        poseScore: entry.poseScore,
+        upscaleBonus: entry.upscaleBonus,
+        totalScore: entry.totalScore,
+      })),
+    });
+
+    const providerInput = buildFalProviderInput(input);
+
+    const result = await fal.subscribe(this.modelId, {
+      input: providerInput,
+    });
+
+    const videoUrl = result.data?.video?.url;
+    if (!videoUrl || typeof videoUrl !== "string" || !videoUrl.startsWith("http")) {
+      throw new Error(
+        `Unexpected fal video output: ${JSON.stringify(result.data).slice(0, 200)}`,
+      );
+    }
+
+    const providerJobId = result.requestId ?? `fal-${this.modelId}`;
+
+    logServerEvent("info", "video.provider_success", {
+      provider: "fal",
+      model: this.modelId,
+      tier: this.tier,
+      heroImagePose: selection.hero.pose,
+      providerJobId,
+    });
+
+    return { videoUrl, providerJobId };
+  }
+}
+
 // ── Factory ──────────────────────────────────────────────────────────────────
 
-export function createVideoProvider(): VideoProvider {
-  return new KlingReplicateProvider();
+export type VideoProviderBackend = "fal" | "replicate";
+
+export function createVideoProvider(
+  backend?: VideoProviderBackend,
+): VideoProvider {
+  const resolved =
+    backend ?? (process.env.VIDEO_PROVIDER as VideoProviderBackend | undefined) ?? "replicate";
+
+  if (resolved === "replicate") {
+    return new KlingReplicateProvider();
+  }
+  return new FalKlingProvider();
 }

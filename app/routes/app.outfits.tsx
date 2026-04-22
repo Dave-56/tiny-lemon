@@ -62,7 +62,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const [outfits, entitlements] = await Promise.all([
     prisma.outfit.findMany({
-      where: { shopId: shop },
+      where: { shopId: shop, deletedAt: null },
       include: { images: true },
       orderBy: { createdAt: "desc" },
     }),
@@ -122,10 +122,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (body.intent === "delete_outfit") {
     const outfitId = body.outfitId as string;
     const outfit = await prisma.outfit.findFirst({
-      where: { id: outfitId, shopId },
+      where: { id: outfitId, shopId, deletedAt: null },
     });
     if (!outfit) return Response.json({ error: "Not found" }, { status: 404 });
-    await prisma.outfit.delete({ where: { id: outfitId } });
+    await prisma.outfit.update({ where: { id: outfitId }, data: { deletedAt: new Date() } });
     return Response.json({ ok: true });
   }
 
@@ -135,7 +135,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (!name)
       return Response.json({ error: "Name required" }, { status: 400 });
     const outfit = await prisma.outfit.findFirst({
-      where: { id: outfitId, shopId },
+      where: { id: outfitId, shopId, deletedAt: null },
     });
     if (!outfit) return Response.json({ error: "Not found" }, { status: 404 });
     await prisma.outfit.update({ where: { id: outfitId }, data: { name } });
@@ -149,8 +149,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       : [];
     if (ids.length === 0)
       return Response.json({ error: "No outfits to delete" }, { status: 400 });
-    const { count } = await prisma.outfit.deleteMany({
-      where: { id: { in: ids }, shopId },
+    const { count } = await prisma.outfit.updateMany({
+      where: { id: { in: ids }, shopId, deletedAt: null },
+      data: { deletedAt: new Date() },
     });
     return Response.json({ ok: true, deleted: count });
   }
@@ -164,7 +165,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (body.intent === "cancel_sync") {
     const outfitId = body.outfitId as string;
     const outfit = await prisma.outfit.findFirst({
-      where: { id: outfitId, shopId },
+      where: { id: outfitId, shopId, deletedAt: null },
       select: { jobId: true },
     });
     if (!outfit) return Response.json({ error: "Not found" }, { status: 404 });
@@ -181,7 +182,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (body.intent === "publish_to_shopify") {
     const outfitId = body.outfitId as string;
     const outfit = await prisma.outfit.findFirst({
-      where: { id: outfitId, shopId },
+      where: { id: outfitId, shopId, deletedAt: null },
       select: {
         status: true,
         shopifyProductId: true,
@@ -232,7 +233,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       return Response.json({ error: "outfitId required" }, { status: 400 });
     }
     const outfit = await prisma.outfit.findFirst({
-      where: { id: outfitId, shopId },
+      where: { id: outfitId, shopId, deletedAt: null },
       select: { status: true, jobId: true },
     });
     if (!outfit) return Response.json({ error: "Not found" }, { status: 404 });
@@ -1082,7 +1083,6 @@ function OutfitCard({
   outfit,
   modelName,
   brandStyleLabel,
-  isDeleting,
   optimisticBulkUpscaling,
   optimisticVideoGenerating,
   selected,
@@ -1103,7 +1103,6 @@ function OutfitCard({
   outfit: OutfitWithImages;
   modelName: string | undefined;
   brandStyleLabel: string;
-  isDeleting: boolean;
   optimisticBulkUpscaling?: boolean;
   optimisticVideoGenerating?: boolean;
   selected: boolean;
@@ -1350,9 +1349,7 @@ function OutfitCard({
 
   return (
     <div
-      className={`rounded-xl border border-krea-border bg-white transition-opacity ${
-        isDeleting ? "opacity-40 pointer-events-none" : ""
-      }`}
+      className="rounded-xl border border-krea-border bg-white"
     >
       {/* Card header — single row: checkbox | title · date · tag | actions */}
       <div className="flex items-center gap-3 px-4 pt-4 pb-3">
@@ -1760,10 +1757,9 @@ export default function Outfits() {
     }
   }, [outfits, shop]);
 
-  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const [optimisticDeletedIds, setOptimisticDeletedIds] = useState<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
-  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [lightbox, setLightbox] = useState<{
     outfitId: string;
     index: number;
@@ -1880,7 +1876,7 @@ export default function Outfits() {
 
   async function deleteOutfit(outfitId: string) {
     setSessionError(null);
-    setDeletingIds((s) => new Set(s).add(outfitId));
+    setOptimisticDeletedIds((s) => new Set(s).add(outfitId));
     const res = await authenticatedFetch("/app/outfits", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1888,14 +1884,12 @@ export default function Outfits() {
     });
     if (!res.ok) {
       if (isSessionExpiredResponse(res)) handleSessionExpired();
-      setDeletingIds((s) => {
+      setOptimisticDeletedIds((s) => {
         const n = new Set(s);
         n.delete(outfitId);
         return n;
       });
-      return;
     }
-    revalidate();
   }
 
   async function renameOutfit(
@@ -2080,19 +2074,25 @@ export default function Outfits() {
     if (ids.length === 0) return;
     setSessionError(null);
     setConfirmBulkDelete(false);
-    setBulkDeleting(true);
+    setSelectedIds(new Set());
+    setOptimisticDeletedIds((s) => {
+      const n = new Set(s);
+      for (const id of ids) n.add(id);
+      return n;
+    });
     const res = await authenticatedFetch("/app/outfits", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ intent: "delete_outfits", outfitIds: ids }),
     });
-    setBulkDeleting(false);
     if (!res.ok) {
       if (isSessionExpiredResponse(res)) handleSessionExpired();
-      return;
+      setOptimisticDeletedIds((s) => {
+        const n = new Set(s);
+        for (const id of ids) n.delete(id);
+        return n;
+      });
     }
-    setSelectedIds(new Set());
-    revalidate();
   }
 
   const lightboxOutfit = lightbox
@@ -2169,16 +2169,15 @@ export default function Outfits() {
                     <button
                       type="button"
                       onClick={deleteSelectedOutfits}
-                      disabled={bulkDeleting}
-                      className="text-xs text-white bg-red-500 hover:bg-red-600 rounded px-2 py-0.5 transition-colors disabled:opacity-50"
+                      className="text-xs text-white bg-red-500 hover:bg-red-600 rounded px-2 py-0.5 transition-colors"
                     >
-                      {bulkDeleting ? "Deleting…" : "Delete"}
+                      Delete
                     </button>
                   </div>
                 )}
               </div>
             )}
-            {outfits.map((outfit) => (
+            {outfits.filter((o) => !optimisticDeletedIds.has(o.id)).map((outfit) => (
               <OutfitCard
                 key={outfit.id}
                 outfit={outfit}
@@ -2189,7 +2188,6 @@ export default function Outfits() {
                       "minimal"
                   ] ?? "Minimal Clarity"
                 }
-                isDeleting={deletingIds.has(outfit.id)}
                 optimisticBulkUpscaling={optimisticBulkUpscalingIds.has(
                   outfit.id,
                 )}

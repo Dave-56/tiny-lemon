@@ -32,6 +32,7 @@
     "node": ">=20.19 <22 || >=22.12"
   },
   "dependencies": {
+    "@fal-ai/client": "^1.9.5",
     "@google/genai": "^1.44.0",
     "@prisma/client": "^6.16.3",
     "@react-router/dev": "^7.12.0",
@@ -41,7 +42,7 @@
     "@shopify/app-bridge-react": "^4.2.4",
     "@shopify/shopify-app-react-router": "^1.1.0",
     "@shopify/shopify-app-session-storage-prisma": "^8.0.0",
-    "@trigger.dev/sdk": "4.4.3",
+    "@trigger.dev/sdk": "4.4.4",
     "@vercel/analytics": "^2.0.1",
     "@vercel/blob": "^2.3.1",
     "@vercel/react-router": "^1.2.5",
@@ -65,7 +66,7 @@
     "@tailwindcss/vite": "^4.2.1",
     "@testing-library/jest-dom": "^6.6.0",
     "@testing-library/react": "^14.3.0",
-    "@trigger.dev/build": "^4.4.3",
+    "@trigger.dev/build": "4.4.4",
     "@types/eslint": "^9.6.1",
     "@types/node": "^22.18.8",
     "@types/react": "^18.3.25",

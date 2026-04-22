@@ -15,7 +15,7 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   const shopId = new URL(request.url).searchParams.get('shop') ?? undefined;
 
   const outfit = await prisma.outfit.findFirst({
-    where: { id: outfitId, ...(shopId ? { shopId } : {}) },
+    where: { id: outfitId, deletedAt: null, ...(shopId ? { shopId } : {}) },
     select: {
       status: true,
       errorMessage: true,
