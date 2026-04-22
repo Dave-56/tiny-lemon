@@ -35,11 +35,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const installUrl = process.env.SHOPIFY_APP_INSTALL_URL ?? "";
   const origin = new URL(request.url).origin;
-  return { showForm: Boolean(login), installUrl, origin };
+  // Only surface install CTAs when we have a Shopify-owned install URL to
+  // point at (App Store listing). Pre-launch, direct visitors to "Try free"
+  // instead — Shopify review forbids manual shop-domain entry as an install
+  // entry point.
+  return { hasInstallUrl: Boolean(installUrl), installUrl, origin };
 };
 
 export default function LandingPage() {
-  const { showForm, installUrl } = useLoaderData<typeof loader>();
+  const { hasInstallUrl, installUrl } = useLoaderData<typeof loader>();
 
   return (
     <div className={styles.page}>
@@ -65,7 +69,7 @@ export default function LandingPage() {
             <a href="#login" className={styles.navLink}>
               Contact
             </a>
-            {showForm && (
+            {hasInstallUrl && (
               <a href="#login" className={styles.navLink}>
                 Log in
               </a>
@@ -75,12 +79,11 @@ export default function LandingPage() {
             <Link to="/try" className={styles.btnPrimary}>
               Try free
             </Link>
-            {showForm && (
+            {hasInstallUrl && (
               <a
-                href={installUrl || "#login"}
-                {...(installUrl
-                  ? { target: "_blank", rel: "noopener noreferrer" }
-                  : {})}
+                href={installUrl}
+                target="_blank"
+                rel="noopener noreferrer"
                 className={styles.btnPrimary}
               >
                 Get started
@@ -105,12 +108,11 @@ export default function LandingPage() {
             <Link to="/try" className={styles.heroCta}>
               Try free
             </Link>
-            {showForm && (
+            {hasInstallUrl && (
               <a
-                href={installUrl || "/auth/login"}
-                {...(installUrl
-                  ? { target: "_blank", rel: "noopener noreferrer" }
-                  : {})}
+                href={installUrl}
+                target="_blank"
+                rel="noopener noreferrer"
                 className={styles.heroCtaSecondary}
               >
                 Add to Shopify
@@ -232,22 +234,36 @@ export default function LandingPage() {
 
         <section id="login" className={styles.loginSection}>
           <h2 className={styles.loginTitle}>Get started</h2>
-          <p className={styles.loginSubtext}>
-            Add Tiny Lemon to your Shopify store in one click.
-          </p>
-          {showForm && (
-            <a
-              href={installUrl || "/auth/login"}
-              {...(installUrl ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-              className={styles.loginPrimaryCta}
-            >
-              Add the app to my store
-            </a>
-          )}
-          {showForm && (
-            <p className={styles.loginDivider}>
-              Already installed? Open Tiny Lemon from your Shopify admin under Apps.
-            </p>
+          {hasInstallUrl ? (
+            <>
+              <p className={styles.loginSubtext}>
+                Add Tiny Lemon to your Shopify store in one click.
+              </p>
+              <a
+                href={installUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.loginPrimaryCta}
+              >
+                Add the app to my store
+              </a>
+              <p className={styles.loginDivider}>
+                Already installed? Open Tiny Lemon from your Shopify admin under Apps.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className={styles.loginSubtext}>
+                Tiny Lemon is coming soon to the Shopify App Store. Want to try
+                it now? Use the free demo — no install needed.
+              </p>
+              <Link to="/try" className={styles.loginPrimaryCta}>
+                Try the free demo
+              </Link>
+              <p className={styles.loginDivider}>
+                Already installed? Open Tiny Lemon from your Shopify admin under Apps.
+              </p>
+            </>
           )}
         </section>
       </main>
