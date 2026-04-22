@@ -59,6 +59,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     limit: entitlements.effectiveLimit,
     isBeta: entitlements.isBeta,
     supportEmail: getSupportEmail(),
+    appHandle: process.env.SHOPIFY_APP_HANDLE ?? 'tiny-lemon',
   };
 };
 
@@ -107,7 +108,7 @@ const PLANS = [
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Billing() {
-  const { shop, plan, used, limit, isBeta, supportEmail } = useLoaderData<typeof loader>();
+  const { shop, plan, used, limit, isBeta, supportEmail, appHandle } = useLoaderData<typeof loader>();
 
   useEffect(() => {
     posthog.capture('billing_viewed', { shop, plan });
@@ -116,7 +117,7 @@ export default function Billing() {
   function handlePlanSubmit() {
     const storeHandle = shop.replace('.myshopify.com', '');
     window.top!.location.href =
-      `https://admin.shopify.com/store/${storeHandle}/charges/tiny-lemon/pricing_plans`;
+      `https://admin.shopify.com/store/${storeHandle}/charges/${appHandle}/pricing_plans`;
   }
 
   return (
