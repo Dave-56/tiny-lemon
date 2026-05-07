@@ -14,6 +14,8 @@ import {
 } from '../app/lib/videoOrchestration.server';
 import { cancelRunSafely } from '../app/lib/triggerJobs.server';
 import { PDP_STYLE_PRESETS, BRAND_STYLE_PRESETS } from '../app/lib/pdpPresets';
+import { getUserFacingImageServiceError } from '../app/lib/flatLayCleanup';
+import { GEMINI_IMAGE_MODEL, GEMINI_TEXT_MODEL } from '../app/lib/geminiModels';
 import type { GarmentSpec } from '../app/lib/garmentSpec';
 import type { PoseImageAssetManifest } from '../app/lib/imageAssetManifest';
 
@@ -66,6 +68,24 @@ async function fetchAsBuffer(url: string): Promise<Buffer> {
   return Buffer.from(await res.arrayBuffer());
 }
 
+type GenerateContentRequest = Parameters<GoogleGenAI['models']['generateContent']>[0];
+
+async function generateImageContent(
+  ai: GoogleGenAI,
+  request: GenerateContentRequest,
+) {
+  try {
+    return await ai.models.generateContent(request);
+  } catch (error) {
+    throw new Error(
+      getUserFacingImageServiceError(
+        error,
+        'Failed to generate outfit image. Please try again.',
+      ),
+    );
+  }
+}
+
 /**
  * Cheap text-only validation: did Gemini actually produce the requested pose?
  * Uses a fast model to check the output image. Returns true if pose looks correct.
@@ -80,7 +100,7 @@ async function validatePose(
     : "Look at this fashion photo. Is the model facing away from the camera, showing their back? Answer ONLY 'yes' or 'no'.";
   try {
     const resp = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: GEMINI_TEXT_MODEL,
       contents: [{
         role: 'user',
         parts: [
@@ -197,7 +217,7 @@ export const regenerateOutfitTask = task({
     const backdropSnippet = stylingDir.backdropSnippet ?? stylePreset.promptSnippet;
 
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-    const MODEL = 'gemini-3.1-flash-image-preview';
+    const MODEL = GEMINI_IMAGE_MODEL;
     // Per-pose temperature: front is conservative (consistency), 3/4 and back
     // need more creative latitude to commit to the rotation.
     const baseGenConfig = {
@@ -229,7 +249,7 @@ export const regenerateOutfitTask = task({
       ),
       userDirection,
     );
-    const frontResp = await ai.models.generateContent({
+    const frontResp = await generateImageContent(ai, {
       model: MODEL,
       contents: [{
         role: 'user',
@@ -298,7 +318,7 @@ export const regenerateOutfitTask = task({
           { text: tqPrompt },
         ],
       }];
-      const tqResp = await ai.models.generateContent({
+      const tqResp = await generateImageContent(ai, {
         model: MODEL,
         contents: tqContents,
         config: threeQuarterGenConfig,
@@ -306,7 +326,7 @@ export const regenerateOutfitTask = task({
       let tqB64 = extractBase64(tqResp);
       const tqValid = await validatePose(ai, tqB64, 'three-quarter');
       if (!tqValid) {
-        const retryResp = await ai.models.generateContent({
+        const retryResp = await generateImageContent(ai, {
           model: MODEL,
           contents: tqContents,
           config: { ...threeQuarterGenConfig, temperature: 0.45 },
@@ -357,7 +377,7 @@ export const regenerateOutfitTask = task({
           { text: backPrompt },
         ],
       }];
-      const backResp = await ai.models.generateContent({
+      const backResp = await generateImageContent(ai, {
         model: MODEL,
         contents: backContents,
         config: backGenConfig,
@@ -365,7 +385,7 @@ export const regenerateOutfitTask = task({
       let backB64 = extractBase64(backResp);
       const backValid = await validatePose(ai, backB64, 'back');
       if (!backValid) {
-        const retryResp = await ai.models.generateContent({
+        const retryResp = await generateImageContent(ai, {
           model: MODEL,
           contents: backContents,
           config: { ...backGenConfig, temperature: 0.4 },

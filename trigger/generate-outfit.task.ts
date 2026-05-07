@@ -2,7 +2,13 @@ import { task } from '@trigger.dev/sdk';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import prisma from '../app/db.server';
 import { uploadImageToBlob } from '../app/blob.server';
-import { cleanFlatLay, cleanFlatLayForDemo } from '../app/lib/flatLayCleanup';
+import {
+  cleanFlatLay,
+  cleanFlatLayForDemo,
+  getUserFacingImageServiceError,
+  hasCleanWhiteFlatLayBackground,
+  normalizeFlatLayToPng,
+} from '../app/lib/flatLayCleanup';
 import { extractGarmentSpec } from '../app/lib/garmentSpec';
 import { buildPromptFromSpec } from '../app/lib/garmentFidelityPrompt';
 import { buildTryDemoPrompt } from '../app/lib/tryDemoPrompt';
@@ -12,6 +18,7 @@ import { DEMO_SHOP_ID } from '../app/lib/billing.server';
 import { createGeneratedImageOrReuse } from '../app/lib/generatedImagePersistence.server';
 import { createPoseAssetManifest } from '../app/lib/imageAssetManifest.server';
 import { logServerEvent } from '../app/lib/observability.server';
+import { GEMINI_IMAGE_MODEL, GEMINI_TEXT_MODEL } from '../app/lib/geminiModels';
 import type { GarmentSpec } from '../app/lib/garmentSpec';
 
 // ── Payload ───────────────────────────────────────────────────────────────────
@@ -123,15 +130,41 @@ export const generateOutfitTask = task({
     const cleanMime = 'image/png';
 
     if (isDemo) {
-      // Run aggressive cleanup for quality, but skip blob upload (demo has no regeneration)
-      cleanFlatLayB64 = await cleanFlatLayForDemo(rawFrontB64, frontMime, apiKey);
+      // Run aggressive cleanup for quality unless the merchant already supplied a clean white flat lay.
+      cleanFlatLayB64 = await prepareCleanFlatLay({
+        rawImageBase64: rawFrontB64,
+        mimeType: frontMime,
+        apiKey,
+        isDemo,
+        shopId,
+        outfitId,
+        side: 'front',
+      });
       cleanBackFlatLayB64 = rawBackB64;
       cleanFlatLayUrl = rawFrontUrl;
     } else {
-      cleanFlatLayB64 = await cleanFlatLay(rawFrontB64, frontMime, apiKey);
+      cleanFlatLayB64 = await prepareCleanFlatLay({
+        rawImageBase64: rawFrontB64,
+        mimeType: frontMime,
+        apiKey,
+        isDemo,
+        shopId,
+        outfitId,
+        side: 'front',
+      });
       const [uploadedUrl, cleanedBack] = await Promise.all([
         uploadImageToBlob(Buffer.from(cleanFlatLayB64, 'base64'), `outfits/${shopId}/${outfitId}/flat-lay.png`),
-        rawBackB64 ? cleanFlatLay(rawBackB64, backMime, apiKey).catch(() => null) : Promise.resolve(null),
+        rawBackB64
+          ? prepareCleanFlatLay({
+              rawImageBase64: rawBackB64,
+              mimeType: backMime,
+              apiKey,
+              isDemo,
+              shopId,
+              outfitId,
+              side: 'back',
+            }).catch(() => null)
+          : Promise.resolve(null),
       ]);
       cleanFlatLayUrl = uploadedUrl;
       cleanBackFlatLayB64 = cleanedBack;
@@ -175,7 +208,7 @@ export const generateOutfitTask = task({
     // (once as chat history, once as the length anchor), anchoring the model to
     // the front pose and collapsing the 45° rotation.
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-    const MODEL = 'gemini-3.1-flash-image-preview';
+    const MODEL = GEMINI_IMAGE_MODEL;
     // Per-pose temperature: front is conservative (consistency), 3/4 and back
     // need more creative latitude to commit to the rotation.
     const baseGenConfig = {
@@ -199,7 +232,7 @@ export const generateOutfitTask = task({
       const frontPrompt = isDemo
         ? buildTryDemoPrompt(garmentSpec, modelGender, modelHeight)
         : buildPromptFromSpec(garmentSpec, 'front', backdropSnippet, hasBack, false, modelHeight, stylingDir, modelGender, pricePoint, brandEnergy, primaryCategory);
-      const frontResp = await ai.models.generateContent({
+      const frontResp = await generateImageContent(ai, {
         model: MODEL,
         contents: [{
           role: 'user',
@@ -266,7 +299,7 @@ export const generateOutfitTask = task({
           { text: tqPrompt },
         ],
       }];
-      const tqResp = await ai.models.generateContent({
+      const tqResp = await generateImageContent(ai, {
         model: MODEL,
         contents: tqContents,
         config: threeQuarterGenConfig,
@@ -275,7 +308,7 @@ export const generateOutfitTask = task({
       // Validate pose — retry once with slightly higher temperature if 3/4 collapsed to front
       const tqValid = await validatePose(ai, tqB64, 'three-quarter');
       if (!tqValid) {
-        const retryResp = await ai.models.generateContent({
+        const retryResp = await generateImageContent(ai, {
           model: MODEL,
           contents: tqContents,
           config: { ...threeQuarterGenConfig, temperature: 0.45 },
@@ -325,7 +358,7 @@ export const generateOutfitTask = task({
           { text: backPrompt },
         ],
       }];
-      const backResp = await ai.models.generateContent({
+      const backResp = await generateImageContent(ai, {
         model: MODEL,
         contents: backContents,
         config: backGenConfig,
@@ -334,7 +367,7 @@ export const generateOutfitTask = task({
       // Validate pose — retry once with slightly higher temperature if back collapsed
       const backValid = await validatePose(ai, backB64, 'back');
       if (!backValid) {
-        const retryResp = await ai.models.generateContent({
+        const retryResp = await generateImageContent(ai, {
           model: MODEL,
           contents: backContents,
           config: { ...backGenConfig, temperature: 0.4 },
@@ -397,6 +430,64 @@ async function fetchAsBuffer(url: string): Promise<Buffer> {
   return Buffer.from(await res.arrayBuffer());
 }
 
+async function prepareCleanFlatLay(args: {
+  rawImageBase64: string;
+  mimeType: string;
+  apiKey: string;
+  isDemo: boolean;
+  shopId: string;
+  outfitId: string;
+  side: 'front' | 'back';
+}): Promise<string> {
+  const canUseOriginal = await hasCleanWhiteFlatLayBackground(args.rawImageBase64);
+  if (canUseOriginal) {
+    logServerEvent('info', 'flat_lay_cleanup.skipped_clean_white_input', {
+      outfitId: args.outfitId,
+      shopId: args.shopId,
+      side: args.side,
+      demo: args.isDemo,
+    });
+    return normalizeFlatLayToPng(args.rawImageBase64);
+  }
+
+  try {
+    return args.isDemo
+      ? await cleanFlatLayForDemo(args.rawImageBase64, args.mimeType, args.apiKey)
+      : await cleanFlatLay(args.rawImageBase64, args.mimeType, args.apiKey);
+  } catch (error) {
+    const fallbackCanUseOriginal = await hasCleanWhiteFlatLayBackground(args.rawImageBase64);
+    if (fallbackCanUseOriginal) {
+      logServerEvent('warn', 'flat_lay_cleanup.fallback_to_clean_white_input', {
+        error: error instanceof Error ? error.message : String(error),
+        outfitId: args.outfitId,
+        shopId: args.shopId,
+        side: args.side,
+        demo: args.isDemo,
+      });
+      return normalizeFlatLayToPng(args.rawImageBase64);
+    }
+    throw error;
+  }
+}
+
+type GenerateContentRequest = Parameters<GoogleGenAI['models']['generateContent']>[0];
+
+async function generateImageContent(
+  ai: GoogleGenAI,
+  request: GenerateContentRequest,
+) {
+  try {
+    return await ai.models.generateContent(request);
+  } catch (error) {
+    throw new Error(
+      getUserFacingImageServiceError(
+        error,
+        'Failed to generate outfit image. Please try again.',
+      ),
+    );
+  }
+}
+
 /**
  * Cheap text-only validation: did Gemini actually produce the requested pose?
  * Uses a fast model to check the output image. Returns true if pose looks correct.
@@ -411,7 +502,7 @@ async function validatePose(
     : "Look at this fashion photo. Is the model facing away from the camera, showing their back? Answer ONLY 'yes' or 'no'.";
   try {
     const resp = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: GEMINI_TEXT_MODEL,
       contents: [{
         role: 'user',
         parts: [
