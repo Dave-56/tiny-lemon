@@ -96,7 +96,7 @@ export async function validateFlatLayServer(
   mimeTypeHint: string,
   apiKey: string,
 ): Promise<FlatLayResponse> {
-  const model = process.env.GARMENT_VALIDATOR_MODEL || 'gemini-2.0-flash';
+  const model = process.env.GARMENT_VALIDATOR_MODEL || 'gemini-2.5-flash';
   const min = Number(process.env.FLATLAY_CONFIDENCE_MIN ?? DEFAULT_CONFIDENCE_MIN);
 
   // Safety: size cap after decode (approx enforced earlier), sniff MIME
@@ -185,14 +185,25 @@ Output: Only respond with strict JSON and nothing else in this exact shape:
   } catch (e) {
     failed = true;
     const msg = (e as Error).message ?? '';
+    const lowerMsg = msg.toLowerCase();
     clearTimeout(timeout);
-    if (msg.includes('RESOURCE_EXHAUSTED') || msg.toLowerCase().includes('quota')) {
+    if (msg.includes('RESOURCE_EXHAUSTED') || lowerMsg.includes('quota')) {
       throw Object.assign(new Error('rate_limited'), { code: 'RATE_LIMIT' });
     }
     if (msg.includes('NOT_FOUND') || msg.includes('not found for API version')) {
       throw Object.assign(new Error('service_unavailable'), { code: 'SERVICE_UNAVAILABLE' });
     }
-    if (msg.toLowerCase().includes('safety')) {
+    if (
+      lowerMsg.includes('permission_denied') ||
+      lowerMsg.includes('denied access') ||
+      lowerMsg.includes('forbidden') ||
+      lowerMsg.includes('unauthorized') ||
+      lowerMsg.includes('api key') ||
+      lowerMsg.includes('403')
+    ) {
+      throw Object.assign(new Error('service_unavailable'), { code: 'SERVICE_UNAVAILABLE' });
+    }
+    if (lowerMsg.includes('safety')) {
       updateWindowCounters({ failed: true });
       const res: FlatLayResponse = {
         schemaVersion: '1', model, contentHash: hash, quality: 'warn', reasons: ['safety'], score: 0, count: null,

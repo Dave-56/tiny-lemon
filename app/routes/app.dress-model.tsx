@@ -344,6 +344,12 @@ async function validateFlatLayRemote(
       cacheHit?: boolean;
     };
     if (data.schemaVersion === "1" && data.quality && data.contentHash) {
+      const validationUnavailable =
+        data.quality === "warn" &&
+        (data.reasons?.includes("unavailable") ||
+          data.reasons?.includes("validation_unavailable"));
+      if (validationUnavailable) return qualityFromCache;
+
       setCachedFlatLay({
         schemaVersion: "1",
         model: data.model || "unknown",
