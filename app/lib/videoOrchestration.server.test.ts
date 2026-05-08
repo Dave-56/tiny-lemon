@@ -130,6 +130,48 @@ describe("handleVideoGenerateRequest", () => {
     expect(mocks.enqueueGenerateVideo).not.toHaveBeenCalled();
   });
 
+  it("enqueues a fresh job for explicit regenerate and keeps the existing videoUrl", async () => {
+    mocks.prisma.outfit.findFirst.mockResolvedValue({
+      id: "outfit_1",
+      status: "completed",
+      brandStyleId: "minimal",
+      videoStatus: "completed",
+      videoUrl: "https://blob.example.com/old-video.mp4",
+      images: [{ id: "img_1" }],
+    });
+
+    const res = await handleVideoGenerateRequest({
+      outfitId: "outfit_1",
+      shopId: "shop-a.myshopify.com",
+      mode: "regenerate",
+    });
+
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.jobId).toBe("run_123");
+
+    const claim = mocks.prisma.outfit.updateMany.mock.calls[0]?.[0];
+    expect(claim).toEqual(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: "outfit_1",
+          OR: expect.arrayContaining([{ videoStatus: "completed" }]),
+        }),
+        data: expect.objectContaining({
+          videoStatus: "pending",
+          videoJobId: null,
+          videoErrorMessage: null,
+        }),
+      }),
+    );
+    expect(claim.data).not.toHaveProperty("videoUrl");
+    expect(mocks.enqueueGenerateVideo).toHaveBeenCalledWith({
+      outfitId: "outfit_1",
+      shopId: "shop-a.myshopify.com",
+      brandStyleId: "minimal",
+    });
+  });
+
   it("claims and enqueues for a fresh outfit", async () => {
     mocks.prisma.outfit.findFirst.mockResolvedValue({
       id: "outfit_1",
@@ -185,6 +227,37 @@ describe("handleVideoGenerateRequest", () => {
         data: expect.objectContaining({ videoStatus: null, videoJobId: null }),
       }),
     );
+  });
+
+  it("restores completed status and keeps old video when regenerate enqueue fails", async () => {
+    mocks.prisma.outfit.findFirst.mockResolvedValue({
+      id: "outfit_1",
+      status: "completed",
+      brandStyleId: "minimal",
+      videoStatus: "completed",
+      videoUrl: "https://blob.example.com/old-video.mp4",
+      images: [{ id: "img_1" }],
+    });
+    mocks.enqueueGenerateVideo.mockRejectedValue(new Error("trigger down"));
+
+    const res = await handleVideoGenerateRequest({
+      outfitId: "outfit_1",
+      shopId: "shop-a.myshopify.com",
+      mode: "regenerate",
+    });
+
+    expect(res.status).toBe(503);
+    expect(mocks.prisma.outfit.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "outfit_1" },
+        data: expect.objectContaining({
+          videoStatus: "completed",
+          videoJobId: null,
+        }),
+      }),
+    );
+    const restore = mocks.prisma.outfit.update.mock.calls.at(-1)?.[0];
+    expect(restore.data).not.toHaveProperty("videoUrl");
   });
 });
 

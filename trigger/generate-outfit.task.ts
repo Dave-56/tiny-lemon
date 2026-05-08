@@ -204,9 +204,8 @@ export const generateOutfitTask = task({
 
     // ── 5. Init Gemini ────────────────────────────────────────────────────────
     // Each pose is an independent generateContent call — no shared chat session.
-    // A persistent chat causes the front image to appear twice in the 3/4 context
-    // (once as chat history, once as the length anchor), anchoring the model to
-    // the front pose and collapsing the 45° rotation.
+    // Non-front poses receive the generated front only as a background/lighting
+    // and outfit anchor; simplified pose text keeps stance from being overdriven.
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
     const MODEL = GEMINI_IMAGE_MODEL;
     // Per-pose temperature: front is conservative (consistency), 3/4 and back
@@ -274,9 +273,8 @@ export const generateOutfitTask = task({
     }
 
     // ── 7. Three-quarter + back poses (parallel) ─────────────────────────────
-    // Both depend on frontB64 but NOT on each other — run in parallel to save
-    // ~25-35s. Text primer before images primes Gemini for rotation before it
-    // processes front-oriented reference images.
+    // The generated front is included again for backdrop/lighting consistency,
+    // while the prompt tells Gemini not to copy its pose.
     const needsTq = poses.includes('three-quarter') && !completedPoses.has('three-quarter');
     const needsBack = poses.includes('back') && !completedPoses.has('back');
 

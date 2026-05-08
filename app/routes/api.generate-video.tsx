@@ -1,11 +1,15 @@
 import type { ActionFunctionArgs } from "react-router";
 import { getShopFromSessionToken } from "../lib/sessionToken.server";
-import { handleVideoGenerateRequest } from "../lib/videoOrchestration.server";
+import {
+  handleVideoGenerateRequest,
+  type VideoGenerateMode,
+} from "../lib/videoOrchestration.server";
 
 export const config = { maxDuration: 15 };
 
 interface GenerateVideoRequestBody {
   outfitId: string;
+  mode?: VideoGenerateMode;
 }
 
 /**
@@ -52,5 +56,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return handleVideoGenerateRequest({
     outfitId: body.outfitId,
     shopId,
+    mode: body.mode === "regenerate" ? "regenerate" : "generate",
   });
 };

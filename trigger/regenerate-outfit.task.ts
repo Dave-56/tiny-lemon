@@ -278,7 +278,8 @@ export const regenerateOutfitTask = task({
     const frontUrl = frontAssetManifest.original.url;
 
     // ── Three-quarter + back (parallel) ───────────────────────────────────────
-    // Both depend on frontB64 but NOT on each other — run in parallel to save ~25-35s.
+    // Non-front poses receive the generated front only as a background/lighting
+    // and outfit anchor; simplified pose text keeps stance from being overdriven.
     let tqUrl: string | null = null;
     let backUrl: string | null = null;
     let tqAssetManifest: PoseImageAssetManifest | null = null;

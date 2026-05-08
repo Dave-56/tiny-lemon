@@ -83,6 +83,22 @@ describe("api.generate-video action", () => {
     expect(mocks.handleVideoGenerateRequest).toHaveBeenCalledWith({
       outfitId: "outfit_123",
       shopId: "shop-a.myshopify.com",
+      mode: "generate",
+    });
+  });
+
+  it("delegates regenerate mode to video orchestration", async () => {
+    const res = await action({
+      request: makeRequest({ outfitId: "outfit_123", mode: "regenerate" }),
+      params: {},
+      context: {},
+    } as any);
+
+    expect(res.status).toBe(200);
+    expect(mocks.handleVideoGenerateRequest).toHaveBeenCalledWith({
+      outfitId: "outfit_123",
+      shopId: "shop-a.myshopify.com",
+      mode: "regenerate",
     });
   });
 
