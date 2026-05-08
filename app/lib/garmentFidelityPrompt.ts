@@ -1,6 +1,5 @@
 import type { PdpStylePreset, AnglePreset, BrandStylePreset } from './types';
 import type { GarmentSpec } from './garmentSpec';
-import { getProductionQualityCue, getBrandEnergyCue, getCategoryContext } from './brandProfileMapping';
 
 // ── Styling Resolver ──────────────────────────────────────────────────────────
 
@@ -116,7 +115,7 @@ function buildOutfitConsistencyBlock(styling: StylingResolution): string {
   if (styling.bottoms) parts.push(`Bottoms: ${styling.bottoms}`);
   if (styling.baseLayer) parts.push(`Base layer: ${styling.baseLayer}`);
   parts.push(`Footwear: ${styling.footwear}`);
-  return `\nOUTFIT CONSISTENCY: ${parts.join('. ')}. Match these exactly from the front result — do not change or invent complementary pieces.`;
+  return `\nOUTFIT CONSISTENCY: ${parts.join('. ')}. Keep these complementary pieces consistent across poses without changing the hero garment.`;
 }
 
 /**
@@ -265,13 +264,34 @@ const DEFAULT_POSE_INSTRUCTIONS: Record<SpecPose, string> = {
   front:
     'Standing naturally with weight balanced and posture relaxed. Both arms rest naturally at the sides with a small visible gap from the torso. Both hands fully visible, fingers natural, not touching clothing.',
   'three-quarter':
-    'Natural three-quarter stance with relaxed asymmetry and shoulders softly turned. Both arms remain relaxed with a clear gap from the torso. Hands stay fully visible and away from the waistband and garment.',
+    'Simple natural catalog stance. Feet are placed comfortably and realistically, knees relaxed, no exaggerated hip drop or crossed legs. Both arms remain relaxed with a clear gap from the torso. Hands stay fully visible and away from the waistband and garment.',
   back:
-    'Standing naturally from the rear angle with arms relaxed slightly away from the body. Hands remain visible from the rear angle when possible, with fingers natural and away from the garment.',
+    'Standing naturally from the rear angle with feet placed comfortably and realistically. Arms relaxed slightly away from the body. Hands remain visible from the rear angle when possible, with fingers natural and away from the garment.',
 };
 
 const FRAMING_BLOCK =
   'Full body from head to toe. Do not crop the head or feet; the entire body must be visible. 2:3 portrait framing. Center the model with even margins on all sides.';
+
+const RELAXED_QUALITY_CUE =
+  'Professional fashion e-commerce photography. Clean studio image, natural catalog posture, realistic body proportions, and a clear readable view of the garment.';
+
+const STYLE_DIRECTION_CUES: Record<string, string> = {
+  minimal:
+    'STYLE DIRECTION (visual only): Minimal Clarity. Neutral studio catalog image with matte grey balance, crisp garment edges, low contrast, and no decorative styling. Keep the pose, gaze, expression, and hand placement controlled by the pose instructions only.',
+  accessible:
+    'STYLE DIRECTION (visual only): Accessible Warmth. Bright clean retail image with soft warm light, approachable commercial polish, and gentle color temperature. Do not add a smile, hip shift, or playful posture unless it exists in the model reference.',
+  premium:
+    'STYLE DIRECTION (visual only): Premium Poise. Warm off-white studio image with refined diffused lighting, subtle material richness, quiet luxury polish, and soft contact shadows. Keep the pose neutral; do not add crossed arms, pockets, or dramatic editorial attitude.',
+  street:
+    'STYLE DIRECTION (visual only): Street Aesthetic. Cool grey studio image with slightly crisper contrast, utilitarian retail polish, and understated urban styling. Express the street feel through background tone and lighting only; do not add slouching, strong weight shifts, pockets, or deadpan pose choreography.',
+  athletic:
+    'STYLE DIRECTION (visual only): Athletic Performance. Bright white studio image with clean functional activewear polish, crisp detail, and fresh even light. Keep it catalog-safe; do not add stride, forward lean, flexing, core tension, or performance-action posture.',
+};
+
+function buildStyleDirectionBlock(brandStyle?: BrandStylePreset): string {
+  if (!brandStyle) return '';
+  return STYLE_DIRECTION_CUES[brandStyle.id] ?? '';
+}
 
 /** Length + lighting rules: front flat lay is source of truth for hem; match reference lighting. */
 function lengthAndLightingBlock(spec: GarmentSpec, hasBackFlatLay: boolean, pose: SpecPose, backdropSnippet: string): string {
@@ -286,10 +306,10 @@ function lengthAndLightingBlock(spec: GarmentSpec, hasBackFlatLay: boolean, pose
 
 /**
  * Build a short structured prompt from garment spec for one pose.
- * Used in multi-turn chat: turn 1 = front (with images), turn 2 = three-quarter, turn 3 = back.
+ * Used by independent image-generation calls for each pose.
  * @param hasBackFlatLay when true and pose is back, instructs to use back flat lay only for design, not length
- * @param brandStyle optional brand style preset — body language snippets resolved by modelGender (Male uses frontSnippetMale/energyCueMale when present)
- * @param modelGender when 'Male', uses frontSnippetMale/energyCueMale when present; else uses frontSnippet/energyCue
+ * @param brandStyle optional brand style preset — used for backdrop only in the relaxed prompt profile
+ * @param modelGender used only for gender lock and conservative styling choices
  */
 export function buildPromptFromSpec(
   spec: GarmentSpec,
@@ -300,54 +320,29 @@ export function buildPromptFromSpec(
   modelHeight?: string,
   brandStyle?: BrandStylePreset,
   modelGender?: string,
-  pricePoint?: string,
-  brandEnergy?: string,
-  primaryCategory?: string,
+  _pricePoint?: string,
+  _brandEnergy?: string,
+  _primaryCategory?: string,
 ): string {
-  const preset = brandStyle;
-  const effectiveFrontSnippet =
-    modelGender === 'Male' && preset?.frontSnippetMale
-      ? preset.frontSnippetMale
-      : preset?.frontSnippet;
-  const effectiveEnergyCue =
-    modelGender === 'Male' && preset?.energyCueMale
-      ? preset.energyCueMale
-      : preset?.energyCue;
-  const effectiveThreeQuarterSnippet =
-    modelGender === 'Male' && preset?.threeQuarterSnippetMale
-      ? preset.threeQuarterSnippetMale
-      : preset?.threeQuarterSnippet;
-  const effectiveBackSnippet =
-    modelGender === 'Male' && preset?.backSnippetMale
-      ? preset.backSnippetMale
-      : preset?.backSnippet;
-
   const colors = spec.primary_colors.length ? spec.primary_colors.join(' ') : 'neutral';
   const heightNote = modelHeight ? ` The model is ${modelHeight} tall.` : '';
-  const qualityCue = getProductionQualityCue(pricePoint);
-  const brandMoodCue = getBrandEnergyCue(brandEnergy);
-  const categoryCue = getCategoryContext(primaryCategory);
-  const brandProfileBlock = [brandMoodCue, categoryCue].filter(Boolean).join('\n');
-  const brandPrefix = brandProfileBlock ? `${brandProfileBlock}\n\n` : '';
-  const base = `${qualityCue}\n\n${brandPrefix}Photo of the person in the reference image wearing a ${colors} ${spec.fit}-fit ${spec.silhouette} ${spec.garment_type}, ${spec.sleeve_length} sleeves, hem ${spec.hem_length}${spec.notable_details ? `, ${spec.notable_details}` : ''}.${heightNote}`;
+  const base = `${RELAXED_QUALITY_CUE}\n\nPhoto of the person in the reference image wearing a ${colors} ${spec.fit}-fit ${spec.silhouette} ${spec.garment_type}, ${spec.sleeve_length} sleeves, hem ${spec.hem_length}${spec.notable_details ? `, ${spec.notable_details}` : ''}.${heightNote}`;
   const effectiveBackdrop = brandStyle?.backdropSnippet ?? styleSnippet;
+  const styleDirection = buildStyleDirectionBlock(brandStyle);
   const tail = lengthAndLightingBlock(spec, hasBackFlatLay, pose, effectiveBackdrop);
 
   const styling = resolveStyling(spec, modelGender);
   const genderLock = getGenderLock(modelGender);
 
   if (pose === 'front') {
-    const poseInstruction = effectiveFrontSnippet ?? DEFAULT_POSE_INSTRUCTIONS.front;
+    const poseInstruction = DEFAULT_POSE_INSTRUCTIONS.front;
     // Inject gender lock after base and before camera geometry.
-    return `${base} ${genderLock}${POSE_GEOMETRY.front} ${poseInstruction} ${HAND_SAFETY_BLOCK} Full body, ${effectiveBackdrop}. ${FRAMING_BLOCK} ${tail}\n\n${buildStylingBlock(styling)}`;
+    return `${base} ${genderLock}${styleDirection ? `${styleDirection} ` : ''}${POSE_GEOMETRY.front} ${poseInstruction} ${HAND_SAFETY_BLOCK} Full body, ${effectiveBackdrop}. ${FRAMING_BLOCK} ${tail}\n\n${buildStylingBlock(styling)}`;
   }
 
-  // For turns 2/3, prepend an image enumeration header.
-  // The front result is included as an OUTFIT CONSISTENCY anchor — it tells Gemini
-  // what complementary pieces (trousers, shoes, base layer) the model is wearing.
-  // Without it, Gemini invents the bottom half (shorts, wrong trousers, etc.).
-  // Pose bias is controlled by the text primer, camera-centric POSE_GEOMETRY, and
-  // the explicit "do NOT copy pose" instruction on the anchor image.
+  // For non-front poses, prepend an image enumeration header. The relaxed prompt
+  // keeps outfit consistency in text instead of passing the generated front image
+  // as a visual anchor, because that can leak front-pose stance into later views.
   let imageHeader = '';
   const isBackWithBackFlatLay = pose === 'back' && hasBackFlatLay;
   const img1Desc = isBackWithBackFlatLay
@@ -358,7 +353,7 @@ export function buildPromptFromSpec(
       `You are given 3 images:\n` +
       `1) ${img1Desc}\n` +
       `2) A reference photo of the model — source for identity ONLY (face, skin tone, hair, body proportions). Do NOT copy the pose, stance, body angle, or arm positions from this image.\n` +
-      `3) A front-view result of this model already wearing this garment — use this STRICTLY for OUTFIT CONSISTENCY: match the exact same complementary pieces (trousers, shoes, base layer), garment length, and fit. The garment hem MUST end at the same point on the body. Do NOT copy the pose, body angle, arm positions, or camera angle from this image.\n\n`;
+      `3) A front-view result of this model already wearing this garment — use this STRICTLY as a BACKGROUND, LIGHTING, and OUTFIT CONSISTENCY anchor. Match the exact same backdrop color/gradient, floor tone, contact shadow softness, lighting direction, complementary pieces (trousers, shoes, base layer), garment length, and fit. The garment hem MUST end at the same point on the body. Do NOT copy the pose, body angle, arm positions, or camera angle from this image.\n\n`;
   } else {
     imageHeader =
       `You are given 2 images:\n` +
@@ -366,18 +361,15 @@ export function buildPromptFromSpec(
       `2) A reference photo of the model — source for identity ONLY (face, skin tone, hair, body proportions). Do NOT copy the pose, stance, body angle, or arm positions from this image.\n\n`;
   }
 
-  const energyCue = effectiveEnergyCue ? ` ${effectiveEnergyCue}` : '';
   const outfitBlock = buildOutfitConsistencyBlock(styling);
 
   if (pose === 'three-quarter') {
-    const bodyLanguage = effectiveThreeQuarterSnippet
-      ?? `${DEFAULT_POSE_INSTRUCTIONS['three-quarter']}${energyCue ? ` ${energyCue}` : ''}`;
+    const bodyLanguage = DEFAULT_POSE_INSTRUCTIONS['three-quarter'];
     // Insert gender lock immediately after imageHeader so it scopes turns 2/3.
     const headerWithLock = genderLock ? `${imageHeader}${genderLock}\n` : imageHeader;
-    return `${headerWithLock}Same person, same garment. ${POSE_GEOMETRY['three-quarter']} ${bodyLanguage} ${HAND_SAFETY_BLOCK} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
+    return `${headerWithLock}${styleDirection ? `${styleDirection}\n` : ''}Same person, same garment. ${POSE_GEOMETRY['three-quarter']} ${bodyLanguage} ${HAND_SAFETY_BLOCK} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
   }
-  const bodyLanguage = effectiveBackSnippet
-    ?? `${DEFAULT_POSE_INSTRUCTIONS.back} Head turned to one side looking over shoulder, profile visible.${energyCue ? ` ${energyCue}` : ''}`;
+  const bodyLanguage = DEFAULT_POSE_INSTRUCTIONS.back;
   const headerWithLock = genderLock ? `${imageHeader}${genderLock}\n` : imageHeader;
-  return `${headerWithLock}Same person, same garment. ${POSE_GEOMETRY.back} ${bodyLanguage} ${HAND_SAFETY_BLOCK} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
+  return `${headerWithLock}${styleDirection ? `${styleDirection}\n` : ''}Same person, same garment. ${POSE_GEOMETRY.back} ${bodyLanguage} ${HAND_SAFETY_BLOCK} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
 }

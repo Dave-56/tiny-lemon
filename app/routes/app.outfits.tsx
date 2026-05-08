@@ -40,7 +40,6 @@ import {
   isSessionExpiredResponse,
   SESSION_EXPIRED_MESSAGE,
 } from "../lib/authenticatedRequest.client";
-import { handleRegenerateOutfit } from "../lib/triggerGeneration.server";
 import { getEffectiveEntitlements } from "../lib/billing.server";
 import { cancelRunSafely, enqueueShopifySync } from "../lib/triggerJobs.server";
 import { canUpscale, canGenerateVideo } from "../lib/plans";
@@ -154,12 +153,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       data: { deletedAt: new Date() },
     });
     return Response.json({ ok: true, deleted: count });
-  }
-
-  if (body.intent === "regenerate_outfit") {
-    const outfitId = body.outfitId as string;
-    const userDirection = (body.userDirection as string) || undefined;
-    return handleRegenerateOutfit(shopId, outfitId, userDirection);
   }
 
   if (body.intent === "cancel_sync") {
@@ -1919,11 +1912,10 @@ export default function Outfits() {
   ): Promise<{ ok: boolean; error?: string }> {
     if (!regenerateModal) return { ok: false, error: "No outfit selected" };
     setSessionError(null);
-    const res = await authenticatedFetch("/app/outfits", {
+    const res = await authenticatedFetch("/api/regenerate-outfit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        intent: "regenerate_outfit",
         outfitId: regenerateModal.outfitId,
         userDirection: userDirection || undefined,
       }),

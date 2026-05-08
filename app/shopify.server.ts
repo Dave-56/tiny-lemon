@@ -11,11 +11,11 @@ import { BILLING_PLANS } from "./lib/plans";
 export { BILLING_PLANS };
 
 const shopify = shopifyApp({
-  apiKey: process.env.SHOPIFY_API_KEY,
-  apiSecretKey: process.env.SHOPIFY_API_SECRET || "",
+  apiKey: process.env.SHOPIFY_API_KEY?.trim(),
+  apiSecretKey: process.env.SHOPIFY_API_SECRET?.trim() || "",
   apiVersion: ApiVersion.April26,
-  scopes: process.env.SCOPES?.split(","),
-  appUrl: process.env.SHOPIFY_APP_URL || "",
+  scopes: process.env.SCOPES?.split(",").map((scope) => scope.trim()).filter(Boolean),
+  appUrl: process.env.SHOPIFY_APP_URL?.trim() || "",
   authPathPrefix: "/auth",
   sessionStorage: new PrismaSessionStorage(prisma),
   distribution: AppDistribution.AppStore,

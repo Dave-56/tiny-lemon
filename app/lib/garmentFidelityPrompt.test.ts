@@ -39,7 +39,8 @@ describe('buildPromptFromSpec hand-safety prompts', () => {
   it('uses the safer default three-quarter copy when no brand style override is present', () => {
     const prompt = buildPromptFromSpec(spec, 'three-quarter', backdropSnippet);
 
-    expect(prompt).toContain('Natural three-quarter stance with relaxed asymmetry and shoulders softly turned.');
+    expect(prompt).toContain('Simple natural catalog stance.');
+    expect(prompt).toContain('no exaggerated hip drop or crossed legs');
     expect(prompt).toContain('Hands stay fully visible and away from the waistband and garment.');
     expect(prompt).not.toContain('left hand rests lightly at waist');
     expect(prompt).not.toContain('deep in trouser pocket');
@@ -48,12 +49,13 @@ describe('buildPromptFromSpec hand-safety prompts', () => {
   it('uses the safer default back copy when no brand style override is present', () => {
     const prompt = buildPromptFromSpec(spec, 'back', backdropSnippet);
 
-    expect(prompt).toContain('Standing naturally from the rear angle with arms relaxed slightly away from the body.');
+    expect(prompt).toContain('Standing naturally from the rear angle with feet placed comfortably and realistically.');
+    expect(prompt).toContain('Arms relaxed slightly away from the body.');
     expect(prompt).toContain('Hands remain visible from the rear angle when possible');
     expect(prompt).toContain('No distorted fingers, fused hands, or hidden hands unless intentionally requested.');
   });
 
-  it('keeps the minimal preset inside the safe hand envelope', () => {
+  it('does not let the minimal preset override the relaxed catalog stance', () => {
     const prompt = buildPromptFromSpec(
       spec,
       'three-quarter',
@@ -65,12 +67,13 @@ describe('buildPromptFromSpec hand-safety prompts', () => {
       'Female',
     );
 
-    expect(prompt).toContain('Both arms remain relaxed with a clear gap from the torso.');
-    expect(prompt).toContain('Hands fully visible and away from the waistband.');
+    expect(prompt).toContain('Simple natural catalog stance.');
+    expect(prompt).toContain('no exaggerated hip drop or crossed legs');
+    expect(prompt).not.toContain('Weight on right leg, left foot stepped slightly forward');
     expect(prompt).not.toContain('left hand rests lightly at waist');
   });
 
-  it('keeps the accessible preset warm without reintroducing hip-touch language', () => {
+  it('does not let the accessible preset add expression or hip choreography', () => {
     const prompt = buildPromptFromSpec(
       spec,
       'front',
@@ -82,13 +85,14 @@ describe('buildPromptFromSpec hand-safety prompts', () => {
       'Female',
     );
 
-    expect(prompt).toContain('genuine soft smile');
-    expect(prompt).toContain('Both arms relaxed at the sides with hands fully visible and fingers open naturally.');
+    expect(prompt).toContain('Standing naturally with weight balanced and posture relaxed.');
+    expect(prompt).not.toContain('genuine soft smile');
+    expect(prompt).not.toContain('left foot stepped forward, left knee softly bent');
     expect(prompt).not.toContain('Left hand loosely at hip');
     expect(prompt).not.toContain('left hand lightly at hip');
   });
 
-  it('keeps the premium male preset out of crossed-arm poses', () => {
+  it('does not let the premium male preset override the relaxed stance', () => {
     const prompt = buildPromptFromSpec(
       spec,
       'front',
@@ -100,12 +104,13 @@ describe('buildPromptFromSpec hand-safety prompts', () => {
       'Male',
     );
 
-    expect(prompt).toContain('Both arms dropped naturally at the sides with hands fully visible and relaxed.');
+    expect(prompt).toContain('Standing naturally with weight balanced and posture relaxed.');
+    expect(prompt).not.toContain('Both arms dropped naturally at the sides');
     expect(prompt).not.toContain('Arms crossed loosely at chest');
     expect(prompt).not.toContain('hands not in pockets');
   });
 
-  it('keeps the editorial male preset out of pocket poses', () => {
+  it('does not let the editorial male preset add off-axis posture', () => {
     const prompt = buildPromptFromSpec(
       spec,
       'front',
@@ -117,12 +122,14 @@ describe('buildPromptFromSpec hand-safety prompts', () => {
       'Male',
     );
 
-    expect(prompt).toContain('Both arms hang naturally at the sides with hands fully visible and relaxed.');
+    expect(prompt).toContain('Standing naturally with weight balanced and posture relaxed.');
+    expect(prompt).not.toContain('Torso rotated slightly away from camera');
+    expect(prompt).not.toContain('gaze directed 15–20 degrees');
     expect(prompt).not.toContain('deep in trouser pocket');
     expect(prompt).not.toContain('thumb hooked at edge');
   });
 
-  it('keeps the street preset casual without pocket or hook language', () => {
+  it('does not let the street preset add strong weight shift', () => {
     const prompt = buildPromptFromSpec(
       spec,
       'three-quarter',
@@ -134,13 +141,13 @@ describe('buildPromptFromSpec hand-safety prompts', () => {
       'Male',
     );
 
-    expect(prompt).toContain('Both arms remain relaxed with a clear gap from the torso.');
-    expect(prompt).toContain('Hands fully visible and away from the waistband.');
+    expect(prompt).toContain('Simple natural catalog stance.');
+    expect(prompt).not.toContain('Strong weight shift to right hip');
     expect(prompt).not.toContain('Both hands deep in trouser pockets');
     expect(prompt).not.toContain('thumbs hooked at edge');
   });
 
-  it('keeps the athletic preset out of stride-arm instructions', () => {
+  it('does not let the athletic preset add performance posture', () => {
     const prompt = buildPromptFromSpec(
       spec,
       'three-quarter',
@@ -152,9 +159,110 @@ describe('buildPromptFromSpec hand-safety prompts', () => {
       'Female',
     );
 
-    expect(prompt).toContain('Both arms remain relaxed with a clear gap from the torso, hands fully visible and natural.');
+    expect(prompt).toContain('Simple natural catalog stance.');
+    expect(prompt).not.toContain('core visibly engaged');
     expect(prompt).not.toContain('mid-stride');
     expect(prompt).not.toContain('Right arm slightly forward');
     expect(prompt).not.toContain('Left arm slightly forward');
+  });
+
+  it.each([
+    ['minimal', 'Minimal Clarity', 'matte grey balance'],
+    ['accessible', 'Accessible Warmth', 'soft warm light'],
+    ['premium', 'Premium Poise', 'refined diffused lighting'],
+    ['street', 'Street Aesthetic', 'Cool grey studio image'],
+    ['athletic', 'Athletic Performance', 'clean functional activewear polish'],
+  ])('adds %s as a visual-only style direction', (id, label, cue) => {
+    const prompt = buildPromptFromSpec(
+      spec,
+      'three-quarter',
+      backdropSnippet,
+      false,
+      false,
+      undefined,
+      getBrandStyle(id),
+      'Female',
+    );
+
+    expect(prompt).toContain(`STYLE DIRECTION (visual only): ${label}.`);
+    expect(prompt).toContain(cue);
+    expect(prompt).toContain('Simple natural catalog stance.');
+    expect(prompt).toContain('Keep hands fully visible and clearly shaped.');
+  });
+
+  it('keeps non-editorial legacy preset snippets inside the safe pose envelope', () => {
+    const unsafeFragments = [
+      'Weight on right leg',
+      'Weight fully on right leg',
+      'Weight slightly on right leg',
+      'left hip softly dropped',
+      'hip naturally shifted',
+      'Head turned 45°',
+      'genuine soft smile',
+      'Gaze 10–15',
+      'gaze 20–25',
+      'Strong weight shift to right hip',
+      'core visibly engaged',
+      'small forward lean',
+      'hands not in pockets',
+    ];
+    const nonEditorial = BRAND_STYLE_PRESETS.filter(
+      (preset) => preset.id !== 'editorial',
+    );
+
+    for (const preset of nonEditorial) {
+      const searchable = [
+        preset.frontSnippet,
+        preset.energyCue,
+        preset.frontSnippetMale,
+        preset.energyCueMale,
+        preset.threeQuarterSnippet,
+        preset.threeQuarterSnippetMale,
+        preset.backSnippet,
+        preset.backSnippetMale,
+      ].join('\n');
+
+      for (const fragment of unsafeFragments) {
+        expect(searchable).not.toContain(fragment);
+      }
+    }
+  });
+
+  it('does not describe a generated front image when no visual anchor is provided', () => {
+    const prompt = buildPromptFromSpec(
+      spec,
+      'three-quarter',
+      backdropSnippet,
+      false,
+      false,
+      undefined,
+      getBrandStyle('editorial'),
+      'Female',
+    );
+
+    expect(prompt).toContain('You are given 2 images:');
+    expect(prompt).not.toContain('front-view result of this model already wearing this garment');
+    expect(prompt).not.toContain('Match these exactly from the front result');
+  });
+
+  it('uses a generated front image as a background and lighting anchor when provided', () => {
+    const prompt = buildPromptFromSpec(
+      spec,
+      'back',
+      backdropSnippet,
+      false,
+      true,
+      undefined,
+      getBrandStyle('editorial'),
+      'Female',
+    );
+
+    expect(prompt).toContain('You are given 3 images:');
+    expect(prompt).toContain('BACKGROUND, LIGHTING, and OUTFIT CONSISTENCY anchor');
+    expect(prompt).toContain('Match the exact same backdrop color/gradient');
+    expect(prompt).toContain('floor tone, contact shadow softness, lighting direction');
+    expect(prompt).toContain('Do NOT copy the pose, body angle, arm positions, or camera angle');
+    expect(prompt).toContain('Standing naturally from the rear angle with feet placed comfortably and realistically.');
+    expect(prompt).not.toContain('Head turned 45° to the right');
   });
 });
