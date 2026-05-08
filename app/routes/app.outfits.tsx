@@ -124,7 +124,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       where: { id: outfitId, shopId, deletedAt: null },
     });
     if (!outfit) return Response.json({ error: "Not found" }, { status: 404 });
-    await prisma.outfit.update({ where: { id: outfitId }, data: { deletedAt: new Date() } });
+    await prisma.outfit.update({
+      where: { id: outfitId },
+      data: { deletedAt: new Date() },
+    });
     return Response.json({ ok: true });
   }
 
@@ -482,6 +485,7 @@ function VideoTile({
   onGenerate?: () => void;
   onOpen?: () => void;
 }) {
+  const hasPlayableVideo = Boolean(url) && state !== "idle";
   const helperText =
     state === "idle"
       ? "Usually about 2 minutes. Runs in the background."
@@ -490,7 +494,9 @@ function VideoTile({
         : state === "generating"
           ? "Generating now. Usually finishes in about 2 minutes."
           : state === "failed"
-            ? "Video did not finish this time. Safe to retry."
+            ? url
+              ? "Regeneration failed. Previous video is still available."
+              : "Video did not finish this time. Safe to retry."
             : generatedAt
               ? "Video ready."
               : "Video ready.";
@@ -510,11 +516,11 @@ function VideoTile({
     <div>
       <div
         className={`group relative h-[300px] rounded-lg overflow-hidden border border-krea-border ${
-          state === "ready" ? "bg-black" : "bg-krea-border/10"
-        } ${state === "ready" && onOpen ? "cursor-pointer" : ""}`}
-        onClick={state === "ready" && onOpen ? onOpen : undefined}
+          hasPlayableVideo ? "bg-black" : "bg-krea-border/10"
+        } ${hasPlayableVideo && onOpen ? "cursor-pointer" : ""}`}
+        onClick={hasPlayableVideo && onOpen ? onOpen : undefined}
       >
-        {state === "ready" && url ? (
+        {hasPlayableVideo && url ? (
           <>
             <video
               src={url}
@@ -529,6 +535,22 @@ function VideoTile({
                 <Play className="w-4 h-4 text-krea-text" />
               </div>
             </div>
+            {state !== "ready" && (
+              <div className="absolute inset-0 bg-black/35 flex items-center justify-center px-4 text-center pointer-events-none">
+                <div className="inline-flex items-center gap-2 rounded-full bg-white/95 px-3 py-2 text-xs font-medium text-krea-text shadow-sm">
+                  {state === "queued" || state === "generating" ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Video className="h-3.5 w-3.5" />
+                  )}
+                  {state === "queued"
+                    ? "Regeneration queued"
+                    : state === "generating"
+                      ? "Regenerating video"
+                      : "Regeneration failed"}
+                </div>
+              </div>
+            )}
           </>
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center">
@@ -595,7 +617,7 @@ function VideoTile({
             </span>
           )}
         </div>
-        {state === "ready" && url ? (
+        {hasPlayableVideo && url ? (
           <button
             type="button"
             onClick={(e) => {
@@ -1114,7 +1136,10 @@ function OutfitCard({
   onUpscaleImage?: (generatedImageId: string) => void;
   onBulkUpscale?: (outfitId: string) => void;
   videoAllowed?: boolean;
-  onGenerateVideo?: (outfitId: string) => void;
+  onGenerateVideo?: (
+    outfitId: string,
+    mode?: "generate" | "regenerate",
+  ) => void;
 }) {
   const status = (outfit as { status?: string }).status ?? "completed";
   const syncStatus = (outfit as { shopifySyncStatus?: string | null })
@@ -1143,25 +1168,36 @@ function OutfitCard({
     optimisticVideoGenerating ||
     videoStatus === "pending" ||
     videoStatus === "processing";
-  const hasVideo = videoStatus === "completed" && !!videoUrl;
+  const hasPlayableVideo = Boolean(videoUrl);
+  const hasCompletedVideo = videoStatus === "completed" && hasPlayableVideo;
   const shouldShowVideoTile =
     Boolean(videoAllowed) && status === OUTFIT_STATUS.completed;
   const videoTileState: "idle" | "queued" | "generating" | "ready" | "failed" =
-    hasVideo
-      ? "ready"
-      : optimisticVideoGenerating || videoStatus === "pending"
-        ? "queued"
-        : videoStatus === "processing"
-          ? "generating"
-          : videoStatus === "failed"
-            ? "failed"
-            : "idle";
+    optimisticVideoGenerating
+      ? hasPlayableVideo
+        ? "generating"
+        : "queued"
+      : hasCompletedVideo
+        ? "ready"
+        : videoStatus === "pending"
+          ? "queued"
+          : videoStatus === "processing"
+            ? "generating"
+            : videoStatus === "failed"
+              ? "failed"
+              : "idle";
   const canStartVideo =
     videoAllowed &&
     onGenerateVideo &&
     status === OUTFIT_STATUS.completed &&
     !isVideoGenerating &&
-    !hasVideo;
+    !hasPlayableVideo;
+  const canRegenerateVideo =
+    videoAllowed &&
+    onGenerateVideo &&
+    status === OUTFIT_STATUS.completed &&
+    !isVideoGenerating &&
+    hasPlayableVideo;
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -1341,9 +1377,7 @@ function OutfitCard({
   }
 
   return (
-    <div
-      className="rounded-xl border border-krea-border bg-white"
-    >
+    <div className="rounded-xl border border-krea-border bg-white">
       {/* Card header — single row: checkbox | title · date · tag | actions */}
       <div className="flex items-center gap-3 px-4 pt-4 pb-3">
         <label
@@ -1480,6 +1514,18 @@ function OutfitCard({
               >
                 <Video className="w-3 h-3" />
                 Generate video
+              </button>
+            </>
+          )}
+          {canRegenerateVideo && (
+            <>
+              <button
+                type="button"
+                onClick={() => onGenerateVideo!(outfit.id, "regenerate")}
+                className="flex items-center gap-1.5 text-[11px] text-krea-muted border border-krea-border rounded-md px-2.5 py-1 hover:bg-krea-border/40 transition-colors"
+              >
+                <RefreshCw className="w-3 h-3" />
+                Regenerate video
               </button>
             </>
           )}
@@ -1634,7 +1680,7 @@ function OutfitCard({
             cardShots.length < 4 ? `${cardShots.length * 215}px` : undefined,
         }}
       >
-        {cardShots.map((shot, i) => (
+        {cardShots.map((shot, i) =>
           shot.kind === "video" ? (
             <VideoTile
               key={shot.key}
@@ -1642,11 +1688,7 @@ function OutfitCard({
               url={shot.url}
               label={shot.label}
               generatedAt={shot.generatedAt}
-              onOpen={
-                shot.state === "ready"
-                  ? () => onLightbox(outfit.id, i)
-                  : undefined
-              }
+              onOpen={shot.url ? () => onLightbox(outfit.id, i) : undefined}
               onGenerate={
                 shot.state === "idle" || shot.state === "failed"
                   ? () => onGenerateVideo?.(outfit.id)
@@ -1677,8 +1719,8 @@ function OutfitCard({
                   : undefined
               }
             />
-          )
-        ))}
+          ),
+        )}
       </div>
 
       {status === OUTFIT_STATUS.failed &&
@@ -1750,7 +1792,9 @@ export default function Outfits() {
     }
   }, [outfits, shop]);
 
-  const [optimisticDeletedIds, setOptimisticDeletedIds] = useState<Set<string>>(new Set());
+  const [optimisticDeletedIds, setOptimisticDeletedIds] = useState<Set<string>>(
+    new Set(),
+  );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [lightbox, setLightbox] = useState<{
@@ -2033,13 +2077,21 @@ export default function Outfits() {
     revalidate();
   }
 
-  async function generateVideo(outfitId: string) {
+  async function generateVideo(
+    outfitId: string,
+    mode: "generate" | "regenerate" = "generate",
+  ) {
     setSessionError(null);
     const outfit = outfits.find((item) => item.id === outfitId);
     posthog.capture("video_generate_clicked", {
       shop,
       outfitId,
-      attempt: outfit?.videoStatus === "failed" ? "retry" : "new",
+      attempt:
+        mode === "regenerate"
+          ? "regenerate"
+          : outfit?.videoStatus === "failed"
+            ? "retry"
+            : "new",
     });
     setOptimisticVideoGeneratingIds((current) =>
       new Set(current).add(outfitId),
@@ -2047,7 +2099,7 @@ export default function Outfits() {
     const res = await authenticatedFetch("/api/generate-video", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ outfitId }),
+      body: JSON.stringify({ outfitId, mode }),
     });
     if (!res.ok) {
       setOptimisticVideoGeneratingIds((current) => {
@@ -2169,46 +2221,48 @@ export default function Outfits() {
                 )}
               </div>
             )}
-            {outfits.filter((o) => !optimisticDeletedIds.has(o.id)).map((outfit) => (
-              <OutfitCard
-                key={outfit.id}
-                outfit={outfit}
-                modelName={modelNameMap[outfit.modelId] ?? undefined}
-                brandStyleLabel={
-                  brandStyleLabelMap[
-                    (outfit as { brandStyleId?: string }).brandStyleId ??
-                      "minimal"
-                  ] ?? "Minimal Clarity"
-                }
-                optimisticBulkUpscaling={optimisticBulkUpscalingIds.has(
-                  outfit.id,
-                )}
-                optimisticVideoGenerating={optimisticVideoGeneratingIds.has(
-                  outfit.id,
-                )}
-                selected={selectedIds.has(outfit.id)}
-                onDelete={deleteOutfit}
-                onRename={renameOutfit}
-                onToggleSelect={toggleSelect}
-                onLightbox={(id, idx) =>
-                  setLightbox({ outfitId: id, index: idx })
-                }
-                onRegenerate={() =>
-                  setRegenerateModal({
-                    outfitId: outfit.id,
-                    outfitName: outfit.name || "Untitled",
-                  })
-                }
-                onCancel={cancelGeneration}
-                onPublish={publishOutfit}
-                onCancelSync={cancelSync}
-                upscaleAllowed={upscaleAllowed}
-                onUpscaleImage={upscaleAllowed ? upscaleImage : undefined}
-                onBulkUpscale={upscaleAllowed ? bulkUpscale : undefined}
-                videoAllowed={videoAllowed}
-                onGenerateVideo={videoAllowed ? generateVideo : undefined}
-              />
-            ))}
+            {outfits
+              .filter((o) => !optimisticDeletedIds.has(o.id))
+              .map((outfit) => (
+                <OutfitCard
+                  key={outfit.id}
+                  outfit={outfit}
+                  modelName={modelNameMap[outfit.modelId] ?? undefined}
+                  brandStyleLabel={
+                    brandStyleLabelMap[
+                      (outfit as { brandStyleId?: string }).brandStyleId ??
+                        "minimal"
+                    ] ?? "Minimal Clarity"
+                  }
+                  optimisticBulkUpscaling={optimisticBulkUpscalingIds.has(
+                    outfit.id,
+                  )}
+                  optimisticVideoGenerating={optimisticVideoGeneratingIds.has(
+                    outfit.id,
+                  )}
+                  selected={selectedIds.has(outfit.id)}
+                  onDelete={deleteOutfit}
+                  onRename={renameOutfit}
+                  onToggleSelect={toggleSelect}
+                  onLightbox={(id, idx) =>
+                    setLightbox({ outfitId: id, index: idx })
+                  }
+                  onRegenerate={() =>
+                    setRegenerateModal({
+                      outfitId: outfit.id,
+                      outfitName: outfit.name || "Untitled",
+                    })
+                  }
+                  onCancel={cancelGeneration}
+                  onPublish={publishOutfit}
+                  onCancelSync={cancelSync}
+                  upscaleAllowed={upscaleAllowed}
+                  onUpscaleImage={upscaleAllowed ? upscaleImage : undefined}
+                  onBulkUpscale={upscaleAllowed ? bulkUpscale : undefined}
+                  videoAllowed={videoAllowed}
+                  onGenerateVideo={videoAllowed ? generateVideo : undefined}
+                />
+              ))}
           </div>
         )}
       </div>
