@@ -1533,15 +1533,15 @@ export default function DressModel() {
                     {item.quality === "warn" && item.status === "pending" && (
                       <p className="text-[10px] text-yellow-600 flex items-center gap-1 px-1">
                         <AlertTriangle className="w-3 h-3 flex-shrink-0" />
-                        We’re not sure this is a single garment. Try a clearer
-                        flat lay.
+                        We’re not sure this is one garment. You can still
+                        generate, or upload a clearer product photo.
                       </p>
                     )}
                     {item.quality === "fail" && item.status === "pending" && (
                       <p className="text-[10px] text-red-500 flex items-center gap-1 px-1">
                         <XCircle className="w-3 h-3 flex-shrink-0" />
-                        Multiple or no garments detected. Use a single garment
-                        flat lay.
+                        Multiple or no garments detected. Use one garment
+                        product photo.
                       </p>
                     )}
                     {item.status === "error" && item.error && (
