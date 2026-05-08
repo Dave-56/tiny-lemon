@@ -1,14 +1,64 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
+const mocks = vi.hoisted(() => ({
+  replicateRun: vi.fn(),
+  waitFor: vi.fn(),
+  consumeReplicatePredictionCreateSlot: vi.fn(),
+  logServerEvent: vi.fn(),
+}));
+
+vi.mock("replicate", () => ({
+  default: vi.fn().mockImplementation(() => ({
+    run: mocks.replicateRun,
+  })),
+}));
+
+vi.mock("@trigger.dev/sdk", () => ({
+  wait: {
+    for: mocks.waitFor,
+  },
+}));
+
+vi.mock("./replicatePredictionThrottle.server", () => ({
+  consumeReplicatePredictionCreateSlot: mocks.consumeReplicatePredictionCreateSlot,
+  getReplicatePredictionCreateWindowMs: () => 10_000,
+  getReplicateThrottleRetryAfterMs: () => null,
+}));
+
+vi.mock("./observability.server", () => ({
+  logServerEvent: mocks.logServerEvent,
+}));
+
 import {
   buildProviderInput,
   buildFalProviderInput,
   selectVideoSourceImages,
+  getVideoDurationSeconds,
+  isRetryableReplicateInterruptedPrediction,
   createVideoProvider,
   KlingReplicateProvider,
   FalKlingProvider,
   type OutfitSourceImage,
 } from "./videoProvider.server";
+
+const baseImages: OutfitSourceImage[] = [
+  { url: "https://example.com/back.png", pose: "back", isUpscaled: false },
+  { url: "https://example.com/front.png", pose: "front", isUpscaled: false },
+  { url: "https://example.com/three-quarter.png", pose: "three-quarter", isUpscaled: false },
+];
+
+const originalEnv = process.env;
+
+beforeEach(() => {
+  process.env = { ...originalEnv };
+  vi.clearAllMocks();
+  mocks.consumeReplicatePredictionCreateSlot.mockResolvedValue({ allowed: true });
+  mocks.waitFor.mockResolvedValue(undefined);
+});
+
+afterEach(() => {
+  process.env = originalEnv;
+});
 
 describe("buildProviderInput", () => {
   it("uses a Kling-supported portrait aspect ratio", () => {
@@ -31,7 +81,7 @@ describe("buildProviderInput", () => {
     });
   });
 
-  it("prefers an upscaled three-quarter image over a non-upscaled front image", () => {
+  it("keeps the front image as primary even when three-quarter is upscaled", () => {
     const images: OutfitSourceImage[] = [
       { url: "https://example.com/front.png", pose: "front", isUpscaled: false },
       {
@@ -45,11 +95,15 @@ describe("buildProviderInput", () => {
     const selection = selectVideoSourceImages(images);
 
     expect(selection.hero).toMatchObject({
-      url: "https://example.com/three-quarter-upscaled.png",
-      pose: "three-quarter",
-      isUpscaled: true,
+      url: "https://example.com/front.png",
+      pose: "front",
+      isUpscaled: false,
     });
-    expect(selection.scoredImages.map((entry) => entry.totalScore)).toEqual([36, 24, 8]);
+    expect(selection.orderedImages.map((image) => image.pose)).toEqual([
+      "front",
+      "three-quarter",
+      "back",
+    ]);
   });
 
   it("breaks equal scores predictably in favor of front over three-quarter", () => {
@@ -82,13 +136,13 @@ describe("buildProviderInput", () => {
 
     expect(selection.orderedImages.map((image) => image.pose)).toEqual([
       "front",
-      "detail",
       "back",
+      "detail",
     ]);
     expect(selection.hero.pose).toBe("front");
   });
 
-  it("keeps start_image aligned with the first reference image in multi-reference mode", () => {
+  it("uses front as the Omni start/end frame by default without reference_images", () => {
     const images: OutfitSourceImage[] = [
       { url: "https://example.com/front.png", pose: "front", isUpscaled: false },
       {
@@ -99,32 +153,138 @@ describe("buildProviderInput", () => {
       { url: "https://example.com/back.png", pose: "back", isUpscaled: false },
     ];
 
-    const input = buildProviderInput("kwaivgi/kling-omni-v1", {
+    const input = buildProviderInput("kwaivgi/kling-v3-omni-video", {
       sourceImages: images,
       motionPrompt: "Subtle runway turn.",
-      durationSeconds: 5,
+      durationSeconds: 8,
     });
 
     expect(input).toMatchObject({
-      start_image: "https://example.com/three-quarter-upscaled.png",
+      start_image: "https://example.com/front.png",
+      end_image: "https://example.com/front.png",
+      duration: 8,
+      mode: "standard",
+      generate_audio: false,
+    });
+    expect(String(input.prompt)).toContain("Use start_image as the exact first front-facing frame");
+    expect(String(input.prompt)).toContain("end_image as the exact final front-facing frame");
+    expect(input).not.toHaveProperty("reference_images");
+  });
+
+  it("can use non-front Omni references when explicitly configured without end_image", () => {
+    process.env.VIDEO_PROVIDER_OMNI_INPUT_MODE = "references";
+    const images: OutfitSourceImage[] = [
+      { url: "https://example.com/front.png", pose: "front", isUpscaled: false },
+      {
+        url: "https://example.com/three-quarter-upscaled.png",
+        pose: "three-quarter",
+        isUpscaled: true,
+      },
+      { url: "https://example.com/back.png", pose: "back", isUpscaled: false },
+    ];
+
+    const input = buildProviderInput("kwaivgi/kling-v3-omni-video", {
+      sourceImages: images,
+      motionPrompt: "Subtle runway turn.",
+      durationSeconds: 8,
+    });
+
+    expect(input).toMatchObject({
+      start_image: "https://example.com/front.png",
       reference_images: [
         "https://example.com/three-quarter-upscaled.png",
-        "https://example.com/front.png",
         "https://example.com/back.png",
       ],
     });
+    expect(input).not.toHaveProperty("end_image");
+    expect(String(input.prompt)).toContain("<<<image_1>>> is the three-quarter view");
+    expect(String(input.prompt)).toContain("<<<image_2>>> is the back view");
+    expect(String(input.prompt)).not.toContain("<<<image_1>>> as the primary model");
+    expect(input.reference_images).not.toContain("https://example.com/front.png");
+  });
+
+  it("omits reference_images in Omni mode when only the front source exists", () => {
+    const input = buildProviderInput("kwaivgi/kling-v3-omni-video", {
+      sourceImages: [
+        { url: "https://example.com/front.png", pose: "front", isUpscaled: false },
+      ],
+      motionPrompt: "Subtle product turn.",
+      durationSeconds: 8,
+    });
+
+    expect(input).toMatchObject({
+      start_image: "https://example.com/front.png",
+      end_image: "https://example.com/front.png",
+    });
+    expect(input).not.toHaveProperty("reference_images");
+  });
+});
+
+describe("getVideoDurationSeconds", () => {
+  it("defaults to 12 seconds", () => {
+    expect(getVideoDurationSeconds("")).toBe(12);
+  });
+
+  it("clamps to the Kling supported range", () => {
+    expect(getVideoDurationSeconds("1")).toBe(3);
+    expect(getVideoDurationSeconds("30")).toBe(15);
+  });
+
+  it("uses valid integer env values", () => {
+    expect(getVideoDurationSeconds("10")).toBe(10);
+  });
+});
+
+describe("isRetryableReplicateInterruptedPrediction", () => {
+  it("recognizes Replicate interrupted prediction errors", () => {
+    expect(
+      isRetryableReplicateInterruptedPrediction(
+        new Error("Prediction failed: Prediction interrupted; please retry (code: PA)"),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not treat arbitrary provider failures as retryable interruption", () => {
+    expect(
+      isRetryableReplicateInterruptedPrediction(
+        new Error("Prediction failed: invalid input image"),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("KlingReplicateProvider", () => {
+  it("retries interrupted predictions before surfacing failure to the task", async () => {
+    mocks.replicateRun
+      .mockRejectedValueOnce(
+        new Error("Prediction failed: Prediction interrupted; please retry (code: PA)"),
+      )
+      .mockResolvedValueOnce("https://replicate.example.com/video.mp4");
+
+    const provider = new KlingReplicateProvider();
+    const result = await provider.generate({
+      sourceImages: baseImages,
+      motionPrompt: "Slow turn.",
+      durationSeconds: 8,
+    });
+
+    expect(result.videoUrl).toBe("https://replicate.example.com/video.mp4");
+    expect(mocks.replicateRun).toHaveBeenCalledTimes(2);
+    expect(mocks.waitFor).toHaveBeenCalledWith({ seconds: 5 });
+    expect(mocks.logServerEvent).toHaveBeenCalledWith(
+      "warn",
+      "video.provider_interrupted_retry",
+      expect.objectContaining({
+        attempt: 1,
+        retrySeconds: 5,
+      }),
+    );
   });
 });
 
 // ── buildFalProviderInput ───────────────────────────────────────────────────
 
 describe("buildFalProviderInput", () => {
-  const baseImages: OutfitSourceImage[] = [
-    { url: "https://example.com/back.png", pose: "back", isUpscaled: false },
-    { url: "https://example.com/front.png", pose: "front", isUpscaled: false },
-    { url: "https://example.com/three-quarter.png", pose: "three-quarter", isUpscaled: false },
-  ];
-
   it("uses start_image_url (not start_image) and string duration", () => {
     const input = buildFalProviderInput({
       sourceImages: baseImages,
@@ -164,8 +324,9 @@ describe("buildFalProviderInput", () => {
     expect(input).not.toHaveProperty("negative_prompt");
   });
 
-  it("selects hero image using same scoring as Replicate builder", () => {
+  it("selects hero image using same front-first policy as Replicate builder", () => {
     const images: OutfitSourceImage[] = [
+      { url: "https://example.com/front.png", pose: "front", isUpscaled: false },
       { url: "https://example.com/back.png", pose: "back", isUpscaled: false },
       { url: "https://example.com/three-quarter-upscaled.png", pose: "three-quarter", isUpscaled: true },
     ];
@@ -176,7 +337,7 @@ describe("buildFalProviderInput", () => {
       durationSeconds: 5,
     });
 
-    expect(input.start_image_url).toBe("https://example.com/three-quarter-upscaled.png");
+    expect(input.start_image_url).toBe("https://example.com/front.png");
   });
 
   it("does not include multi-reference fields (no omni support on fal)", () => {
@@ -193,8 +354,6 @@ describe("buildFalProviderInput", () => {
 // ── createVideoProvider factory ─────────────────────────────────────────────
 
 describe("createVideoProvider", () => {
-  const originalEnv = process.env;
-
   beforeEach(() => {
     process.env = { ...originalEnv };
   });

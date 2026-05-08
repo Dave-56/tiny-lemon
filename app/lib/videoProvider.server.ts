@@ -34,6 +34,7 @@ export interface VideoProvider {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const PREFERRED_POSE_ORDER = ["front", "three-quarter", "back"] as const;
+const MAX_OMNI_REFERENCE_IMAGES = 7;
 type SupportedVideoAspectRatio = "16:9" | "9:16" | "1:1";
 const UNKNOWN_POSE_INDEX = PREFERRED_POSE_ORDER.length;
 
@@ -58,13 +59,19 @@ export interface VideoSourceSelection {
   scoredImages: ScoredVideoSourceImage[];
 }
 
-// ── Kling v3 via Replicate (single-image mode) ──────────────────────────────
+// ── Kling v3 via Replicate ──────────────────────────────────────────────────
 
 const DEFAULT_KLING_MODEL =
-  "kwaivgi/kling-v3-video" as `${string}/${string}`;
+  "kwaivgi/kling-v3-omni-video" as `${string}/${string}`;
 const MAX_REPLICATE_VIDEO_RETRIES = 6;
+const REPLICATE_INTERRUPTED_RETRY_DELAYS_SECONDS = [5, 10, 20];
+const DEFAULT_VIDEO_DURATION_SECONDS = 12;
+const MIN_VIDEO_DURATION_SECONDS = 3;
+const MAX_VIDEO_DURATION_SECONDS = 15;
 
 type VideoProviderMode = "single-image" | "multi-reference";
+type OmniInputMode = "end-frame" | "references";
+type ReplicateVideoMode = "standard" | "pro";
 
 function getProviderMode(model: `${string}/${string}`): VideoProviderMode {
   if (model.includes("omni")) {
@@ -100,23 +107,85 @@ export function selectVideoSourceImages(
     throw new Error("selectVideoSourceImages requires at least one source image");
   }
 
-  const scoredImages = images
-    .map(scoreSourceImage)
-    .sort((a, b) => {
-      const scoreDiff = b.totalScore - a.totalScore;
-      if (scoreDiff !== 0) return scoreDiff;
+  const scoredImages = images.map(scoreSourceImage).sort((a, b) => {
+    const rankDiff = a.poseRank - b.poseRank;
+    if (rankDiff !== 0) return rankDiff;
 
-      const rankDiff = a.poseRank - b.poseRank;
-      if (rankDiff !== 0) return rankDiff;
+    const upscaleDiff = b.upscaleBonus - a.upscaleBonus;
+    if (upscaleDiff !== 0) return upscaleDiff;
 
-      return a.image.url.localeCompare(b.image.url);
-    });
+    const scoreDiff = b.poseScore - a.poseScore;
+    if (scoreDiff !== 0) return scoreDiff;
+
+    return a.image.url.localeCompare(b.image.url);
+  });
 
   return {
     hero: scoredImages[0]!.image,
     orderedImages: scoredImages.map((entry) => entry.image),
     scoredImages,
   };
+}
+
+function selectOmniReferenceImages(
+  selection: VideoSourceSelection,
+): OutfitSourceImage[] {
+  return selection.orderedImages
+    .filter((image) => image.url !== selection.hero.url)
+    .slice(0, MAX_OMNI_REFERENCE_IMAGES);
+}
+
+function buildReferenceMapPrompt(referenceImages: OutfitSourceImage[]): string {
+  if (referenceImages.length === 0) {
+    return "";
+  }
+
+  const referenceMap = referenceImages
+    .map((image, index) => `<<<image_${index + 1}>>> is the ${image.pose} view`)
+    .join("; ");
+
+  return `Reference map: ${referenceMap}. Use these references only to preserve identity, styling, garment details, and target body angles during interpolation.`;
+}
+
+export function getVideoDurationSeconds(
+  rawValue = process.env.VIDEO_DURATION_SECONDS,
+): number {
+  const parsed = Number.parseInt(rawValue ?? "", 10);
+  if (!Number.isFinite(parsed)) return DEFAULT_VIDEO_DURATION_SECONDS;
+  return Math.min(
+    MAX_VIDEO_DURATION_SECONDS,
+    Math.max(MIN_VIDEO_DURATION_SECONDS, parsed),
+  );
+}
+
+function getReplicateVideoMode(): ReplicateVideoMode {
+  return process.env.VIDEO_PROVIDER_MODE === "pro" ? "pro" : "standard";
+}
+
+function getOmniInputMode(): OmniInputMode {
+  return process.env.VIDEO_PROVIDER_OMNI_INPUT_MODE === "references"
+    ? "references"
+    : "end-frame";
+}
+
+export function isRetryableReplicateInterruptedPrediction(
+  error: unknown,
+): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return (
+    /prediction interrupted/i.test(message) ||
+    /please retry/i.test(message) ||
+    /code:\s*PA/i.test(message)
+  );
+}
+
+function getInterruptedPredictionRetryDelaySeconds(attempt: number): number {
+  return (
+    REPLICATE_INTERRUPTED_RETRY_DELAYS_SECONDS[attempt - 1] ??
+    REPLICATE_INTERRUPTED_RETRY_DELAYS_SECONDS[
+      REPLICATE_INTERRUPTED_RETRY_DELAYS_SECONDS.length - 1
+    ]!
+  );
 }
 
 async function waitForReplicatePredictionSlot(model: `${string}/${string}`) {
@@ -153,6 +222,8 @@ export function buildProviderInput(
     start_image: selection.hero.url,
     duration: input.durationSeconds,
     aspect_ratio: getSupportedAspectRatio(),
+    mode: getReplicateVideoMode(),
+    generate_audio: false,
   };
 
   if (input.negativePrompt) {
@@ -160,12 +231,25 @@ export function buildProviderInput(
   }
 
   if (mode === "multi-reference") {
-    providerInput.reference_images = selection.orderedImages.map((image) => image.url);
+    const referenceImages = selectOmniReferenceImages(selection);
+    const omniInputMode = getOmniInputMode();
+
+    if (omniInputMode === "references" && referenceImages.length > 0) {
+      providerInput.reference_images = referenceImages.map((image) => image.url);
+    } else {
+      providerInput.end_image = selection.hero.url;
+    }
+
     providerInput.prompt = [
-      "Use <<<image_1>>> as the primary subject reference and maintain the same garment and identity.",
-      selection.orderedImages.length > 1
-        ? "Use the remaining reference images for consistency of silhouette, styling, and garment details."
+      "Create a single continuous vertical fashion try-on clip.",
+      omniInputMode === "references"
+        ? "Use start_image as the exact first front-facing frame."
+        : "Use start_image as the exact first front-facing frame and end_image as the exact final front-facing frame.",
+      omniInputMode === "references" ? buildReferenceMapPrompt(referenceImages) : "",
+      omniInputMode === "references" && referenceImages.length > 0
+        ? "Do not cut between references; smoothly interpolate one uninterrupted same-direction body turn."
         : "",
+      "Keep the camera locked, preserve the outfit exactly, and avoid adding accessories or changing the garment.",
       input.motionPrompt,
     ]
       .filter(Boolean)
@@ -217,16 +301,32 @@ export class KlingReplicateProvider implements VideoProvider {
         break;
       } catch (error) {
         const retryMs = getReplicateThrottleRetryAfterMs(error);
-        if (retryMs == null || attempt === MAX_REPLICATE_VIDEO_RETRIES) {
-          throw error;
+        if (retryMs != null && attempt < MAX_REPLICATE_VIDEO_RETRIES) {
+          logServerEvent("info", "video.provider_rate_limited", {
+            retryMs,
+            model: this.model,
+            attempt,
+          });
+          await wait.for({ seconds: Math.ceil(retryMs / 1000) });
+          continue;
         }
 
-        logServerEvent("info", "video.provider_rate_limited", {
-          retryMs,
-          model: this.model,
-          attempt,
-        });
-        await wait.for({ seconds: Math.ceil(retryMs / 1000) });
+        if (
+          isRetryableReplicateInterruptedPrediction(error) &&
+          attempt < MAX_REPLICATE_VIDEO_RETRIES
+        ) {
+          const retrySeconds = getInterruptedPredictionRetryDelaySeconds(attempt);
+          logServerEvent("warn", "video.provider_interrupted_retry", {
+            retrySeconds,
+            model: this.model,
+            attempt,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          await wait.for({ seconds: retrySeconds });
+          continue;
+        }
+
+        throw error;
       }
     }
 

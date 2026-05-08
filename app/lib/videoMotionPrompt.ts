@@ -2,14 +2,14 @@ import { BRAND_STYLE_PRESETS } from "./pdpPresets";
 
 /**
  * Build a motion prompt for video generation from the brand style.
- * V1 keeps motions narrow — optimize for garment fidelity over dramatic motion.
+ * V1 keeps motion product-focused: one smooth turn, no dance-like rocking.
  */
 
 const MOTION_PROMPT =
-  "A very subtle, slow turn of the torso from front to slight three-quarter angle. Minimal body movement. Calm, composed energy.";
+  "Create a smooth continuous 360-degree ecommerce product turnaround of the same model wearing the same outfit. Start on the provided start image: an exact front-facing catalog view. The model rotates in one consistent direction, reaches the back view around the midpoint, continues through the opposite side, and returns to the same exact front-facing catalog view by the final frame. The final frame should closely match the first frame in body angle, camera position, framing, posture, garment shape, lighting, and background so the clip can loop cleanly. Treat any reference images as angle and appearance guides, not as separate shots or jump cuts. Keep the camera locked on a tripod. Keep the same model identity, body shape, hair, shoes, accessories, garment fit, silhouette, color, pattern, logos, and fabric texture. Use minimal arm movement and calm composed posture.";
 
 const NEGATIVE_PROMPT =
-  "garment color drift, pattern distortion, logo warping, text illegibility, face morphing, sudden jerky motion, camera shake, background flickering, extra limbs";
+  "rocking left and right, reversing direction, repeated back-and-forth turning, ending on back view, ending on side view, mismatched first and final frame, jump cut, camera movement, camera orbit, garment color drift, pattern distortion, logo warping, face morphing, identity drift, body shape drift, sudden jerky motion, extra limbs, new accessories, outfit redesign";
 
 export function buildVideoMotionPrompt(brandStyleId: string): {
   prompt: string;
