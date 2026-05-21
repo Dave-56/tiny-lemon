@@ -111,7 +111,7 @@ describe("billing.server", () => {
       betaStatus: null,
       betaCap: null,
     });
-    mocks.txCreditCount.mockResolvedValueOnce(2);
+    mocks.txCreditCount.mockResolvedValueOnce(PLAN_LIMITS.free - 1);
     mocks.txCreateMany.mockResolvedValueOnce({ count: 1 });
 
     const entitlements = await reserveGenerations("shop-a", 1, {
@@ -143,7 +143,7 @@ describe("billing.server", () => {
       betaStatus: null,
       betaCap: null,
     });
-    mocks.txCreditCount.mockResolvedValueOnce(3);
+    mocks.txCreditCount.mockResolvedValueOnce(PLAN_LIMITS.free);
 
     await expect(reserveGenerations("shop-a", 1)).rejects.toThrow(
       "insufficient_credits",

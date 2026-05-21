@@ -90,9 +90,9 @@ export default function PricingPage() {
                 Get Free →
               </Link>
               <ul className={styles.tierList}>
-                <li>3 outfit generations per month</li>
+                <li>50 outfit generations per month</li>
                 <li>1 model save</li>
-                <li>Front hero angle only</li>
+                <li>Full 3-angle set (Front + 3/4 + Back)</li>
                 <li>White studio background</li>
                 <li>Standard resolution (512px)</li>
                 <li>Watermarked downloads</li>
@@ -214,7 +214,7 @@ export default function PricingPage() {
               <tbody>
                 <tr>
                   <td>Generations/month</td>
-                  <td>3</td>
+                  <td>50</td>
                   <td>30</td>
                   <td>100</td>
                   <td>300</td>

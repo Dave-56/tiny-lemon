@@ -52,7 +52,7 @@
 **Changes:**
 - Rename "generations" → "outfits" in all user-facing copy (billing page, usage meter, plan cards, emails)
 - Tier-gate new features instead of charging separately:
-  - Free: 3 outfits/mo, front angle only
+  - Free: 50 outfits/mo, all angles during launch
   - Starter ($39): 30 outfits/mo, all angles
   - Growth ($99): 100 outfits/mo, all angles + upscaling
   - Scale ($249): 300 outfits/mo, all angles + upscaling + video

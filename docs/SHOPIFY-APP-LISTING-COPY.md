@@ -106,7 +106,7 @@ Leave blank, or add e.g. **Vercel** if you want to mention hosting. Do not list 
 
 | Plan | Display name | Top features (brief) |
 |------|----------------|----------------------|
-| 1 | **Free** | 3 generations/month, 1 model, front angle only, watermarked. |
+| 1 | **Free** | 50 generations/month during launch, 1 model, full 3-angle set, watermarked. |
 | 2 | **Starter** | 30 generations/month, full 3-angle set, high-res, unwatermarked. |
 | 3 | **Growth** | 100 generations/month, detail + flat lay, 2 brand styles, priority queue. |
 | 4 | **Scale** | 300 generations/month, full set + lifestyle, unlimited models, credit rollover. |
@@ -219,7 +219,7 @@ Generated images and videos sync directly to your Shopify products as draft list
 
 ### Plans that scale with you
 
-- **Free** — 3 generations/month, front angle, watermarked. Try it with zero commitment.
+- **Free** — 50 generations/month during launch, full 3-angle set, watermarked. Try it with zero commitment.
 - **Starter ($39/mo)** — 30 generations, full 3-angle sets, high-res, unwatermarked. Perfect for indie brands adding new SKUs.
 - **Growth ($99/mo)** — 100 generations, detail close-ups, flat lay output, multiple backgrounds, priority queue. For brands running seasonal drops.
 - **Scale ($249/mo)** — 300 generations, lifestyle imagery, unlimited models and brand profiles, credit rollover. For catalogs with 50+ SKUs per season.
