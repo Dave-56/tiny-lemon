@@ -16,9 +16,8 @@ export function canUpscale(plan: string, isBeta: boolean): boolean {
 }
 
 /**
- * Whether the given plan (or beta status) allows video generation.
- * Beta-only for V1.
+ * During testing, every app user can generate product videos.
  */
-export function canGenerateVideo(plan: string, isBeta: boolean): boolean {
-  return isBeta;
+export function canGenerateVideo(_plan: string, _isBeta: boolean): boolean {
+  return true;
 }

@@ -23,7 +23,7 @@
 **Goal:** Generate short silent fashion clips from completed outfit images so beta merchants can test video content for product pages, Reels, and TikTok Shop.
 
 **V1 scope:**
-- Beta-only
+- Available to all app users during launch/testing
 - 5-second silent MP4
 - Generated per outfit
 - Uses completed generated outfit images as references
