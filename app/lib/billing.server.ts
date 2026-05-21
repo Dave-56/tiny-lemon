@@ -3,22 +3,23 @@ import prisma from "../db.server";
 
 /** Demo shop id for public /try free tool. No credits; rate limit only. */
 export const DEMO_SHOP_ID = process.env.DEMO_SHOP_ID ?? "__demo__";
-export const BETA_DEFAULT_CAP = 100;
-export const BETA_FULL_ANGLES = ["front", "three-quarter", "back"] as const;
+export const BETA_DEFAULT_CAP = 50;
+export const FULL_GENERATION_ANGLES = ["front", "three-quarter", "back"] as const;
+export const BETA_FULL_ANGLES = FULL_GENERATION_ANGLES;
 
 export const PLAN_LIMITS: Record<string, number> = {
-  free: 3,
+  free: 50,
   Starter: 30,
   Growth: 100,
   Scale: 300,
 };
 
-// Angles allowed per plan. Enforced server-side in the action.
+// During testing, every plan gets the complete product image set.
 export const PLAN_ANGLES: Record<string, string[]> = {
-  free: ["front"],
-  Starter: ["front", "three-quarter", "back"],
-  Growth: ["front", "three-quarter", "back"],
-  Scale: ["front", "three-quarter", "back"],
+  free: [...FULL_GENERATION_ANGLES],
+  Starter: [...FULL_GENERATION_ANGLES],
+  Growth: [...FULL_GENERATION_ANGLES],
+  Scale: [...FULL_GENERATION_ANGLES],
 };
 
 type ReserveGenerationsOptions = {

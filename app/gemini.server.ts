@@ -1,4 +1,6 @@
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
+import { getUserFacingImageServiceError } from './lib/flatLayCleanup';
+import { GEMINI_IMAGE_MODEL, GEMINI_TEXT_MODEL } from './lib/geminiModels';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
@@ -59,7 +61,7 @@ export async function generateModelImage(
   let response: Awaited<ReturnType<typeof ai.models.generateContent>>;
   try {
     response = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-image-preview',
+      model: GEMINI_IMAGE_MODEL,
       contents: { parts: [{ text: prompt }] },
       config: {
         temperature: 0.4,
@@ -68,14 +70,12 @@ export async function generateModelImage(
       },
     });
   } catch (e) {
-    const msg = (e as Error).message ?? '';
-    if (msg.includes('NOT_FOUND') || msg.includes('not found for API version')) {
-      throw new Error('AI model service is temporarily unavailable. Please try again shortly.');
-    }
-    if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota')) {
-      throw new Error('AI rate limit reached. Please wait a moment and try again.');
-    }
-    throw new Error('Failed to generate model image. Please try again.');
+    throw new Error(
+      getUserFacingImageServiceError(
+        e,
+        'Failed to generate model image. Please try again.',
+      ),
+    );
   }
 
   for (const part of response.candidates?.[0]?.content?.parts ?? []) {
@@ -92,7 +92,7 @@ export async function generateModelImage(
 /** Estimate age range from a generated model image. Returns null on failure. */
 export async function estimateAge(base64: string): Promise<string | null> {
   const response = await ai.models.generateContent({
-    model: 'gemini-2.0-flash',
+    model: GEMINI_TEXT_MODEL,
     contents: {
       parts: [
         { inlineData: { data: base64, mimeType: 'image/png' } },

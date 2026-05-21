@@ -6,24 +6,8 @@ function normalizeShopDomain(domain: string): string {
   return domain.trim().toLowerCase();
 }
 
-export function getBetaAllowlist(): string[] {
-  return (process.env.BETA_SHOP_ALLOWLIST ?? "")
-    .split(",")
-    .map(normalizeShopDomain)
-    .filter(Boolean);
-}
-
-export function isShopAllowlisted(shopId: string): boolean {
-  const normalized = normalizeShopDomain(shopId);
-  return getBetaAllowlist().includes(normalized);
-}
-
-export async function ensureBetaAccessFromAllowlist(shopId: string) {
+export async function ensureBetaAccessForShop(shopId: string) {
   const normalizedShopId = normalizeShopDomain(shopId);
-  if (!isShopAllowlisted(normalizedShopId)) {
-    return { granted: false as const };
-  }
-
   await ensureShop(normalizedShopId);
 
   const shop = await prisma.shop.findUnique({
@@ -54,7 +38,7 @@ export async function ensureBetaAccessFromAllowlist(shopId: string) {
       betaStatus: BETA_STATUS.invited,
       betaCap: shop.betaCap ?? BETA_DEFAULT_CAP,
       betaGrantedAt: new Date(),
-      betaGrantedBy: "allowlist",
+      betaGrantedBy: "default_beta",
     },
   });
 

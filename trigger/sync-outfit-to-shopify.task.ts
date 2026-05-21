@@ -1,10 +1,8 @@
 import { task } from '@trigger.dev/sdk';
 import prisma from '../app/db.server';
+import { unauthenticated } from '../app/shopify.server';
 import { parsePoseImageAssetManifest } from '../app/lib/imageAssetManifest';
 import { logServerEvent } from '../app/lib/observability.server';
-
-// Match the API version used in shopify.server.ts (ApiVersion.April26)
-const SHOPIFY_API_VERSION = '2026-04';
 
 // ── Payload ───────────────────────────────────────────────────────────────────
 
@@ -66,14 +64,11 @@ export const syncOutfitToShopifyTask = task({
       return { outfitId, status: 'already_syncing' };
     }
 
-    // ── 2. Fetch offline access token from session table ──────────────────────
-    // Token is fetched here (not in payload) to avoid it appearing in run logs.
-    const session = await prisma.session.findFirst({
-      where: { shop: shopId, isOnline: false },
-      select: { accessToken: true },
-    });
-    if (!session?.accessToken) throw new Error(`No offline session found for shop ${shopId}.`);
-    const { accessToken } = session;
+    // ── 2. Load token-refresh-aware Shopify Admin client ─────────────────────
+    // `unauthenticated.admin` loads the offline session and refreshes expiring
+    // offline access tokens when needed. Reading Session.accessToken directly
+    // would use a stale token once expiring offline tokens rotate.
+    const { admin } = await unauthenticated.admin(shopId);
 
     await prisma.outfit.update({
       where: { id: outfitId },
@@ -105,7 +100,7 @@ export const syncOutfitToShopifyTask = task({
     let productGid = payload.shopifyProductId;
     let ownedByApp: boolean;
     if (!productGid) {
-      const createData = await shopifyGraphQL(shopId, accessToken, `
+      const createData = await shopifyGraphQL(admin, `
         mutation productCreate($product: ProductCreateInput!) {
           productCreate(product: $product) {
             product { id }
@@ -125,7 +120,7 @@ export const syncOutfitToShopifyTask = task({
     // ── 6. Delete old media before attaching new (only for app-owned products) ─
     // Merchant-picked products keep their existing photos — we append ours alongside.
     if (ownedByApp) {
-      const mediaQueryData = await shopifyGraphQL(shopId, accessToken, `
+      const mediaQueryData = await shopifyGraphQL(admin, `
         query getProductMedia($id: ID!) {
           product(id: $id) {
             media(first: 50) {
@@ -141,7 +136,7 @@ export const syncOutfitToShopifyTask = task({
       ).map((e) => e.node.id);
 
       if (existingMediaIds.length > 0) {
-        const deleteData = await shopifyGraphQL(shopId, accessToken, `
+        const deleteData = await shopifyGraphQL(admin, `
           mutation productDeleteMedia($productId: ID!, $mediaIds: [ID!]!) {
             productDeleteMedia(productId: $productId, mediaIds: $mediaIds) {
               deletedMediaIds
@@ -158,7 +153,7 @@ export const syncOutfitToShopifyTask = task({
     }
 
     // ── 7. Attach new images (Shopify fetches from originalSource URLs) ────────
-    const attachData = await shopifyGraphQL(shopId, accessToken, `
+    const attachData = await shopifyGraphQL(admin, `
       mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
         productCreateMedia(productId: $productId, media: $media) {
           media { ... on MediaImage { id status } }
@@ -199,19 +194,16 @@ export const syncOutfitToShopifyTask = task({
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 async function shopifyGraphQL(
-  shop: string,
-  accessToken: string,
+  admin: {
+    graphql: (
+      query: string,
+      options?: { variables?: Record<string, unknown> },
+    ) => Promise<Response>;
+  },
   query: string,
   variables: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const res = await fetch(`https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Shopify-Access-Token': accessToken,
-    },
-    body: JSON.stringify({ query, variables }),
-  });
+  const res = await admin.graphql(query, { variables });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     throw new Error(`Shopify API error: HTTP ${res.status} — ${body}`);

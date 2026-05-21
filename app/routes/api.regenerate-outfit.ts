@@ -1,21 +1,18 @@
 import type { ActionFunctionArgs } from "react-router";
 import { getShopFromSessionToken } from "../lib/sessionToken.server";
-import {
-  handleVideoGenerateRequest,
-  type VideoGenerateMode,
-} from "../lib/videoOrchestration.server";
+import { handleRegenerateOutfit } from "../lib/triggerGeneration.server";
 
-export const config = { maxDuration: 15 };
+export const config = { maxDuration: 30 };
 
-interface GenerateVideoRequestBody {
+interface RegenerateOutfitRequestBody {
   outfitId: string;
-  mode?: VideoGenerateMode;
+  userDirection?: string;
 }
 
 /**
- * POST /api/generate-video
- * Authenticates via Authorization: Bearer <session token>.
- * Enqueues a generate-video Trigger.dev task for a completed Outfit.
+ * POST /api/regenerate-outfit
+ * Authenticates via Authorization: Bearer <session token> and always returns
+ * JSON. This keeps regenerate out of the embedded /app route auth bounce path.
  */
 export const action = async ({ request }: ActionFunctionArgs) => {
   if (request.method !== "POST") {
@@ -39,9 +36,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     );
   }
 
-  let body: GenerateVideoRequestBody;
+  let body: RegenerateOutfitRequestBody;
   try {
-    body = (await request.json()) as GenerateVideoRequestBody;
+    body = (await request.json()) as RegenerateOutfitRequestBody;
   } catch {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
@@ -53,9 +50,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     );
   }
 
-  return handleVideoGenerateRequest({
-    outfitId: body.outfitId,
+  return handleRegenerateOutfit(
     shopId,
-    mode: body.mode === "regenerate" ? "regenerate" : "generate",
-  });
+    body.outfitId,
+    body.userDirection || undefined,
+  );
 };

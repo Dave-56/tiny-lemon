@@ -1,4 +1,8 @@
 import { GoogleGenAI } from '@google/genai';
+import { GEMINI_IMAGE_MODEL } from './geminiModels';
+
+const LIGHT_BACKGROUND_THRESHOLD = 238;
+const MAX_CHANNEL_SPREAD = 18;
 
 const CLEANUP_PROMPT = `You are given a photo of a clothing item. It may be on a hanger, on a person, on a table, or have a messy background.
 
@@ -34,7 +38,7 @@ export async function cleanFlatLay(
   let response: Awaited<ReturnType<typeof ai.models.generateContent>>;
   try {
     response = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-image-preview',
+      model: GEMINI_IMAGE_MODEL,
       contents: {
         parts: [
           { inlineData: { data: rawImageBase64, mimeType: mime } },
@@ -47,20 +51,7 @@ export async function cleanFlatLay(
       },
     });
   } catch (e) {
-    const msg = (e as Error).message ?? '';
-    if (msg.includes('NOT_FOUND') || msg.includes('not found for API version')) {
-      throw new Error('AI image service is temporarily unavailable. Please try again shortly.');
-    }
-    if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota')) {
-      throw new Error('AI rate limit reached. Please wait a moment and try again.');
-    }
-    if (msg.includes('SAFETY') || msg.includes('safety')) {
-      throw new Error('Image was flagged by the safety filter. Try a different garment photo.');
-    }
-    if (msg.includes('INVALID_ARGUMENT')) {
-      throw new Error('Invalid image format. Please use a JPEG or PNG.');
-    }
-    throw new Error('Failed to process image. Please try again.');
+    throw new Error(getUserFacingImageServiceError(e, 'Failed to process image. Please try again.'));
   }
 
   const parts = response.candidates?.[0]?.content?.parts ?? [];
@@ -104,7 +95,7 @@ export async function cleanFlatLayForDemo(
   let response: Awaited<ReturnType<typeof ai.models.generateContent>>;
   try {
     response = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-image-preview',
+      model: GEMINI_IMAGE_MODEL,
       contents: {
         parts: [
           { inlineData: { data: rawImageBase64, mimeType: mime } },
@@ -117,20 +108,7 @@ export async function cleanFlatLayForDemo(
       },
     });
   } catch (e) {
-    const msg = (e as Error).message ?? '';
-    if (msg.includes('NOT_FOUND') || msg.includes('not found for API version')) {
-      throw new Error('AI image service is temporarily unavailable. Please try again shortly.');
-    }
-    if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota')) {
-      throw new Error('AI rate limit reached. Please wait a moment and try again.');
-    }
-    if (msg.includes('SAFETY') || msg.includes('safety')) {
-      throw new Error('Image was flagged by the safety filter. Try a different garment photo.');
-    }
-    if (msg.includes('INVALID_ARGUMENT')) {
-      throw new Error('Invalid image format. Please use a JPEG or PNG.');
-    }
-    throw new Error('Failed to process image. Please try again.');
+    throw new Error(getUserFacingImageServiceError(e, 'Failed to process image. Please try again.'));
   }
 
   const parts = response.candidates?.[0]?.content?.parts ?? [];
@@ -139,4 +117,132 @@ export async function cleanFlatLayForDemo(
   }
 
   throw new Error('No cleaned image was returned. Please try a different garment photo.');
+}
+
+export function getUserFacingImageServiceError(error: unknown, fallback: string): string {
+  const msg = error instanceof Error ? error.message : String(error ?? '');
+  const lower = msg.toLowerCase();
+
+  if (
+    lower.includes('safety') ||
+    lower.includes('blocked') ||
+    lower.includes('prohibited')
+  ) {
+    return 'Image was flagged by the safety filter. Try a different garment photo.';
+  }
+
+  if (
+    lower.includes('invalid_argument') ||
+    lower.includes('invalid image') ||
+    lower.includes('unsupported image') ||
+    lower.includes('unsupported mime') ||
+    lower.includes('400')
+  ) {
+    return 'Invalid image format. Please use a JPEG or PNG.';
+  }
+
+  if (
+    lower.includes('resource_exhausted') ||
+    lower.includes('quota') ||
+    lower.includes('rate limit') ||
+    lower.includes('rate_limit') ||
+    lower.includes('too many requests') ||
+    lower.includes('429') ||
+    lower.includes('credit') ||
+    lower.includes('billing')
+  ) {
+    return 'AI image generation is temporarily at capacity. Please try again in a few minutes.';
+  }
+
+  if (
+    lower.includes('not_found') ||
+    lower.includes('not found for api version') ||
+    lower.includes('model not found') ||
+    lower.includes('permission') ||
+    lower.includes('forbidden') ||
+    lower.includes('unauthorized') ||
+    lower.includes('api key') ||
+    lower.includes('403') ||
+    lower.includes('404')
+  ) {
+    return 'AI image service is temporarily unavailable. Please try again shortly.';
+  }
+
+  return fallback;
+}
+
+export async function normalizeFlatLayToPng(
+  rawImageBase64: string,
+): Promise<string> {
+  const sharp = (await import('sharp')).default;
+  const buffer = await sharp(Buffer.from(rawImageBase64, 'base64'))
+    .rotate()
+    .flatten({ background: '#ffffff' })
+    .resize({
+      width: 1400,
+      height: 1400,
+      fit: 'inside',
+      withoutEnlargement: true,
+      background: { r: 255, g: 255, b: 255, alpha: 1 },
+    })
+    .png({ progressive: true })
+    .toBuffer();
+  return buffer.toString('base64');
+}
+
+export async function hasCleanWhiteFlatLayBackground(
+  rawImageBase64: string,
+): Promise<boolean> {
+  try {
+    const sharp = (await import('sharp')).default;
+    const { data, info } = await sharp(Buffer.from(rawImageBase64, 'base64'))
+      .rotate()
+      .flatten({ background: '#ffffff' })
+      .resize({ width: 80, height: 80, fit: 'inside' })
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    const width = info.width;
+    const height = info.height;
+    if (!width || !height) return false;
+
+    let borderPixels = 0;
+    let lightBorderPixels = 0;
+    let interiorPixels = 0;
+    let garmentLikePixels = 0;
+    const border = Math.max(3, Math.floor(Math.min(width, height) * 0.08));
+
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const offset = (y * width + x) * 3;
+        const r = data[offset] ?? 0;
+        const g = data[offset + 1] ?? 0;
+        const b = data[offset + 2] ?? 0;
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        const isLightNeutral =
+          r >= LIGHT_BACKGROUND_THRESHOLD &&
+          g >= LIGHT_BACKGROUND_THRESHOLD &&
+          b >= LIGHT_BACKGROUND_THRESHOLD &&
+          max - min <= MAX_CHANNEL_SPREAD;
+        const isBorder =
+          x < border || y < border || x >= width - border || y >= height - border;
+
+        if (isBorder) {
+          borderPixels += 1;
+          if (isLightNeutral) lightBorderPixels += 1;
+        } else {
+          interiorPixels += 1;
+          if (!isLightNeutral) garmentLikePixels += 1;
+        }
+      }
+    }
+
+    const lightBorderRatio = borderPixels ? lightBorderPixels / borderPixels : 0;
+    const garmentRatio = interiorPixels ? garmentLikePixels / interiorPixels : 0;
+    return lightBorderRatio >= 0.88 && garmentRatio >= 0.03;
+  } catch {
+    return false;
+  }
 }

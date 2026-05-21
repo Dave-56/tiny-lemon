@@ -51,6 +51,8 @@ function parseSpecFromText(text: string): GarmentSpec | null {
 }
 
 import { GoogleGenAI } from '@google/genai';
+import { getUserFacingImageServiceError } from './flatLayCleanup';
+import { GEMINI_TEXT_MODEL } from './geminiModels';
 
 /**
  * Extract a structured garment spec from a flat-lay image using one vision call.
@@ -66,7 +68,7 @@ export async function extractGarmentSpec(
   let response: Awaited<ReturnType<typeof ai.models.generateContent>>;
   try {
     response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: GEMINI_TEXT_MODEL,
       contents: {
         parts: [
           { inlineData: { data: flatLayBase64, mimeType: mime } },
@@ -79,11 +81,12 @@ export async function extractGarmentSpec(
       },
     });
   } catch (e) {
-    const msg = (e as Error).message ?? '';
-    if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota')) {
-      throw new Error('AI rate limit reached. Please wait a moment and try again.');
-    }
-    throw new Error('Failed to analyse garment. Please try again.');
+    throw new Error(
+      getUserFacingImageServiceError(
+        e,
+        'Failed to analyse garment. Please try again.',
+      ),
+    );
   }
 
   const text = (response.text ?? '').trim();

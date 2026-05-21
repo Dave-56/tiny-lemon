@@ -21,6 +21,7 @@ import sharp from 'sharp';
 import { extractGarmentSpec } from '../app/lib/garmentSpec';
 import { buildPromptFromSpec } from '../app/lib/garmentFidelityPrompt';
 import { normalizeReferenceImageServer } from '../app/lib/normalizeReferenceImage.server';
+import { GEMINI_IMAGE_MODEL } from '../app/lib/geminiModels';
 import {
   PDP_STYLE_PRESETS,
   ANGLE_PRESETS,
@@ -127,7 +128,7 @@ async function main(): Promise<void> {
   if (!stylingIds) for (const stylePreset of PDP_STYLE_PRESETS) {
     console.log(`Background: ${stylePreset.id}...`);
     const chat = ai.chats.create({
-      model: 'gemini-3.1-flash-image-preview',
+      model: GEMINI_IMAGE_MODEL,
       config: genConfig,
     });
     const prompt = buildPromptFromSpec(
@@ -167,7 +168,7 @@ async function main(): Promise<void> {
     if (!anglePreset) continue;
     console.log(`Pose: ${anglePreset.id}...`);
     const chat = ai.chats.create({
-      model: 'gemini-3.1-flash-image-preview',
+      model: GEMINI_IMAGE_MODEL,
       config: genConfig,
     });
     const hasLengthAnchor = pose !== 'front' && frontB64 != null;
@@ -235,7 +236,7 @@ async function main(): Promise<void> {
       : await extractGarmentSpec(dirFlatLayB64, dirMime, apiKey);
 
     const chat = ai.chats.create({
-      model: 'gemini-3.1-flash-image-preview',
+      model: GEMINI_IMAGE_MODEL,
       config: genConfig,
     });
     const prompt = buildPromptFromSpec(

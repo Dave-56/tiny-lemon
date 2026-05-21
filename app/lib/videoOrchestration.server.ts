@@ -15,6 +15,8 @@ type VideoRequestResultBody =
 const VIDEO_UNAVAILABLE_MESSAGE =
   "Could not start video generation right now. Please try again.";
 
+export type VideoGenerateMode = "generate" | "regenerate";
+
 function jsonError(error: string, status: number) {
   return Response.json({ error }, { status });
 }
@@ -34,11 +36,22 @@ async function ensureVideoAccess(shopId: string): Promise<Response | null> {
 
 // ── Atomic claim ─────────────────────────────────────────────────────────────
 
-async function claimOutfitForVideo(outfitId: string): Promise<boolean> {
+async function claimOutfitForVideo(args: {
+  outfitId: string;
+  allowCompleted: boolean;
+}): Promise<boolean> {
+  const claimableStatuses = args.allowCompleted
+    ? [
+        { videoStatus: null },
+        { videoStatus: "failed" },
+        { videoStatus: "completed" },
+      ]
+    : [{ videoStatus: null }, { videoStatus: "failed" }];
+
   const result = await prisma.outfit.updateMany({
     where: {
-      id: outfitId,
-      OR: [{ videoStatus: null }, { videoStatus: "failed" }],
+      id: args.outfitId,
+      OR: claimableStatuses,
     },
     data: {
       videoStatus: "pending",
@@ -110,10 +123,12 @@ export async function clearOutfitVideoStateInTransaction(
 export async function handleVideoGenerateRequest(args: {
   outfitId: string;
   shopId: string;
+  mode?: VideoGenerateMode;
 }): Promise<Response> {
   if (!args.outfitId) {
     return jsonError("Missing required field: outfitId", 400);
   }
+  const mode = args.mode ?? "generate";
 
   const gate = await ensureVideoAccess(args.shopId);
   if (gate) return gate;
@@ -153,7 +168,7 @@ export async function handleVideoGenerateRequest(args: {
     return Response.json(body);
   }
 
-  if (outfit.videoStatus === "completed" && outfit.videoUrl) {
+  if (outfit.videoStatus === "completed" && outfit.videoUrl && mode !== "regenerate") {
     const body: VideoRequestResultBody = {
       ok: true,
       outfitId: outfit.id,
@@ -164,7 +179,13 @@ export async function handleVideoGenerateRequest(args: {
   }
 
   // ── Claim and enqueue ─────────────────────────────────────────────────────
-  const claimed = await claimOutfitForVideo(outfit.id);
+  const claimed = await claimOutfitForVideo({
+    outfitId: outfit.id,
+    allowCompleted:
+      mode === "regenerate" &&
+      outfit.videoStatus === "completed" &&
+      Boolean(outfit.videoUrl),
+  });
   if (!claimed) {
     // Race: another request claimed it between our read and claim
     const refreshed = await prisma.outfit.findUnique({
@@ -205,6 +226,7 @@ export async function handleVideoGenerateRequest(args: {
       outfitId: outfit.id,
       shopId: args.shopId,
       jobId: handle.id,
+      mode,
     });
 
     const body: VideoRequestResultBody = {

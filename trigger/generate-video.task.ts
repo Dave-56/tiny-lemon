@@ -4,6 +4,7 @@ import { uploadBufferToBlob } from '../app/blob.server';
 import { buildVideoMotionPrompt } from '../app/lib/videoMotionPrompt';
 import {
   createVideoProvider,
+  getVideoDurationSeconds,
   type OutfitSourceImage,
 } from '../app/lib/videoProvider.server';
 import { parsePoseImageAssetManifest } from '../app/lib/imageAssetManifest';
@@ -137,7 +138,7 @@ export const generateVideoTask = task({
       sourceImages,
       motionPrompt: prompt,
       negativePrompt,
-      durationSeconds: 5,
+      durationSeconds: getVideoDurationSeconds(),
     });
 
     // ── 7. Staleness guard ────────────────────────────────────────────────────

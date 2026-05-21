@@ -45,13 +45,13 @@ vi.mock("./triggerJobs.server", () => ({
 vi.mock("./billing.server", () => ({
   DEMO_SHOP_ID: "__demo__",
   PLAN_LIMITS: {
-    free: 3,
+    free: 50,
     Starter: 30,
     Growth: 100,
     Scale: 300,
   },
   PLAN_ANGLES: {
-    free: ["front"],
+    free: ["front", "three-quarter", "back"],
     Starter: ["front", "three-quarter", "back"],
     Growth: ["front", "three-quarter", "back"],
     Scale: ["front", "three-quarter", "back"],
@@ -215,12 +215,12 @@ describe("handleTriggerGeneration", () => {
   it("returns plan usage details when credits are exhausted", async () => {
     mocks.modelFindFirst.mockResolvedValue(null);
     mocks.reserveGenerations.mockRejectedValueOnce(new Error("insufficient_credits"));
-    mocks.getMonthlyUsage.mockResolvedValueOnce(3);
+    mocks.getMonthlyUsage.mockResolvedValueOnce(50);
     mocks.getEffectiveEntitlements.mockResolvedValueOnce({
       publicPlan: "free",
       isBeta: false,
       betaStatus: null,
-      effectiveLimit: 3,
+      effectiveLimit: 50,
       effectiveAngles: ["front"],
       showUpgradePrompt: true,
     });
@@ -233,8 +233,8 @@ describe("handleTriggerGeneration", () => {
     expect(res.status).toBe(402);
     await expect(res.json()).resolves.toEqual({
       error: "limit_reached",
-      used: 3,
-      limit: 3,
+      used: 50,
+      limit: 50,
       plan: "free",
       isBeta: false,
       message: "You've used all your generations this month. Upgrade to continue.",
@@ -354,6 +354,58 @@ describe("handleTriggerGeneration", () => {
     const keyB = mocks.claimGenerateRequestIdempotency.mock.calls.at(-1)?.[0].requestKey as string;
 
     expect(keyA).not.toEqual(keyB);
+  });
+
+  it("uses all angles when onboarding saved an old front-only value", async () => {
+    mocks.modelFindFirst.mockResolvedValue(null);
+    mocks.brandStyleFindUnique.mockResolvedValueOnce({
+      angleIds: ["front"],
+      pricePoint: null,
+      brandEnergy: null,
+      primaryCategory: null,
+    });
+    mocks.reserveGenerations.mockResolvedValueOnce({
+      publicPlan: "free",
+      isBeta: true,
+      betaStatus: "active",
+      effectiveLimit: 50,
+      effectiveAngles: ["front", "three-quarter", "back"],
+      showUpgradePrompt: false,
+    });
+
+    const res = await handleTriggerGeneration("shop-a.myshopify.com", {
+      modelId: "model-01",
+      frontB64: "ZmFrZQ==",
+    });
+
+    expect(res.status).toBe(200);
+    expect(mocks.enqueueGenerateOutfit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        allowedPoses: ["front", "three-quarter", "back"],
+      }),
+    );
+  });
+
+  it("uses all angles for non-beta shops too", async () => {
+    mocks.modelFindFirst.mockResolvedValue(null);
+    mocks.brandStyleFindUnique.mockResolvedValueOnce({
+      angleIds: ["front"],
+      pricePoint: null,
+      brandEnergy: null,
+      primaryCategory: null,
+    });
+
+    const res = await handleTriggerGeneration("shop-a.myshopify.com", {
+      modelId: "model-01",
+      frontB64: "ZmFrZQ==",
+    });
+
+    expect(res.status).toBe(200);
+    expect(mocks.enqueueGenerateOutfit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        allowedPoses: ["front", "three-quarter", "back"],
+      }),
+    );
   });
 });
 

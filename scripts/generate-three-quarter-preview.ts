@@ -20,6 +20,7 @@ import { extractGarmentSpec } from '../app/lib/garmentSpec';
 import { buildPromptFromSpec } from '../app/lib/garmentFidelityPrompt';
 import { normalizeReferenceImageServer } from '../app/lib/normalizeReferenceImage.server';
 import { PDP_STYLE_PRESETS, BRAND_STYLE_PRESETS } from '../app/lib/pdpPresets';
+import { GEMINI_IMAGE_MODEL } from '../app/lib/geminiModels';
 import type { GarmentSpec } from '../app/lib/garmentSpec';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -106,7 +107,7 @@ async function main(): Promise<void> {
   // Front (length anchor for three-quarter)
   console.log('Generating front pose (length anchor)...');
   const frontChat = ai.chats.create({
-    model: 'gemini-3.1-flash-image-preview',
+    model: GEMINI_IMAGE_MODEL,
     config: genConfig,
   });
   const frontPrompt = buildPromptFromSpec(
@@ -132,7 +133,7 @@ async function main(): Promise<void> {
   // Three-quarter only
   console.log('Generating three-quarter pose...');
   const tqChat = ai.chats.create({
-    model: 'gemini-3.1-flash-image-preview',
+    model: GEMINI_IMAGE_MODEL,
     config: genConfig,
   });
   const tqPrompt = buildPromptFromSpec(

@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   outfitFindFirst: vi.fn(),
   outfitUpdate: vi.fn(),
-  sessionFindFirst: vi.fn(),
-  fetch: vi.fn(),
+  adminGraphql: vi.fn(),
+  unauthenticatedAdmin: vi.fn(),
 }));
 
 vi.mock('@trigger.dev/sdk', () => ({
@@ -14,7 +14,12 @@ vi.mock('@trigger.dev/sdk', () => ({
 vi.mock('../db.server', () => ({
   default: {
     outfit: { findFirst: mocks.outfitFindFirst, update: mocks.outfitUpdate },
-    session: { findFirst: mocks.sessionFindFirst },
+  },
+}));
+
+vi.mock('../shopify.server', () => ({
+  unauthenticated: {
+    admin: mocks.unauthenticatedAdmin,
   },
 }));
 
@@ -36,7 +41,6 @@ const syncOutfitToShopifyTask = _syncOutfitToShopifyTask as unknown as {
 
 const SHOP = 'shop-a.myshopify.com';
 const OUTFIT_ID = 'outfit-1';
-const TOKEN = 'shpat_test';
 const EXISTING_PRODUCT_GID = 'gid://shopify/Product/999';
 
 const baseOutfit = {
@@ -65,11 +69,10 @@ function graphqlResponse(data: Record<string, unknown>) {
   };
 }
 
-function extractMutationNames(fetchMock: typeof mocks.fetch): string[] {
-  return fetchMock.mock.calls.map((call) => {
-    const body = call[1]?.body as string;
-    const parsed = JSON.parse(body);
-    const match = parsed.query.match(/(?:mutation|query)\s+(\w+)/);
+function extractMutationNames(graphqlMock: typeof mocks.adminGraphql): string[] {
+  return graphqlMock.mock.calls.map((call) => {
+    const query = call[0] as string;
+    const match = query.match(/(?:mutation|query)\s+(\w+)/);
     return match ? match[1] : 'unknown';
   });
 }
@@ -77,16 +80,16 @@ function extractMutationNames(fetchMock: typeof mocks.fetch): string[] {
 describe('syncOutfitToShopifyTask.run', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubGlobal('fetch', mocks.fetch);
-
-    mocks.sessionFindFirst.mockResolvedValue({ accessToken: TOKEN });
+    mocks.unauthenticatedAdmin.mockResolvedValue({
+      admin: { graphql: mocks.adminGraphql },
+    });
     mocks.outfitUpdate.mockResolvedValue({});
   });
 
   it('creates a product and wipes existing media when payload has no shopifyProductId', async () => {
     mocks.outfitFindFirst.mockResolvedValue({ ...baseOutfit });
 
-    mocks.fetch
+    mocks.adminGraphql
       .mockResolvedValueOnce(
         graphqlResponse({ productCreate: { product: { id: EXISTING_PRODUCT_GID }, userErrors: [] } }),
       )
@@ -106,7 +109,9 @@ describe('syncOutfitToShopifyTask.run', () => {
 
     expect(result).toMatchObject({ outfitId: OUTFIT_ID, status: 'synced' });
 
-    const names = extractMutationNames(mocks.fetch);
+    expect(mocks.unauthenticatedAdmin).toHaveBeenCalledWith(SHOP);
+
+    const names = extractMutationNames(mocks.adminGraphql);
     expect(names).toEqual(['productCreate', 'getProductMedia', 'productDeleteMedia', 'productCreateMedia']);
 
     const finalUpdate = mocks.outfitUpdate.mock.calls.at(-1)?.[0];
@@ -121,7 +126,7 @@ describe('syncOutfitToShopifyTask.run', () => {
       shopifyProductCreatedByApp: false,
     });
 
-    mocks.fetch.mockResolvedValueOnce(
+    mocks.adminGraphql.mockResolvedValueOnce(
       graphqlResponse({ productCreateMedia: { media: [], mediaUserErrors: [], product: { id: EXISTING_PRODUCT_GID } } }),
     );
 
@@ -133,7 +138,9 @@ describe('syncOutfitToShopifyTask.run', () => {
 
     expect(result).toMatchObject({ outfitId: OUTFIT_ID, productGid: EXISTING_PRODUCT_GID, status: 'synced' });
 
-    const names = extractMutationNames(mocks.fetch);
+    expect(mocks.unauthenticatedAdmin).toHaveBeenCalledWith(SHOP);
+
+    const names = extractMutationNames(mocks.adminGraphql);
     expect(names).toEqual(['productCreateMedia']);
     expect(names).not.toContain('productDeleteMedia');
     expect(names).not.toContain('productCreate');

@@ -7,16 +7,15 @@ import { AuthenticatedFetchProvider } from "../contexts/AuthenticatedFetchContex
 import { PendingItemsProvider } from "../contexts/PendingItemsContext";
 import { PostHogProvider } from "../components/PostHogProvider";
 import { authenticate } from "../shopify.server";
-import prisma from "../db.server";
+import prisma, { ensureShop } from "../db.server";
 import { getMonthlyUsage, getEffectiveEntitlements } from "../lib/billing.server";
-import { ensureBetaAccessFromAllowlist } from "../lib/betaAccess.server";
 import { getAppFlowRedirect } from "../lib/appFlow.server";
 import { getSupportEmail } from "../lib/support.server";
 import { shopifyRedirect } from "../shopify-params";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
-  await ensureBetaAccessFromAllowlist(session.shop);
+  await ensureShop(session.shop);
 
   const [shop, brandStyle, used, entitlements] = await Promise.all([
     prisma.shop.findUnique({
@@ -39,9 +38,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const redirectPath = getAppFlowRedirect({
     pathname: new URL(request.url).pathname,
-    betaAccess: shop?.betaAccess ?? false,
-    betaStatus: shop?.betaStatus ?? null,
-    betaWelcomeCompleted: shop?.betaWelcomeCompleted ?? false,
     betaIntakeCompleted: shop?.betaIntakeCompleted ?? false,
     onboardingCompleted: brandStyle?.onboardingCompleted ?? false,
   });

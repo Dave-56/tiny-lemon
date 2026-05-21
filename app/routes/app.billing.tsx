@@ -71,9 +71,9 @@ const PLANS = [
     id: 'free',
     label: 'Free',
     price: '$0',
-    generations: 3,
-    angles: 'Front only',
-    features: ['3 generations / month', 'Front angle only', '1 brand style profile'],
+    generations: 50,
+    angles: 'Front · 3/4 · Back',
+    features: ['50 generations / month', 'Full 3-angle structural set', '1 brand style profile'],
   },
   {
     id: BILLING_PLANS.Starter,
