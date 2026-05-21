@@ -11,6 +11,8 @@ const LANDING_2 = {
   before: "/landing-before-1.png",
   after: "/landing-after-1.png",
 };
+const SHOPIFY_APP_STORE_URL =
+  "https://apps.shopify.com/tiny-lemon?search_id=4262ae90-a42e-45d8-ac95-f0488df481c5&surface_detail=tiny+lemon&surface_inter_position=1&surface_intra_position=5&surface_type=search";
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const title = "Tiny Lemon: Studio shots from flat-lays in 60 seconds";
@@ -33,12 +35,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     throw redirect(`/app?${url.searchParams.toString()}`);
   }
 
-  const installUrl = process.env.SHOPIFY_APP_INSTALL_URL ?? "";
+  const installUrl = process.env.SHOPIFY_APP_INSTALL_URL ?? SHOPIFY_APP_STORE_URL;
   const origin = new URL(request.url).origin;
-  // Only surface install CTAs when we have a Shopify-owned install URL to
-  // point at (App Store listing). Pre-launch, direct visitors to "Try free"
-  // instead — Shopify review forbids manual shop-domain entry as an install
-  // entry point.
+  // Install CTAs must point at a Shopify-owned install surface. Keep the env
+  // override for deployments, but use the live App Store listing by default.
   return { hasInstallUrl: Boolean(installUrl), installUrl, origin };
 };
 
@@ -86,7 +86,7 @@ export default function LandingPage() {
                 rel="noopener noreferrer"
                 className={styles.btnPrimary}
               >
-                Get started
+                Add to Shopify
               </a>
             )}
           </div>
