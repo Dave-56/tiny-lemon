@@ -4,7 +4,7 @@ import { Form, useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import posthog from "posthog-js";
 import { authenticate } from "../shopify.server";
-import prisma from "../db.server";
+import prisma, { ensureShop } from "../db.server";
 import { shopifyRedirect } from "../shopify-params";
 import {
   BETA_BIGGEST_PAINS,
@@ -12,18 +12,15 @@ import {
   BETA_INTENDED_USE_CASES,
   BETA_PHOTO_WORKFLOWS,
   BETA_SKU_VOLUMES,
-  BETA_STATUS,
 } from "../lib/beta";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
+  await ensureShop(session.shop);
 
   const shop = await prisma.shop.findUnique({
     where: { id: session.shop },
     select: {
-      betaAccess: true,
-      betaStatus: true,
-      betaWelcomeCompleted: true,
       betaIntakeCompleted: true,
       storeUrl: true,
       catalogType: true,
@@ -34,17 +31,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     },
   });
 
-  const isBeta =
-    shop?.betaAccess === true &&
-    shop.betaStatus !== BETA_STATUS.paused &&
-    shop.betaStatus !== BETA_STATUS.ended;
-
-  if (!isBeta) {
-    return shopifyRedirect(request, "/app");
-  }
-
-  if (!shop?.betaWelcomeCompleted) {
-    return shopifyRedirect(request, "/app/beta-welcome");
+  if (!shop) {
+    throw new Response("Shop not found", { status: 500 });
   }
 
   if (shop?.betaIntakeCompleted) {
@@ -57,6 +45,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const fd = await request.formData();
+  await ensureShop(session.shop);
 
   const payload = {
     storeUrl: ((fd.get("storeUrl") as string) || "").trim() || null,
@@ -113,28 +102,27 @@ export default function BetaIntake() {
   const { shop, profile } = useLoaderData<typeof loader>();
 
   useEffect(() => {
-    posthog.capture("beta_intake_viewed", { shop, beta_access: true });
+    posthog.capture("shop_intake_viewed", { shop });
   }, [shop]);
 
   return (
     <div className="min-h-screen bg-krea-bg p-6 pt-10">
       <div className="mx-auto max-w-2xl rounded-2xl border border-krea-border bg-white p-6 shadow-sm">
         <div className="rounded-lg border border-krea-accent/25 bg-krea-accent/5 px-3 py-2 text-xs text-krea-text">
-          Step 2 of 3: Help us understand your catalog and workflow.
+          Step 1 of 2: Help us understand your catalog and workflow.
         </div>
 
-        <h1 className="mt-4 text-2xl font-semibold text-krea-text">A quick beta intake</h1>
+        <h1 className="mt-4 text-2xl font-semibold text-krea-text">Tell us about your store</h1>
         <p className="mt-2 text-sm text-krea-muted">
-          This should take about two minutes and helps us make the beta more useful for you.
+          This should take about two minutes and helps TinyLemon tune the setup to your catalog.
         </p>
 
         <Form
           method="post"
           className="mt-6 grid gap-4"
           onSubmit={() =>
-            posthog.capture("beta_intake_completed", {
+            posthog.capture("shop_intake_completed", {
               shop,
-              beta_access: true,
             })
           }
         >
