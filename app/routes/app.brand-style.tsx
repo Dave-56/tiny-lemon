@@ -5,8 +5,8 @@ import { boundary } from '@shopify/shopify-app-react-router/server';
 import { Check } from 'lucide-react';
 import { authenticate } from '../shopify.server';
 import prisma, { ensureShop } from '../db.server';
-import { ANGLE_PRESETS, BRAND_STYLE_PRESETS } from '../lib/pdpPresets';
-import { getPlanForShop, PLAN_ANGLES } from '../lib/billing.server';
+import { BRAND_STYLE_PRESETS } from '../lib/pdpPresets';
+import { getEffectiveEntitlements } from '../lib/billing.server';
 import { getRecommendedDirections } from '../lib/brandProfileMapping';
 import posthog from 'posthog-js';
 
@@ -79,15 +79,10 @@ function PresetCard({
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
-  const [brandStyle, plan] = await Promise.all([
-    prisma.brandStyle.findUnique({ where: { shopId: session.shop } }),
-    getPlanForShop(session.shop),
-  ]);
+  const brandStyle = await prisma.brandStyle.findUnique({ where: { shopId: session.shop } });
   return {
     shop: session.shop,
-    angleIds: brandStyle?.angleIds ?? ANGLE_PRESETS.map((p) => p.id),
     brandStyleId: brandStyle?.brandStyleId ?? BRAND_STYLE_PRESETS[0].id,
-    allowedAngleIds: PLAN_ANGLES[plan] ?? PLAN_ANGLES.free,
     brandEnergy: brandStyle?.brandEnergy ?? null,
     primaryCategory: brandStyle?.primaryCategory ?? null,
   };
@@ -100,10 +95,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const shopId = session.shop;
   const fd = await request.formData();
 
-  const angleIds = fd.getAll('angleIds') as string[];
   const brandStyleId = fd.get('brandStyleId') as string;
 
   await ensureShop(shopId);
+  const entitlements = await getEffectiveEntitlements(shopId);
+  const defaultAngleIds = [...entitlements.effectiveAngles];
 
   // Preserve brand profile fields set during onboarding (brandEnergy,
   // primaryCategory, pricePoint). The update path only touches the fields this
@@ -116,10 +112,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   await prisma.brandStyle.upsert({
     where: { shopId },
-    update: { angleIds, brandStyleId },
+    update: { angleIds: defaultAngleIds, brandStyleId },
     create: {
       shopId,
-      angleIds,
+      angleIds: defaultAngleIds,
       brandStyleId,
       brandEnergy: existing?.brandEnergy,
       primaryCategory: existing?.primaryCategory,
@@ -133,7 +129,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function BrandStyle() {
-  const { shop, angleIds: savedAngleIds, brandStyleId: savedStylingId, allowedAngleIds, brandEnergy, primaryCategory } =
+  const { shop, brandStyleId: savedStylingId, brandEnergy, primaryCategory } =
     useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const navigate = useNavigate();
@@ -145,7 +141,6 @@ export default function BrandStyle() {
   // Auto-expand if the saved direction is not in the recommended list
   const savedIsRecommended = recommendedIds.includes(savedStylingId as never);
 
-  const [selectedAngleIds, setSelectedAngleIds] = useState<string[]>(savedAngleIds);
   const [brandStyleId, setStylingDirectionId] = useState<string>(savedStylingId);
   const [showAllDirections, setShowAllDirections] = useState(!hasBrandProfile || !savedIsRecommended);
   const [saveFeedback, setSaveFeedback] = useState(false);
@@ -164,45 +159,18 @@ export default function BrandStyle() {
     }
   }, [fetcher.state, fetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const toggleAngleId = (id: string) => {
-    setSelectedAngleIds((prev) => {
-      const next = prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id];
-      return next.length > 0 ? next : prev;
-    });
-  };
-
   function handleSave() {
     const fd = new FormData();
-    selectedAngleIds.forEach((id) => fd.append('angleIds', id));
     fd.set('brandStyleId', brandStyleId);
     fetcher.submit(fd, { method: 'post' });
   }
 
-  const allowedAnglePresets = ANGLE_PRESETS.filter(p => allowedAngleIds.includes(p.id));
   const selectedDirection = BRAND_STYLE_PRESETS.find((p) => p.id === brandStyleId);
   const isSaving = fetcher.state !== 'idle';
 
   return (
     <div className="min-h-screen bg-krea-bg p-6">
       <div className="max-w-lg space-y-8">
-
-        {/* Poses — only shown to paid plans with multiple options to configure */}
-        {allowedAnglePresets.length > 1 && (
-          <section className="space-y-2">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-krea-muted">Poses</p>
-            <p className="text-xs text-krea-muted">Views generated per outfit.</p>
-            <div className="grid grid-cols-3 gap-3">
-              {allowedAnglePresets.map((p) => (
-                <PresetCard
-                  key={p.id}
-                  preset={p}
-                  selected={selectedAngleIds.includes(p.id)}
-                  onSelect={() => toggleAngleId(p.id)}
-                />
-              ))}
-            </div>
-          </section>
-        )}
 
         {/* Styling Direction */}
         <section className="space-y-2">

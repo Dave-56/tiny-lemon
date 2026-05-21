@@ -6,6 +6,7 @@ import posthog from 'posthog-js';
 import { authenticate } from '../shopify.server';
 import prisma, { ensureShop } from '../db.server';
 import { BRAND_STYLE_PRESETS } from '../lib/pdpPresets';
+import { getEffectiveEntitlements } from '../lib/billing.server';
 import {
   BRAND_ENERGIES,
   PRIMARY_CATEGORIES,
@@ -52,12 +53,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const brandStyleId = fd.get('brandStyleId') as string;
 
   await ensureShop(shopId);
+  const entitlements = await getEffectiveEntitlements(shopId);
   await prisma.brandStyle.upsert({
     where: { shopId },
     update: { brandEnergy, primaryCategory, pricePoint, brandStyleId, onboardingCompleted: true },
     create: {
       shopId,
-      angleIds: ['front'],
+      angleIds: [...entitlements.effectiveAngles],
       brandStyleId,
       brandEnergy,
       primaryCategory,

@@ -52,6 +52,10 @@ type ReservationContext = {
   reservationDescription: string;
 };
 
+function resolveAllowedPoses(entitlements: { effectiveAngles: readonly string[] }) {
+  return [...entitlements.effectiveAngles];
+}
+
 let presetModelsCache:
   | Array<{ id: string; imageUrl: string; height?: string; gender?: string }>
   | null = null;
@@ -282,15 +286,9 @@ export async function handleTriggerGeneration(
 
     const brandStyleRecord = await prisma.brandStyle.findUnique({
       where: { shopId },
-      select: { angleIds: true, pricePoint: true, brandEnergy: true, primaryCategory: true },
+      select: { pricePoint: true, brandEnergy: true, primaryCategory: true },
     });
-    const effectiveAngleIds =
-      brandStyleRecord?.angleIds?.length ?
-        brandStyleRecord.angleIds
-      : entitlements.effectiveAngles;
-    let allowedPoses = [...entitlements.effectiveAngles].filter((p) =>
-      effectiveAngleIds.includes(p)
-    );
+    let allowedPoses = resolveAllowedPoses(entitlements);
     if (shopId === DEMO_SHOP_ID) {
       allowedPoses = ["front"];
     }
@@ -536,16 +534,10 @@ export async function handleRegenerateOutfit(
 
     const brandStyle = await prisma.brandStyle.findUnique({
       where: { shopId },
-      select: { angleIds: true, pricePoint: true, brandEnergy: true, primaryCategory: true },
+      select: { pricePoint: true, brandEnergy: true, primaryCategory: true },
     });
     const styleId = "white-studio";
-    const effectiveAngleIds =
-      brandStyle?.angleIds?.length ?
-        brandStyle.angleIds
-      : entitlements.effectiveAngles;
-    const allowedPoses = [...entitlements.effectiveAngles].filter((p) =>
-      effectiveAngleIds.includes(p)
-    );
+    const allowedPoses = resolveAllowedPoses(entitlements);
 
     await prisma.outfit.update({
       where: { id: outfitId, shopId },
