@@ -9,14 +9,14 @@ import { PostHogProvider } from "../components/PostHogProvider";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { getMonthlyUsage, getEffectiveEntitlements } from "../lib/billing.server";
-import { ensureBetaAccessFromAllowlist } from "../lib/betaAccess.server";
+import { ensureBetaAccessForShop } from "../lib/betaAccess.server";
 import { getAppFlowRedirect } from "../lib/appFlow.server";
 import { getSupportEmail } from "../lib/support.server";
 import { shopifyRedirect } from "../shopify-params";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
-  await ensureBetaAccessFromAllowlist(session.shop);
+  await ensureBetaAccessForShop(session.shop);
 
   const [shop, brandStyle, used, entitlements] = await Promise.all([
     prisma.shop.findUnique({
