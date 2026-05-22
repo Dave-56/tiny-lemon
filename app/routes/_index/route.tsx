@@ -3,6 +3,7 @@ import { redirect, Link, useLoaderData } from "react-router";
 
 import { login } from "../../shopify.server";
 import { BeforeAfterSlider } from "../../components/BeforeAfterSlider";
+import { SHOPIFY_APP_STORE_URL } from "../../lib/shopifyAppStoreUrl";
 
 import styles from "./styles.module.css";
 
@@ -11,9 +12,6 @@ const LANDING_2 = {
   before: "/landing-before-1.png",
   after: "/landing-after-1.png",
 };
-const SHOPIFY_APP_STORE_URL =
-  "https://apps.shopify.com/tiny-lemon?search_id=4262ae90-a42e-45d8-ac95-f0488df481c5&surface_detail=tiny+lemon&surface_inter_position=1&surface_intra_position=5&surface_type=search";
-
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const title = "Tiny Lemon: Studio shots from flat-lays in 60 seconds";
   const description =
@@ -77,7 +75,7 @@ export default function LandingPage() {
           </nav>
           <div className={styles.headerActions}>
             <Link to="/try" className={styles.btnPrimary}>
-              Try free
+              View demo
             </Link>
             {hasInstallUrl && (
               <a
@@ -106,7 +104,7 @@ export default function LandingPage() {
           </p>
           <div className={styles.heroCtas}>
             <Link to="/try" className={styles.heroCta}>
-              Try free
+              View demo
             </Link>
             {hasInstallUrl && (
               <a
@@ -233,7 +231,7 @@ export default function LandingPage() {
         </section>
 
         <section id="login" className={styles.loginSection}>
-          <h2 className={styles.loginTitle}>Get started</h2>
+          <h2 className={styles.loginTitle}>Add Tiny Lemon to Shopify</h2>
           {hasInstallUrl ? (
             <>
               <p className={styles.loginSubtext}>
@@ -258,7 +256,7 @@ export default function LandingPage() {
                 it now? Use the free demo — no install needed.
               </p>
               <Link to="/try" className={styles.loginPrimaryCta}>
-                Try the free demo
+                View demo
               </Link>
               <p className={styles.loginDivider}>
                 Already installed? Open Tiny Lemon from your Shopify admin under Apps.
@@ -284,7 +282,7 @@ export default function LandingPage() {
             <div className={styles.footerCol}>
               <h3 className={styles.footerHeading}>Product</h3>
               <Link to="/try" className={styles.footerLink}>
-                Try free
+                View demo
               </Link>
               <a href="#features" className={styles.footerLink}>
                 Features

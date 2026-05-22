@@ -10,12 +10,13 @@ import { handleTriggerGeneration } from "../lib/triggerGeneration.server";
 import { DEMO_SHOP_ID } from "../lib/billing.server";
 import { buildRateLimitHeaders, consumeRateLimit } from "../lib/rateLimit.server";
 import { getNormalizedRateLimitSubject } from "../lib/rateLimitSubject.server";
+import { SHOPIFY_APP_STORE_URL } from "../lib/shopifyAppStoreUrl";
 
 import landingStyles from "./_index/styles.module.css";
 import styles from "../styles/try.module.css";
 
 export const meta: MetaFunction = () => {
-  const title = "Try free: flat-lay to studio shot — Tiny Lemon";
+  const title = "Demo: flat-lay to studio shot — Tiny Lemon";
   const description =
     "Generate one AI studio shot from your flat-lay in seconds. No signup. For fashion brands on Shopify.";
   return [
@@ -69,7 +70,7 @@ export const loader = async (_args: LoaderFunctionArgs) => {
   } catch {
     // ignore
   }
-  const installUrl = process.env.SHOPIFY_APP_INSTALL_URL ?? "";
+  const installUrl = process.env.SHOPIFY_APP_INSTALL_URL ?? SHOPIFY_APP_STORE_URL;
   return { presets, showForm: Boolean(login), installUrl };
 };
 
@@ -216,9 +217,14 @@ export default function TryPage() {
           </nav>
           <div className={landingStyles.headerActions}>
             {showForm && (
-              <Link to="/#login" className={landingStyles.btnPrimary}>
-                Get started
-              </Link>
+              <a
+                href={installUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={landingStyles.btnPrimary}
+              >
+                Add to Shopify
+              </a>
             )}
           </div>
         </header>
@@ -226,7 +232,7 @@ export default function TryPage() {
 
       <main>
         <section className={styles.section}>
-          <h1 className={styles.pageTitle}>Try free</h1>
+          <h1 className={styles.pageTitle}>View demo</h1>
           <p className={styles.subtitle}>
             Upload a flat-lay and pick a model. You get one front-angle studio
             shot. No signup. 1 per day per device.
@@ -372,7 +378,7 @@ export default function TryPage() {
             <div className={landingStyles.footerCol}>
               <h3 className={landingStyles.footerHeading}>Product</h3>
               <Link to="/try" className={landingStyles.footerLink}>
-                Try free
+                View demo
               </Link>
               <Link to="/#features" className={landingStyles.footerLink}>
                 Features

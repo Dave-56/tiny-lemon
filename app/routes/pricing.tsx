@@ -2,6 +2,7 @@ import type { LoaderFunctionArgs, MetaFunction } from "react-router";
 import { Link, useLoaderData } from "react-router";
 
 import { login } from "../shopify.server";
+import { SHOPIFY_APP_STORE_URL } from "../lib/shopifyAppStoreUrl";
 
 import landingStyles from "./_index/styles.module.css";
 import styles from "../styles/pricing.module.css";
@@ -57,9 +58,14 @@ export default function PricingPage() {
           </nav>
           <div className={landingStyles.headerActions}>
             {showForm && (
-              <Link to="/#login" className={landingStyles.btnPrimary}>
-                Get started
-              </Link>
+              <a
+                href={SHOPIFY_APP_STORE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={landingStyles.btnPrimary}
+              >
+                Add to Shopify
+              </a>
             )}
           </div>
         </header>
@@ -86,9 +92,9 @@ export default function PricingPage() {
               <p className={styles.tierPriceAmount}>
                 $0<span className={styles.unit}>/mo</span>
               </p>
-              <Link to="/#login" className={styles.tierCta}>
-                Get Free →
-              </Link>
+              <a href={SHOPIFY_APP_STORE_URL} target="_blank" rel="noopener noreferrer" className={styles.tierCta}>
+                Add to Shopify →
+              </a>
               <ul className={styles.tierList}>
                 <li>50 outfit generations per month</li>
                 <li>1 model save</li>
@@ -116,9 +122,9 @@ export default function PricingPage() {
               <p className={styles.tierPriceAmount}>
                 ~$39<span className={styles.unit}>/mo</span>
               </p>
-              <Link to="/#login" className={styles.tierCta}>
-                Get Starter →
-              </Link>
+              <a href={SHOPIFY_APP_STORE_URL} target="_blank" rel="noopener noreferrer" className={styles.tierCta}>
+                Add to Shopify →
+              </a>
               <ul className={styles.tierList}>
                 <li>30 outfit generations/month</li>
                 <li>3 model saves</li>
@@ -147,9 +153,9 @@ export default function PricingPage() {
               <p className={styles.tierPriceAmount}>
                 ~$99<span className={styles.unit}>/mo</span>
               </p>
-              <Link to="/#login" className={styles.tierCta}>
-                Get Growth →
-              </Link>
+              <a href={SHOPIFY_APP_STORE_URL} target="_blank" rel="noopener noreferrer" className={styles.tierCta}>
+                Add to Shopify →
+              </a>
               <ul className={styles.tierList}>
                 <li>100 outfit generations/month</li>
                 <li>10 model saves</li>
@@ -176,9 +182,9 @@ export default function PricingPage() {
               <p className={styles.tierPriceAmount}>
                 ~$249<span className={styles.unit}>/mo</span>
               </p>
-              <Link to="/#login" className={styles.tierCta}>
-                Get Scale →
-              </Link>
+              <a href={SHOPIFY_APP_STORE_URL} target="_blank" rel="noopener noreferrer" className={styles.tierCta}>
+                Add to Shopify →
+              </a>
               <ul className={styles.tierList}>
                 <li>300 outfit generations/month</li>
                 <li>Unlimited model saves</li>
@@ -335,7 +341,7 @@ export default function PricingPage() {
             <div className={landingStyles.footerCol}>
               <h3 className={landingStyles.footerHeading}>Product</h3>
               <Link to="/try" className={landingStyles.footerLink}>
-                Try free
+                View demo
               </Link>
               <Link to="/#features" className={landingStyles.footerLink}>
                 Features

@@ -2,6 +2,7 @@ import type { LoaderFunctionArgs, MetaFunction } from "react-router";
 import { Link, useLoaderData } from "react-router";
 
 import { login } from "../shopify.server";
+import { SHOPIFY_APP_STORE_URL } from "../lib/shopifyAppStoreUrl";
 
 import landingStyles from "./_index/styles.module.css";
 import styles from "../styles/features.module.css";
@@ -57,9 +58,14 @@ export default function FeaturesPage() {
           </nav>
           <div className={landingStyles.headerActions}>
             {showForm && (
-              <Link to="/#login" className={landingStyles.btnPrimary}>
-                Get started
-              </Link>
+              <a
+                href={SHOPIFY_APP_STORE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={landingStyles.btnPrimary}
+              >
+                Add to Shopify
+              </a>
             )}
           </div>
         </header>
@@ -218,7 +224,7 @@ export default function FeaturesPage() {
             <div className={landingStyles.footerCol}>
               <h3 className={landingStyles.footerHeading}>Product</h3>
               <Link to="/try" className={landingStyles.footerLink}>
-                Try free
+                View demo
               </Link>
               <Link to="/#features" className={landingStyles.footerLink}>
                 Features
