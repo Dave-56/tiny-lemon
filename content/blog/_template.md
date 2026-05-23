@@ -1,5 +1,6 @@
 ---
 title: Clear search-friendly title with the main query
+subtitle: Optional supporting line that expands the title
 slug: lowercase-hyphenated-url-slug
 date: YYYY-MM-DD
 updated: YYYY-MM-DD

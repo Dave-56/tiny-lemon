@@ -25,6 +25,7 @@ Every post should include:
 ```md
 ---
 title: Clear search-friendly title
+subtitle: Optional supporting line that expands the title
 slug: lowercase-hyphenated-url-slug
 date: YYYY-MM-DD
 updated: YYYY-MM-DD

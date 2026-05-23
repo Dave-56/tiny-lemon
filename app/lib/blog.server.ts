@@ -7,6 +7,7 @@ const BLOG_DIR = join(process.cwd(), "content", "blog");
 export type BlogPost = {
   slug: string;
   title: string;
+  subtitle: string;
   date: string;
   updated: string;
   category: string;
@@ -87,6 +88,7 @@ export function getBlogPost(slug: string): BlogPost | null {
     return {
       slug: fileSlug,
       title: frontmatter.title || "Post",
+      subtitle: frontmatter.subtitle || "",
       date: frontmatter.date || "",
       updated: frontmatter.updated || frontmatter.date || "",
       category: frontmatter.category || "",

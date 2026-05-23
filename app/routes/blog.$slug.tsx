@@ -8,10 +8,25 @@ import { SHOPIFY_APP_STORE_URL } from "../lib/shopifyAppStoreUrl";
 import landingStyles from "./_index/styles.module.css";
 import styles from "../styles/blog.module.css";
 
+function formatGuideDate(date: string): string {
+  const match = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const parsedDate = match
+    ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+    : new Date(date);
+  return parsedDate.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   if (!data?.post) return [{ title: "Not found" }];
-  const title = `${data.post.title} — TinyLemon Guides`;
-  const description = data.post.excerpt || data.post.title;
+  const postTitle = data.post.subtitle
+    ? `${data.post.title}: ${data.post.subtitle}`
+    : data.post.title;
+  const title = `${postTitle} — TinyLemon Guides`;
+  const description = data.post.excerpt || postTitle;
   return [
     { title },
     { name: "description", content: description },
@@ -41,11 +56,12 @@ export const loader = async ({
 
 export default function BlogPostPage() {
   const { post, postUrl, showForm } = useLoaderData<typeof loader>();
+  const postTitle = post.subtitle ? `${post.title}: ${post.subtitle}` : post.title;
   const articleJsonLd = {
     "@context": "https://schema.org",
     "@type": "BlogPosting",
-    headline: post.title,
-    description: post.excerpt || post.title,
+    headline: postTitle,
+    description: post.excerpt || postTitle,
     datePublished: post.date,
     dateModified: post.updated || post.date,
     mainEntityOfPage: postUrl,
@@ -115,13 +131,12 @@ export default function BlogPostPage() {
           </Link>
           <header className={styles.postHeader}>
             <h1 className={styles.pageTitle}>{post.title}</h1>
+            {post.subtitle && (
+              <p className={styles.postSubtitle}>{post.subtitle}</p>
+            )}
             {post.date && (
               <time dateTime={post.date} className={styles.postDate}>
-                {new Date(post.date).toLocaleDateString("en-US", {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                })}
+                {formatGuideDate(post.date)}
               </time>
             )}
           </header>

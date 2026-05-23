@@ -1,5 +1,6 @@
 ---
-title: Ghost mannequin vs. on-model AI photos on Shopify: how AI solves the conversion gap
+title: Ghost mannequin vs. on-model AI photos on Shopify
+subtitle: How AI solves the conversion gap
 slug: ghost-mannequin-vs-on-model-ai-photos-shopify
 date: 2026-05-23
 updated: 2026-05-23
