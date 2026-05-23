@@ -201,7 +201,7 @@ export default function TryPage() {
               Pricing
             </Link>
             <Link to="/blog" className={landingStyles.navLink}>
-              Blog
+              Guides
             </Link>
             <Link to="/#how-it-works" className={landingStyles.navLink}>
               About
@@ -393,7 +393,7 @@ export default function TryPage() {
             <div className={landingStyles.footerCol}>
               <h3 className={landingStyles.footerHeading}>Company</h3>
               <Link to="/blog" className={landingStyles.footerLink}>
-                Blog
+                Guides
               </Link>
               <a href="/#how-it-works" className={landingStyles.footerLink}>
                 About

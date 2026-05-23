@@ -42,7 +42,7 @@ export default function PricingPage() {
               Pricing
             </Link>
             <Link to="/blog" className={landingStyles.navLink}>
-              Blog
+              Guides
             </Link>
             <Link to="/#how-it-works" className={landingStyles.navLink}>
               About
@@ -356,7 +356,7 @@ export default function PricingPage() {
             <div className={landingStyles.footerCol}>
               <h3 className={landingStyles.footerHeading}>Company</h3>
               <Link to="/blog" className={landingStyles.footerLink}>
-                Blog
+                Guides
               </Link>
               <Link to="/#how-it-works" className={landingStyles.footerLink}>
                 About

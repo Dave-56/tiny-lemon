@@ -9,9 +9,9 @@ import landingStyles from "./_index/styles.module.css";
 import styles from "../styles/blog.module.css";
 
 export const meta: MetaFunction = () => {
-  const title = "Blog — TinyLemon";
+  const title = "Shopify AI Photo Guides — TinyLemon";
   const description =
-    "Tips and guides for fashion product photography and AI studio shots on Shopify.";
+    "Guides for Shopify fashion brands using AI product photography, model photos, and better product page imagery.";
   return [
     { title },
     { name: "description", content: description },
@@ -44,7 +44,7 @@ export default function BlogIndexPage() {
               Pricing
             </Link>
             <Link to="/blog" className={landingStyles.navLink}>
-              Blog
+              Guides
             </Link>
             <Link to="/#how-it-works" className={landingStyles.navLink}>
               About
@@ -75,10 +75,10 @@ export default function BlogIndexPage() {
 
       <main>
         <section className={styles.section}>
-          <h1 className={styles.pageTitle}>Blog</h1>
+          <h1 className={styles.pageTitle}>Shopify AI Photo Guides</h1>
           <p className={styles.subtitle}>
-            Tips and guides for fashion product photography and AI studio shots
-            on Shopify.
+            Practical guides for fashion brands using AI product photography,
+            on-model images, and better Shopify product pages.
           </p>
           <ul className={styles.postList}>
             {posts.map((post) => (
@@ -134,7 +134,7 @@ export default function BlogIndexPage() {
             <div className={landingStyles.footerCol}>
               <h3 className={landingStyles.footerHeading}>Company</h3>
               <Link to="/blog" className={landingStyles.footerLink}>
-                Blog
+                Guides
               </Link>
               <a href="/#how-it-works" className={landingStyles.footerLink}>
                 About

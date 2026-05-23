@@ -1,9 +1,5 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { getBlogSlugs } from "../lib/blog.server";
-
-const BASE = process.env.VERCEL_URL
-  ? `https://${process.env.VERCEL_URL}`
-  : "https://tinylemon.example.com";
+import { getBlogSlugs, getSiteBaseUrl } from "../lib/blog.server";
 
 function escapeXml(s: string): string {
   return s
@@ -15,6 +11,7 @@ function escapeXml(s: string): string {
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const baseUrl = getSiteBaseUrl(request);
   const slugs = getBlogSlugs();
   const urls: string[] = [
     "",
@@ -29,7 +26,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 ${urls
   .map(
     (path) => `  <url>
-    <loc>${escapeXml(BASE + path || "/")}</loc>
+    <loc>${escapeXml(baseUrl + path)}</loc>
     <changefreq>weekly</changefreq>
   </url>`
   )

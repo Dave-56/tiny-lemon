@@ -2,7 +2,7 @@ import type { LoaderFunctionArgs, MetaFunction } from "react-router";
 import { Link, useLoaderData } from "react-router";
 
 import { login } from "../shopify.server";
-import { getBlogPost } from "../lib/blog.server";
+import { getBlogPost, getSiteBaseUrl } from "../lib/blog.server";
 import { SHOPIFY_APP_STORE_URL } from "../lib/shopifyAppStoreUrl";
 
 import landingStyles from "./_index/styles.module.css";
@@ -10,13 +10,17 @@ import styles from "../styles/blog.module.css";
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   if (!data?.post) return [{ title: "Not found" }];
-  const title = `${data.post.title} — TinyLemon Blog`;
+  const title = `${data.post.title} — TinyLemon Guides`;
   const description = data.post.excerpt || data.post.title;
   return [
     { title },
     { name: "description", content: description },
     { property: "og:title", content: title },
     { property: "og:description", content: description },
+    { property: "og:type", content: "article" },
+    { property: "og:url", content: data.postUrl },
+    { property: "article:published_time", content: data.post.date },
+    { property: "article:modified_time", content: data.post.updated },
   ];
 };
 
@@ -30,11 +34,34 @@ export const loader = async ({
   }
   const post = getBlogPost(slug);
   if (!post) return Response.redirect(new URL("/blog", request.url), 302);
-  return { post, showForm: Boolean(login) };
+  const siteBaseUrl = getSiteBaseUrl(request);
+  const postUrl = `${siteBaseUrl}/blog/${encodeURIComponent(post.slug)}`;
+  return { post, postUrl, showForm: Boolean(login) };
 };
 
 export default function BlogPostPage() {
-  const { post, showForm } = useLoaderData<typeof loader>();
+  const { post, postUrl, showForm } = useLoaderData<typeof loader>();
+  const articleJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    headline: post.title,
+    description: post.excerpt || post.title,
+    datePublished: post.date,
+    dateModified: post.updated || post.date,
+    mainEntityOfPage: postUrl,
+    author: {
+      "@type": "Organization",
+      name: "TinyLemon",
+    },
+    publisher: {
+      "@type": "Organization",
+      name: "TinyLemon",
+      logo: {
+        "@type": "ImageObject",
+        url: `${new URL(postUrl).origin}/app-icon-1200x1200.png`,
+      },
+    },
+  };
 
   return (
     <div className={landingStyles.page}>
@@ -52,7 +79,7 @@ export default function BlogPostPage() {
               Pricing
             </Link>
             <Link to="/blog" className={landingStyles.navLink}>
-              Blog
+              Guides
             </Link>
             <Link to="/#how-it-works" className={landingStyles.navLink}>
               About
@@ -84,7 +111,7 @@ export default function BlogPostPage() {
       <main>
         <article className={styles.section}>
           <Link to="/blog" className={styles.backLink}>
-            ← Back to Blog
+            Back to Guides
           </Link>
           <header className={styles.postHeader}>
             <h1 className={styles.pageTitle}>{post.title}</h1>
@@ -101,6 +128,10 @@ export default function BlogPostPage() {
           <div
             className={styles.postBody}
             dangerouslySetInnerHTML={{ __html: post.bodyHtml }}
+          />
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{ __html: JSON.stringify(articleJsonLd) }}
           />
         </article>
       </main>
@@ -135,7 +166,7 @@ export default function BlogPostPage() {
             <div className={landingStyles.footerCol}>
               <h3 className={landingStyles.footerHeading}>Company</h3>
               <Link to="/blog" className={landingStyles.footerLink}>
-                Blog
+                Guides
               </Link>
               <a href="/#how-it-works" className={landingStyles.footerLink}>
                 About

@@ -8,10 +8,23 @@ export type BlogPost = {
   slug: string;
   title: string;
   date: string;
+  updated: string;
+  category: string;
+  targetQueries: string[];
   excerpt: string;
   body: string;
   bodyHtml: string;
 };
+
+export function getSiteBaseUrl(request: Request): string {
+  const configuredUrl =
+    process.env.SHOPIFY_APP_URL ||
+    process.env.VERCEL_PROJECT_PRODUCTION_URL ||
+    process.env.VERCEL_URL;
+  const fallbackUrl = new URL(request.url).origin;
+  const baseUrl = configuredUrl || fallbackUrl;
+  return baseUrl.startsWith("http") ? baseUrl : `https://${baseUrl}`;
+}
 
 function parseFrontmatter(raw: string): { frontmatter: Record<string, string>; body: string } {
   const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
@@ -33,7 +46,7 @@ function getMarkdownFiles(): { name: string; path: string }[] {
   try {
     const files = readdirSync(BLOG_DIR, { withFileTypes: true });
     return files
-      .filter((f) => f.isFile() && f.name.endsWith(".md"))
+      .filter((f) => f.isFile() && f.name.endsWith(".md") && !f.name.startsWith("_"))
       .map((f) => ({ name: f.name, path: join(BLOG_DIR, f.name) }));
   } catch {
     return [];
@@ -42,6 +55,14 @@ function getMarkdownFiles(): { name: string; path: string }[] {
 
 function fileSlugFromName(name: string): string {
   return name.replace(/\.md$/, "");
+}
+
+function parseList(value: string | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 export function getBlogSlugs(): string[] {
@@ -67,6 +88,9 @@ export function getBlogPost(slug: string): BlogPost | null {
       slug: fileSlug,
       title: frontmatter.title || "Post",
       date: frontmatter.date || "",
+      updated: frontmatter.updated || frontmatter.date || "",
+      category: frontmatter.category || "",
+      targetQueries: parseList(frontmatter.targetQueries),
       excerpt: frontmatter.excerpt || "",
       body,
       bodyHtml: marked.parse(body, { async: false }) as string,
