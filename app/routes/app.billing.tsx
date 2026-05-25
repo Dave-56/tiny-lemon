@@ -5,7 +5,7 @@ import { useLoaderData, useRouteError } from 'react-router';
 import { boundary } from '@shopify/shopify-app-react-router/server';
 import { authenticate } from '../shopify.server';
 import { BILLING_PLANS } from '../lib/plans';
-import prisma from '../db.server';
+import prisma, { ensureShop } from '../db.server';
 import { getMonthlyUsage, getEffectiveEntitlements, PLAN_LIMITS } from '../lib/billing.server';
 import { getSupportEmail } from '../lib/support.server';
 
@@ -17,6 +17,8 @@ import { getSupportEmail } from '../lib/support.server';
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { billing, session } = await authenticate.admin(request);
+  await ensureShop(session.shop);
+
   const shop = await prisma.shop.findUnique({
     where: { id: session.shop },
     select: { betaAccess: true, betaStatus: true },
