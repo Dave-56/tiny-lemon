@@ -1,6 +1,7 @@
 import { Links, Meta, Outlet, Scripts, ScrollRestoration, useLocation } from "react-router";
-import { Analytics } from "@vercel/analytics/react";
+import { Analytics, type BeforeSendEvent } from "@vercel/analytics/react";
 import appCss from "./app.css?url";
+import { isAnalyticsOptedOut } from "./lib/analyticsOptOut";
 
 export function links() {
   return [{ rel: "stylesheet", href: appCss }];
@@ -9,6 +10,13 @@ export function links() {
 export default function App() {
   const { pathname } = useLocation();
   const isAppRoute = pathname.startsWith("/app");
+  const beforeSend = (event: BeforeSendEvent) => {
+    if (isAnalyticsOptedOut()) {
+      return null;
+    }
+
+    return event;
+  };
 
   return (
     <html lang="en">
@@ -29,7 +37,7 @@ export default function App() {
         <Outlet />
         <ScrollRestoration />
         <Scripts />
-        {!isAppRoute && <Analytics />}
+        {!isAppRoute && <Analytics beforeSend={beforeSend} />}
       </body>
     </html>
   );
