@@ -311,10 +311,3 @@ Most small brands do better with a controlled model system: one signature model 
 ### What makes AI on-model images look inconsistent across Shopify collections?
 
 Common causes include changing pose logic, uneven crops, inconsistent background treatment, shifting framing, and mixing categories without clear style rules. Reviewing images side by side in collection grids helps catch these issues quickly.
-
-## Sources
-
-- [See the Look on the Shopify App Store](https://apps.shopify.com/virtual-try-on-seethelook)
-- [Modelize on the Shopify App Store](https://apps.shopify.com/modelize)
-- [Fashion brands on Shopify from Flatline Agency](https://www.flatlineagency.com/blog/fashion-brands-on-shopify)
-- [Shopify Help Center: About apps](https://help.shopify.com/en/manual/apps/about-apps)

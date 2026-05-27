@@ -266,10 +266,3 @@ No. But it becomes more useful when products depend on silhouette and fit, colle
 ### How can I tell if my catalog is ready for a more image-led Shopify theme?
 
 Audit 10 to 20 representative products. Check whether the first image is strong enough for collection cards, whether the second image adds new information, whether your files hold up for zoom, and whether the gallery answers common shopper questions.
-
-## Sources
-
-- [Shopify Tinker theme preset](https://themes.shopify.com/themes/tinker/presets/tinker)
-- [VTN: boost your fashion brand with Shopify](https://www.vtnetzwelt.com/shopify-development/boost-your-fashion-brand-with-shopifys-best-apps-and-expert-help)
-- [AIMS: AI product photography for Shopify](https://www.useaims.com/ai-product-photography-shopify)
-- [Claid: on-model AI tools](https://claid.ai/blog/article/on-model-ai-tools)
