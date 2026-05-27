@@ -11,6 +11,10 @@ import { DEMO_SHOP_ID } from "../lib/billing.server";
 import { buildRateLimitHeaders, consumeRateLimit } from "../lib/rateLimit.server";
 import { getNormalizedRateLimitSubject } from "../lib/rateLimitSubject.server";
 import { SHOPIFY_APP_STORE_URL } from "../lib/shopifyAppStoreUrl";
+import {
+  trackMarketingEvent,
+  trackShopifyAppStoreClick,
+} from "../lib/marketingAnalytics";
 
 import landingStyles from "./_index/styles.module.css";
 import styles from "../styles/try.module.css";
@@ -165,6 +169,10 @@ export default function TryPage() {
   const selectedPreset = presets.find((p) => p.id === selectedModelId) ?? null;
 
   useEffect(() => {
+    trackMarketingEvent("demo_viewed");
+  }, []);
+
+  useEffect(() => {
     if (fetcher.state === "submitting") setDismissed(false);
   }, [fetcher.state]);
 
@@ -180,6 +188,10 @@ export default function TryPage() {
     if (file) {
       const url = URL.createObjectURL(file);
       setPreviewUrl(url);
+      trackMarketingEvent("demo_upload_selected", {
+        file_type: file.type || "unknown",
+        file_size_bytes: file.size,
+      });
     } else {
       setPreviewUrl(null);
     }
@@ -222,6 +234,9 @@ export default function TryPage() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className={landingStyles.btnPrimary}
+                onClick={() =>
+                  trackShopifyAppStoreClick("try_header", "Add to Shopify")
+                }
               >
                 Add to Shopify
               </a>
@@ -268,7 +283,17 @@ export default function TryPage() {
               />
             </div>
           ) : (
-            <fetcher.Form method="post" encType="multipart/form-data" className={styles.form}>
+            <fetcher.Form
+              method="post"
+              encType="multipart/form-data"
+              className={styles.form}
+              onSubmit={() =>
+                trackMarketingEvent("demo_started", {
+                  model_id: selectedModelId,
+                  has_preview: Boolean(previewUrl),
+                })
+              }
+            >
               <div className={styles.formGrid}>
                 <div className={styles.field}>
                   <label className={styles.label}>Flat-lay image</label>
@@ -319,7 +344,13 @@ export default function TryPage() {
                         key={p.id}
                         type="button"
                         className={`${styles.modelCard} ${selectedModelId === p.id ? styles.modelCardSelected : ""}`}
-                        onClick={() => setSelectedModelId(p.id)}
+                        onClick={() => {
+                          setSelectedModelId(p.id);
+                          trackMarketingEvent("demo_model_selected", {
+                            model_id: p.id,
+                            source: "model_grid",
+                          });
+                        }}
                         title={p.name}
                       >
                         <button
@@ -351,6 +382,12 @@ export default function TryPage() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className={landingStyles.btnPrimary}
+                onClick={() =>
+                  trackShopifyAppStoreClick(
+                    "try_cta_block",
+                    "Add the app to my store",
+                  )
+                }
               >
                 Add the app to my store
               </a>
@@ -484,7 +521,14 @@ export default function TryPage() {
               <button
                 type="button"
                 className={`${landingStyles.btnPrimary} ${styles.modelOverlaySelect}`}
-                onClick={() => { setSelectedModelId(previewModel.id); setPreviewModel(null); }}
+                onClick={() => {
+                  setSelectedModelId(previewModel.id);
+                  trackMarketingEvent("demo_model_selected", {
+                    model_id: previewModel.id,
+                    source: "model_preview",
+                  });
+                  setPreviewModel(null);
+                }}
               >
                 {selectedModelId === previewModel.id ? "Selected ✓" : "Select model"}
               </button>
@@ -527,6 +571,7 @@ function TryPollResult({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const startRef = useRef(Date.now());
+  const trackedTerminalStatusRef = useRef<string | null>(null);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -548,6 +593,28 @@ function TryPollResult({
       setStatus(data.status);
       if (data.errorMessage) setErrorMsg(data.errorMessage);
       if (data.images?.length) setImages(data.images);
+      if (
+        data.status === "completed" &&
+        trackedTerminalStatusRef.current !== "completed"
+      ) {
+        trackedTerminalStatusRef.current = "completed";
+        trackMarketingEvent("demo_result_viewed", {
+          outfit_id: outfitId,
+          seconds_elapsed: Math.floor((Date.now() - startRef.current) / 1000),
+          image_count: data.images?.length ?? 0,
+        });
+      }
+      if (
+        data.status === "failed" &&
+        trackedTerminalStatusRef.current !== "failed"
+      ) {
+        trackedTerminalStatusRef.current = "failed";
+        trackMarketingEvent("demo_generation_failed", {
+          outfit_id: outfitId,
+          seconds_elapsed: Math.floor((Date.now() - startRef.current) / 1000),
+          error_message: data.errorMessage ?? null,
+        });
+      }
       if (data.status !== "completed" && data.status !== "failed") {
         setTimeout(poll, 2500);
       }
@@ -609,7 +676,17 @@ function TryPollResult({
             />
           </div>
           <div className={styles.revealActions}>
-            <a href={resultImage.imageUrl} download="studio-shot.jpg" className={styles.downloadButton}>
+            <a
+              href={resultImage.imageUrl}
+              download="studio-shot.jpg"
+              className={styles.downloadButton}
+              onClick={() =>
+                trackMarketingEvent("demo_download_clicked", {
+                  outfit_id: outfitId,
+                  pose: resultImage.pose,
+                })
+              }
+            >
               Download
             </a>
           </div>
@@ -621,6 +698,12 @@ function TryPollResult({
                 target="_blank"
                 rel="noopener noreferrer"
                 className={landingStyles.btnPrimary}
+                onClick={() =>
+                  trackShopifyAppStoreClick(
+                    "try_result",
+                    "Add the app to my store",
+                  )
+                }
               >
                 Add the app to my store
               </a>

@@ -4,6 +4,10 @@ import { Link, useLoaderData } from "react-router";
 import { login } from "../shopify.server";
 import { getBlogPost, getSiteBaseUrl } from "../lib/blog.server";
 import { SHOPIFY_APP_STORE_URL } from "../lib/shopifyAppStoreUrl";
+import {
+  trackShopifyAppStoreClick,
+  trackTryDemoClick,
+} from "../lib/marketingAnalytics";
 
 import landingStyles from "./_index/styles.module.css";
 import styles from "../styles/blog.module.css";
@@ -116,6 +120,11 @@ export default function BlogPostPage() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className={landingStyles.btnPrimary}
+                onClick={() =>
+                  trackShopifyAppStoreClick("blog_post_header", "Add to Shopify", {
+                    slug: post.slug,
+                  })
+                }
               >
                 Add to Shopify
               </a>
@@ -165,7 +174,11 @@ export default function BlogPostPage() {
           <div className={landingStyles.footerColumns}>
             <div className={landingStyles.footerCol}>
               <h3 className={landingStyles.footerHeading}>Product</h3>
-              <Link to="/try" className={landingStyles.footerLink}>
+              <Link
+                to="/try"
+                className={landingStyles.footerLink}
+                onClick={() => trackTryDemoClick("blog_post_footer")}
+              >
                 View demo
               </Link>
               <Link to="/#features" className={landingStyles.footerLink}>

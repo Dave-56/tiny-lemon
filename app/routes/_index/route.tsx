@@ -4,6 +4,10 @@ import { redirect, Link, useLoaderData } from "react-router";
 import { login } from "../../shopify.server";
 import { BeforeAfterSlider } from "../../components/BeforeAfterSlider";
 import { SHOPIFY_APP_STORE_URL } from "../../lib/shopifyAppStoreUrl";
+import {
+  trackShopifyAppStoreClick,
+  trackTryDemoClick,
+} from "../../lib/marketingAnalytics";
 
 import styles from "./styles.module.css";
 
@@ -74,7 +78,11 @@ export default function LandingPage() {
             )}
           </nav>
           <div className={styles.headerActions}>
-            <Link to="/try" className={styles.btnPrimary}>
+            <Link
+              to="/try"
+              className={styles.btnPrimary}
+              onClick={() => trackTryDemoClick("home_header")}
+            >
               View demo
             </Link>
             {hasInstallUrl && (
@@ -83,6 +91,9 @@ export default function LandingPage() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className={styles.btnPrimary}
+                onClick={() =>
+                  trackShopifyAppStoreClick("home_header", "Add to Shopify")
+                }
               >
                 Add to Shopify
               </a>
@@ -103,7 +114,11 @@ export default function LandingPage() {
             photographer, no shoot budget.
           </p>
           <div className={styles.heroCtas}>
-            <Link to="/try" className={styles.heroCta}>
+            <Link
+              to="/try"
+              className={styles.heroCta}
+              onClick={() => trackTryDemoClick("home_hero")}
+            >
               View demo
             </Link>
             {hasInstallUrl && (
@@ -112,6 +127,9 @@ export default function LandingPage() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className={styles.heroCtaSecondary}
+                onClick={() =>
+                  trackShopifyAppStoreClick("home_hero", "Add to Shopify")
+                }
               >
                 Add to Shopify
               </a>
@@ -242,6 +260,12 @@ export default function LandingPage() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className={styles.loginPrimaryCta}
+                onClick={() =>
+                  trackShopifyAppStoreClick(
+                    "home_login_section",
+                    "Add the app to my store",
+                  )
+                }
               >
                 Add the app to my store
               </a>
@@ -255,7 +279,11 @@ export default function LandingPage() {
                 Tiny Lemon is coming soon to the Shopify App Store. Want to try
                 it now? Use the free demo — no install needed.
               </p>
-              <Link to="/try" className={styles.loginPrimaryCta}>
+              <Link
+                to="/try"
+                className={styles.loginPrimaryCta}
+                onClick={() => trackTryDemoClick("home_login_section")}
+              >
                 View demo
               </Link>
               <p className={styles.loginDivider}>
@@ -281,7 +309,11 @@ export default function LandingPage() {
           <div className={styles.footerColumns}>
             <div className={styles.footerCol}>
               <h3 className={styles.footerHeading}>Product</h3>
-              <Link to="/try" className={styles.footerLink}>
+              <Link
+                to="/try"
+                className={styles.footerLink}
+                onClick={() => trackTryDemoClick("home_footer")}
+              >
                 View demo
               </Link>
               <a href="#features" className={styles.footerLink}>

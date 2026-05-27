@@ -3,6 +3,10 @@ import { Link, useLoaderData } from "react-router";
 
 import { login } from "../shopify.server";
 import { SHOPIFY_APP_STORE_URL } from "../lib/shopifyAppStoreUrl";
+import {
+  trackShopifyAppStoreClick,
+  trackTryDemoClick,
+} from "../lib/marketingAnalytics";
 
 import landingStyles from "./_index/styles.module.css";
 import styles from "../styles/features.module.css";
@@ -63,6 +67,9 @@ export default function FeaturesPage() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className={landingStyles.btnPrimary}
+                onClick={() =>
+                  trackShopifyAppStoreClick("features_header", "Add to Shopify")
+                }
               >
                 Add to Shopify
               </a>
@@ -223,7 +230,11 @@ export default function FeaturesPage() {
           <div className={landingStyles.footerColumns}>
             <div className={landingStyles.footerCol}>
               <h3 className={landingStyles.footerHeading}>Product</h3>
-              <Link to="/try" className={landingStyles.footerLink}>
+              <Link
+                to="/try"
+                className={landingStyles.footerLink}
+                onClick={() => trackTryDemoClick("features_footer")}
+              >
                 View demo
               </Link>
               <Link to="/#features" className={landingStyles.footerLink}>

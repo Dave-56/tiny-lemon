@@ -1,8 +1,14 @@
+import { useEffect } from "react";
 import type { LoaderFunctionArgs, MetaFunction } from "react-router";
 import { Link, useLoaderData } from "react-router";
 
 import { login } from "../shopify.server";
 import { SHOPIFY_APP_STORE_URL } from "../lib/shopifyAppStoreUrl";
+import {
+  trackMarketingEvent,
+  trackShopifyAppStoreClick,
+  trackTryDemoClick,
+} from "../lib/marketingAnalytics";
 
 import landingStyles from "./_index/styles.module.css";
 import styles from "../styles/pricing.module.css";
@@ -25,6 +31,10 @@ export const loader = async (_args: LoaderFunctionArgs) => {
 
 export default function PricingPage() {
   const { showForm } = useLoaderData<typeof loader>();
+
+  useEffect(() => {
+    trackMarketingEvent("pricing_viewed");
+  }, []);
 
   return (
     <div className={landingStyles.page}>
@@ -63,6 +73,9 @@ export default function PricingPage() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className={landingStyles.btnPrimary}
+                onClick={() =>
+                  trackShopifyAppStoreClick("pricing_header", "Add to Shopify")
+                }
               >
                 Add to Shopify
               </a>
@@ -92,7 +105,21 @@ export default function PricingPage() {
               <p className={styles.tierPriceAmount}>
                 $0<span className={styles.unit}>/mo</span>
               </p>
-              <a href={SHOPIFY_APP_STORE_URL} target="_blank" rel="noopener noreferrer" className={styles.tierCta}>
+              <a
+                href={SHOPIFY_APP_STORE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.tierCta}
+                onClick={() => {
+                  trackMarketingEvent("pricing_cta_clicked", {
+                    plan: "free",
+                    source: "pricing_tier",
+                  });
+                  trackShopifyAppStoreClick("pricing_tier", "Add to Shopify", {
+                    plan: "free",
+                  });
+                }}
+              >
                 Add to Shopify →
               </a>
               <ul className={styles.tierList}>
@@ -122,7 +149,21 @@ export default function PricingPage() {
               <p className={styles.tierPriceAmount}>
                 ~$39<span className={styles.unit}>/mo</span>
               </p>
-              <a href={SHOPIFY_APP_STORE_URL} target="_blank" rel="noopener noreferrer" className={styles.tierCta}>
+              <a
+                href={SHOPIFY_APP_STORE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.tierCta}
+                onClick={() => {
+                  trackMarketingEvent("pricing_cta_clicked", {
+                    plan: "starter",
+                    source: "pricing_tier",
+                  });
+                  trackShopifyAppStoreClick("pricing_tier", "Add to Shopify", {
+                    plan: "starter",
+                  });
+                }}
+              >
                 Add to Shopify →
               </a>
               <ul className={styles.tierList}>
@@ -153,7 +194,21 @@ export default function PricingPage() {
               <p className={styles.tierPriceAmount}>
                 ~$99<span className={styles.unit}>/mo</span>
               </p>
-              <a href={SHOPIFY_APP_STORE_URL} target="_blank" rel="noopener noreferrer" className={styles.tierCta}>
+              <a
+                href={SHOPIFY_APP_STORE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.tierCta}
+                onClick={() => {
+                  trackMarketingEvent("pricing_cta_clicked", {
+                    plan: "growth",
+                    source: "pricing_tier",
+                  });
+                  trackShopifyAppStoreClick("pricing_tier", "Add to Shopify", {
+                    plan: "growth",
+                  });
+                }}
+              >
                 Add to Shopify →
               </a>
               <ul className={styles.tierList}>
@@ -182,7 +237,21 @@ export default function PricingPage() {
               <p className={styles.tierPriceAmount}>
                 ~$249<span className={styles.unit}>/mo</span>
               </p>
-              <a href={SHOPIFY_APP_STORE_URL} target="_blank" rel="noopener noreferrer" className={styles.tierCta}>
+              <a
+                href={SHOPIFY_APP_STORE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.tierCta}
+                onClick={() => {
+                  trackMarketingEvent("pricing_cta_clicked", {
+                    plan: "scale",
+                    source: "pricing_tier",
+                  });
+                  trackShopifyAppStoreClick("pricing_tier", "Add to Shopify", {
+                    plan: "scale",
+                  });
+                }}
+              >
                 Add to Shopify →
               </a>
               <ul className={styles.tierList}>
@@ -340,7 +409,11 @@ export default function PricingPage() {
           <div className={landingStyles.footerColumns}>
             <div className={landingStyles.footerCol}>
               <h3 className={landingStyles.footerHeading}>Product</h3>
-              <Link to="/try" className={landingStyles.footerLink}>
+              <Link
+                to="/try"
+                className={landingStyles.footerLink}
+                onClick={() => trackTryDemoClick("pricing_footer")}
+              >
                 View demo
               </Link>
               <Link to="/#features" className={landingStyles.footerLink}>
