@@ -70,7 +70,7 @@ export const loader = async (_args: LoaderFunctionArgs) => {
   } catch {
     // ignore
   }
-  const installUrl = process.env.SHOPIFY_APP_INSTALL_URL ?? SHOPIFY_APP_STORE_URL;
+  const installUrl = process.env.SHOPIFY_APP_INSTALL_URL || SHOPIFY_APP_STORE_URL;
   return { presets, showForm: Boolean(login), installUrl };
 };
 
@@ -347,20 +347,50 @@ export default function TryPage() {
                 Need more angles or your store? Add the app.
               </p>
               <a
-                href={installUrl || "/auth/login"}
-                {...(installUrl ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                href={installUrl}
+                target="_blank"
+                rel="noopener noreferrer"
                 className={landingStyles.btnPrimary}
               >
                 Add the app to my store
               </a>
               <p className={styles.ctaSecondary}>
-                Already have the app?{" "}
-                <Link to="/auth/login" className={styles.ctaLink}>
-                  Log in
-                </Link>
+                Already installed? Open TinyLemon from your Shopify admin under Apps.
               </p>
             </div>
           )}
+
+          <section className={styles.seoSection} aria-label="About the demo">
+            <div className={styles.seoCopy}>
+              <h2>AI model photos from flat-lay product images</h2>
+              <p>
+                This free demo turns one flat-lay apparel image into a front-angle
+                AI studio shot. It is built for Shopify fashion merchants who
+                want to preview how a product could look on a model before
+                committing to a full catalog workflow.
+              </p>
+              <p>
+                Clean supplier photos, simple flat-lays, and evenly lit garment
+                images usually work best. The goal is to preserve the product's
+                shape, color, and visible details while showing the item in a
+                more useful on-model product-page format.
+              </p>
+              <h2>When the Shopify app is a better fit</h2>
+              <p>
+                The public demo is intentionally limited to one generation per
+                day. The Shopify app is designed for repeatable product
+                photography: multiple angles, consistent model styling, catalog
+                workflows, and publishing images back into Shopify products.
+              </p>
+              <p>
+                For apparel stores, the strongest product pages usually combine
+                a clear on-model hero image with supporting detail shots,
+                back-view images, and flat-lay or ghost mannequin references.
+                TinyLemon helps teams create that first set of consistent
+                on-model images without booking a new shoot for every launch.
+              </p>
+            </div>
+          </section>
         </section>
       </main>
 
@@ -587,8 +617,9 @@ function TryPollResult({
             <div className={styles.resultCta}>
               <p className={styles.resultCtaText}>Want 3 angles for your whole catalogue?</p>
               <a
-                href={installUrl || "/auth/login"}
-                {...(installUrl ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                href={installUrl}
+                target="_blank"
+                rel="noopener noreferrer"
                 className={landingStyles.btnPrimary}
               >
                 Add the app to my store

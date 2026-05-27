@@ -1,5 +1,6 @@
 ---
 title: Clear search-friendly title with the main query
+seoTitle: Concise search title under 55 characters before the brand suffix
 subtitle: Optional supporting line that expands the title
 slug: lowercase-hyphenated-url-slug
 date: YYYY-MM-DD

@@ -1,5 +1,6 @@
 ---
 title: "How to Keep Model Photos Consistent Across Shopify Product Pages"
+seoTitle: "Consistent Shopify Model Photos"
 subtitle: "Small fashion teams struggle to keep product pages visually consistent across categories, launches, and restocks."
 slug: "how-to-keep-model-photos-consistent-across-shopify-product-pages"
 date: "2026-05-26"
@@ -267,6 +268,8 @@ It makes sense to bend the system when:
 The key is to break the rules on purpose and in a contained way.
 
 For example, you might keep PDP images standardized while using a more expressive treatment for a homepage story, launch email, or lookbook section.
+
+If your store is still deciding which source images to use, compare [ghost mannequin vs. AI model photos](/blog/ghost-mannequin-vs-on-model-ai-photos-shopify) first. If you already have clean supplier or flat-lay images, the simplest starting point is turning [flat-lays into studio-style Shopify photos](/blog/flat-lay-to-studio-shot-shopify).
 
 ## A simple framework for small Shopify fashion teams
 

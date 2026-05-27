@@ -25,7 +25,7 @@ export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const postTitle = data.post.subtitle
     ? `${data.post.title}: ${data.post.subtitle}`
     : data.post.title;
-  const title = `${postTitle} — TinyLemon Guides`;
+  const title = `${data.post.seoTitle || data.post.title} | TinyLemon`;
   const description = data.post.excerpt || postTitle;
   return [
     { title },

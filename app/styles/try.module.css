@@ -227,6 +227,36 @@
   text-decoration: none;
 }
 
+.seoSection {
+  margin-top: 3rem;
+  padding-top: 2.5rem;
+  border-top: 1px solid var(--krea-border, rgba(0, 0, 0, 0.08));
+}
+
+.seoCopy {
+  max-width: 44rem;
+  margin: 0 auto;
+  font-size: 1rem;
+  line-height: 1.65;
+  color: #333;
+}
+
+.seoCopy h2 {
+  margin: 1.5rem 0 0.65rem;
+  font-size: 1.25rem;
+  line-height: 1.25;
+  letter-spacing: 0;
+  color: var(--krea-text, #111);
+}
+
+.seoCopy h2:first-child {
+  margin-top: 0;
+}
+
+.seoCopy p {
+  margin: 0 0 0.9rem;
+}
+
 .result {
   margin-bottom: 2rem;
 }

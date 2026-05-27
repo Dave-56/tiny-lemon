@@ -80,6 +80,22 @@ export default function BlogIndexPage() {
             Practical guides for fashion brands using AI product photography,
             on-model images, and better Shopify product pages.
           </p>
+          <section className={styles.introCopy} aria-label="About TinyLemon guides">
+            <p>
+              TinyLemon guides focus on one practical problem for Shopify fashion
+              merchants: creating product photos that help shoppers understand
+              fit, fabric, silhouette, and brand style without slowing every
+              launch down with a new photoshoot.
+            </p>
+            <p>
+              The articles cover flat-lay to studio-shot workflows, ghost
+              mannequin alternatives, AI model photos, catalog consistency, and
+              the product-page image decisions that matter most for apparel
+              stores. Each guide is written for small ecommerce teams that need
+              repeatable product photography systems, not abstract creative
+              theory.
+            </p>
+          </section>
           <ul className={styles.postList}>
             {posts.map((post) => (
               <li key={post.slug}>
