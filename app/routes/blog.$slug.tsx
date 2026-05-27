@@ -125,7 +125,7 @@ export default function BlogPostPage() {
       </div>
 
       <main>
-        <article className={styles.section}>
+        <article className={`${styles.section} ${styles.postArticle}`}>
           <Link to="/blog" className={styles.backLink}>
             Back to Guides
           </Link>
