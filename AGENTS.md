@@ -201,6 +201,29 @@ Use SDK (`@trigger.dev/sdk`), check `result.ok` before accessing `result.output`
 
 <!-- TRIGGER.DEV basic END -->
 
+<!-- SEO content guard START -->
+# SEO content guard
+
+When adding or editing public SEO pages or `content/blog/*.md`, keep the Semrush audit rules green.
+
+## New blog article checklist
+
+- Include frontmatter: `title`, `seoTitle`, `slug`, `date`, `category`, `targetQueries`, and `excerpt`.
+- Keep `seoTitle` concise. It should be 55 characters or less before the ` | TinyLemon` suffix.
+- Keep the computed browser title 70 characters or less.
+- Write an `excerpt` between 80 and 180 characters.
+- Add at least 2 contextual internal links to other TinyLemon pages or guides.
+- If the guide is strategically important, add it to `public/llms.txt`.
+- Run `npm run check:seo` and `npm run typecheck` before committing.
+
+## Public route checklist
+
+- Public indexable routes must export `meta` with a unique title and meta description.
+- Public SEO routes must not link directly to `/auth/login`; send install CTAs to the Shopify App Store or tell installed merchants to open the app from Shopify admin.
+- Do not pad pages with filler text. Add useful crawlable copy that helps Shopify fashion merchants understand the page.
+
+<!-- SEO content guard END -->
+
 <!-- gstack START -->
 # gstack (workflow skills)
 

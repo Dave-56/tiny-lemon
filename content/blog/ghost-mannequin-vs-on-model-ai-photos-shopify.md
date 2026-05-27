@@ -7,7 +7,7 @@ date: 2026-05-23
 updated: 2026-05-23
 category: Shopify product photography
 targetQueries: ghost mannequin vs on model Shopify, AI model photos Shopify, Shopify fashion product photography, ghost mannequin conversion rate
-excerpt: Ghost mannequin photos are clean and affordable, but on-model imagery gives Shopify apparel shoppers the fit signal they need. Here is how AI model photos change the cost and conversion math.
+excerpt: Ghost mannequin photos are clean and affordable, but on-model imagery gives Shopify apparel shoppers the fit signal they need. Here is how AI changes the cost math.
 ---
 
 Ghost mannequin photography suspends a garment on an invisible form. The mannequin is removed in post-production, leaving a clean, hollow 3D shape. On-model photography shows the same garment on a human body, communicating fit, proportion, and how the piece moves.
