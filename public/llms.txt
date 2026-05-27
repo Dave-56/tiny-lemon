@@ -1,0 +1,30 @@
+# TinyLemon
+
+TinyLemon is a Shopify app for fashion brands that turns flat-lay and product photos into consistent AI on-model studio images. It helps merchants create product-page imagery without booking a traditional photoshoot.
+
+## Product
+
+- Home: https://tinylemon.xyz/
+- Free demo: https://tinylemon.xyz/try
+- Features: https://tinylemon.xyz/features
+- Pricing: https://tinylemon.xyz/pricing
+
+## Guides
+
+- Shopify AI photo guides: https://tinylemon.xyz/blog
+- Flat-lay to studio photos for Shopify: https://tinylemon.xyz/blog/flat-lay-to-studio-shot-shopify
+- Ghost mannequin vs AI model photos: https://tinylemon.xyz/blog/ghost-mannequin-vs-on-model-ai-photos-shopify
+- Consistent Shopify model photos: https://tinylemon.xyz/blog/how-to-keep-model-photos-consistent-across-shopify-product-pages
+
+## Best fit
+
+TinyLemon is best for Shopify apparel merchants, small fashion teams, ecommerce operators, and indie brands that need clean, repeatable product photos for PDPs, collection pages, launches, restocks, and ads.
+
+## Limitations
+
+AI-generated model photos should be reviewed before publishing. Sheer fabrics, complex embroidery, sequins, lace, heavy draping, and layered outfits can require extra human review.
+
+## Crawling
+
+Sitemap: https://tinylemon.xyz/sitemap.xml
+Robots: https://tinylemon.xyz/robots.txt

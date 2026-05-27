@@ -1,5 +1,6 @@
 ---
 title: Ghost mannequin vs. on-model AI photos on Shopify
+seoTitle: Ghost Mannequin vs AI Model Photos
 subtitle: How AI solves the conversion gap
 slug: ghost-mannequin-vs-on-model-ai-photos-shopify
 date: 2026-05-23
@@ -86,6 +87,8 @@ Ghost mannequin is not obsolete. It still has a clear role on strong Shopify pro
 **Later carousel positions.** Shopify product image carousels can support multiple image types. A strong apparel PDP might lead with an on-model hero, follow with another on-model angle, include UGC if available, then use ghost mannequin or flat lay for technical reference.
 
 The best workflow is usually hybrid: AI on-model photos for hero and lifestyle images, ghost mannequin images for construction reference.
+
+Once you decide which image types belong in the gallery, the next step is making the set feel repeatable across products. Use a catalog style profile to keep [model photos consistent across Shopify product pages](/blog/how-to-keep-model-photos-consistent-across-shopify-product-pages).
 
 ## How to switch your Shopify imagery without booking a shoot
 

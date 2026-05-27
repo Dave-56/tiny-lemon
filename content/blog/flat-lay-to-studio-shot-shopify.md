@@ -1,5 +1,6 @@
 ---
 title: How to get studio-style product photos from flat-lays (no photoshoot)
+seoTitle: Flat-Lay to Studio Photos for Shopify
 slug: flat-lay-to-studio-shot-shopify
 date: 2025-03-08
 excerpt: Fashion brands can get consistent on-model product photos in minutes using AI—no photographer, no shoot day, no weeks of waiting.
@@ -20,6 +21,8 @@ Flat-lays are great for speed and cost. But for apparel, customers want to see h
 3. **Add them to your Shopify products and publish** — no separate asset pipeline; built for your store.
 
 No photographer, no model booking, no shoot day. You get studio-quality angles that match your brand, without the usual wait or cost.
+
+For teams comparing image formats, it also helps to understand the tradeoff between [ghost mannequin and AI on-model photos](/blog/ghost-mannequin-vs-on-model-ai-photos-shopify). If your main problem is making a whole catalog feel cohesive, start with a repeatable system for [consistent Shopify model photos](/blog/how-to-keep-model-photos-consistent-across-shopify-product-pages).
 
 ## Who it’s for
 

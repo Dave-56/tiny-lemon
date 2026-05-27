@@ -1,5 +1,15 @@
+import type { MetaFunction } from "react-router";
 import { Link } from "react-router";
 import styles from "../styles/legal.module.css";
+
+export const meta: MetaFunction = () => [
+  { title: "Privacy Policy | TinyLemon" },
+  {
+    name: "description",
+    content:
+      "TinyLemon privacy policy for Shopify merchants using AI product photography and generated product images.",
+  },
+];
 
 export default function Privacy() {
   return (
