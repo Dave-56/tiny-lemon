@@ -29,6 +29,18 @@ export const loader = async (_args: LoaderFunctionArgs) => {
   return { posts, showForm: Boolean(login) };
 };
 
+function formatGuideDate(date: string): string {
+  const match = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const parsedDate = match
+    ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+    : new Date(date);
+  return parsedDate.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
 export default function BlogIndexPage() {
   const { posts, showForm } = useLoaderData<typeof loader>();
 
@@ -109,13 +121,7 @@ export default function BlogIndexPage() {
                 <Link to={`/blog/${post.slug}`} className={styles.postLink}>
                   <h2 className={styles.postTitle}>{post.title}</h2>
                   <time className={styles.postDate} dateTime={post.date}>
-                    {post.date
-                      ? new Date(post.date).toLocaleDateString("en-US", {
-                          year: "numeric",
-                          month: "long",
-                          day: "numeric",
-                        })
-                      : ""}
+                    {post.date ? formatGuideDate(post.date) : ""}
                   </time>
                   {post.excerpt && (
                     <p className={styles.postExcerpt}>{post.excerpt}</p>
