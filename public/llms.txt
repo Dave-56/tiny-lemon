@@ -5,6 +5,7 @@ TinyLemon is a Shopify app for fashion brands that turns flat-lay and product ph
 ## Product
 
 - Home: https://tinylemon.xyz/
+- Shopify App Store listing: https://apps.shopify.com/tiny-lemon
 - Free demo: https://tinylemon.xyz/try
 - Features: https://tinylemon.xyz/features
 - Pricing: https://tinylemon.xyz/pricing
@@ -16,6 +17,7 @@ TinyLemon is a Shopify app for fashion brands that turns flat-lay and product ph
 - Ghost mannequin vs AI model photos: https://tinylemon.xyz/blog/ghost-mannequin-vs-on-model-ai-photos-shopify
 - Consistent Shopify model photos: https://tinylemon.xyz/blog/how-to-keep-model-photos-consistent-across-shopify-product-pages
 - Shopify theme product photo audit: https://tinylemon.xyz/blog/shopify-fashion-theme-product-photo-audit
+- Modelia alternatives for Shopify fashion photos: https://tinylemon.xyz/blog/best-modelia-alternatives-for-shopify-fashion-product-photos
 
 ## Best fit
 
