@@ -31,6 +31,7 @@ import {
   Maximize,
 } from "lucide-react";
 import { zipSync } from "fflate";
+import { flushSync } from "react-dom";
 import { useAuthenticatedFetch } from "../contexts/AuthenticatedFetchContext";
 import { GeneratedPoseImage } from "../components/GeneratedPoseImage";
 import { authenticate } from "../shopify.server";
@@ -1064,19 +1065,6 @@ function ShopifyPublishButton({
   const syncTimedOut = isShopifySyncTimedOut({ syncStatus, shopifySyncedAt });
   const isPublishing = Boolean(optimisticPublishing) || (syncStatus === "syncing" && !syncTimedOut);
 
-  if (syncStatus === "synced" && productUrl) {
-    return (
-      <button
-        type="button"
-        onClick={() => window.open(productUrl, "_blank")}
-        className="flex items-center gap-1.5 text-[11px] text-krea-muted border border-krea-border rounded-md px-2.5 py-1 hover:bg-krea-border/40 transition-colors"
-      >
-        <ExternalLink className="w-3 h-3" />
-        View in Shopify
-      </button>
-    );
-  }
-
   if (isPublishing) {
     return (
       <button
@@ -1086,6 +1074,19 @@ function ShopifyPublishButton({
       >
         <Loader2 className="w-3 h-3 animate-spin" />
         Publishing…
+      </button>
+    );
+  }
+
+  if (syncStatus === "synced" && productUrl) {
+    return (
+      <button
+        type="button"
+        onClick={() => window.open(productUrl, "_blank")}
+        className="flex items-center gap-1.5 text-[11px] text-krea-muted border border-krea-border rounded-md px-2.5 py-1 hover:bg-krea-border/40 transition-colors"
+      >
+        <ExternalLink className="w-3 h-3" />
+        View in Shopify
       </button>
     );
   }
@@ -2079,7 +2080,9 @@ export default function Outfits() {
 
   async function publishOutfit(outfitId: string) {
     setSessionError(null);
-    setOptimisticPublishingIds((current) => new Set(current).add(outfitId));
+    flushSync(() => {
+      setOptimisticPublishingIds((current) => new Set(current).add(outfitId));
+    });
     const res = await authenticatedFetch("/app/outfits", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
