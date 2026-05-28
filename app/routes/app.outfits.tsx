@@ -53,6 +53,16 @@ import {
 
 const SHOPIFY_SYNC_RECENCY_WINDOW_MS = 10 * 60 * 1000;
 
+function isShopifySyncTimedOut(args: {
+  syncStatus?: string | null;
+  shopifySyncedAt?: string | Date | null;
+}): boolean {
+  if (args.syncStatus !== "syncing" || !args.shopifySyncedAt) return false;
+  const startedAt = new Date(args.shopifySyncedAt).getTime();
+  if (!Number.isFinite(startedAt)) return false;
+  return Date.now() - startedAt >= SHOPIFY_SYNC_RECENCY_WINDOW_MS;
+}
+
 // ── Loader ─────────────────────────────────────────────────────────────────────
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -181,6 +191,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       where: { id: outfitId, shopId, deletedAt: null },
       select: {
         status: true,
+        jobId: true,
         shopifyProductId: true,
         shopifySyncStatus: true,
         shopifySyncedAt: true,
@@ -205,6 +216,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         reason: "already_syncing_recently",
       });
       return Response.json({ ok: true, reused: true });
+    }
+    if (outfit.shopifySyncStatus === "syncing" && outfit.jobId) {
+      await cancelRunSafely(outfit.jobId);
     }
     const handle = await enqueueShopifySync({
       outfitId,
@@ -1031,14 +1045,24 @@ function Lightbox({
 function ShopifyPublishButton({
   outfit,
   onPublish,
+  optimisticPublishing,
 }: {
   outfit: OutfitWithImages;
   onPublish?: (outfitId: string) => void;
+  optimisticPublishing?: boolean;
 }) {
   const syncStatus = (outfit as { shopifySyncStatus?: string | null })
     .shopifySyncStatus;
   const productUrl = (outfit as { shopifyProductUrl?: string | null })
     .shopifyProductUrl;
+  const shopifySyncedAt = (
+    outfit as { shopifySyncedAt?: string | Date | null }
+  ).shopifySyncedAt;
+  const videoStatus = (outfit as { videoStatus?: string | null }).videoStatus;
+  const isVideoGenerating =
+    videoStatus === "pending" || videoStatus === "processing";
+  const syncTimedOut = isShopifySyncTimedOut({ syncStatus, shopifySyncedAt });
+  const isPublishing = Boolean(optimisticPublishing) || (syncStatus === "syncing" && !syncTimedOut);
 
   if (syncStatus === "synced" && productUrl) {
     return (
@@ -1053,7 +1077,7 @@ function ShopifyPublishButton({
     );
   }
 
-  if (syncStatus === "syncing") {
+  if (isPublishing) {
     return (
       <button
         type="button"
@@ -1067,7 +1091,13 @@ function ShopifyPublishButton({
   }
 
   const label =
-    syncStatus === "stale" ? "Re-publish to Shopify" : "Publish to Shopify";
+    syncTimedOut
+      ? "Retry publish"
+      : isVideoGenerating
+      ? "Publish images only"
+      : syncStatus === "stale"
+        ? "Re-publish to Shopify"
+        : "Publish to Shopify";
 
   return (
     <button
@@ -1100,6 +1130,7 @@ function OutfitCard({
   brandStyleLabel,
   optimisticBulkUpscaling,
   optimisticVideoGenerating,
+  optimisticPublishing,
   selected,
   onDelete,
   onRename,
@@ -1120,6 +1151,7 @@ function OutfitCard({
   brandStyleLabel: string;
   optimisticBulkUpscaling?: boolean;
   optimisticVideoGenerating?: boolean;
+  optimisticPublishing?: boolean;
   selected: boolean;
   onDelete: (id: string) => void;
   onRename: (
@@ -1546,7 +1578,11 @@ function OutfitCard({
           )}
 
           {status === OUTFIT_STATUS.completed && (
-            <ShopifyPublishButton outfit={outfit} onPublish={onPublish} />
+            <ShopifyPublishButton
+              outfit={outfit}
+              onPublish={onPublish}
+              optimisticPublishing={optimisticPublishing}
+            />
           )}
 
           {/* ... menu */}
@@ -1811,6 +1847,9 @@ export default function Outfits() {
   >(new Set());
   const [optimisticVideoGeneratingIds, setOptimisticVideoGeneratingIds] =
     useState<Set<string>>(new Set());
+  const [optimisticPublishingIds, setOptimisticPublishingIds] = useState<
+    Set<string>
+  >(new Set());
 
   const closeLightbox = useCallback(() => setLightbox(null), []);
 
@@ -1873,12 +1912,39 @@ export default function Outfits() {
     });
   }, [outfits]);
 
+  useEffect(() => {
+    setOptimisticPublishingIds((current) => {
+      if (current.size === 0) return current;
+
+      let changed = false;
+      const next = new Set(current);
+
+      for (const outfit of outfits) {
+        if (!next.has(outfit.id)) continue;
+        const syncStatus = (outfit as { shopifySyncStatus?: string | null })
+          .shopifySyncStatus;
+        if (syncStatus === "syncing" || syncStatus === "synced" || syncStatus === "failed") {
+          next.delete(outfit.id);
+          changed = true;
+        }
+      }
+
+      return changed ? next : current;
+    });
+  }, [outfits]);
+
   // Poll when any outfit is generating, being synced, or upscaling
   const hasGenerating = outfits.some((o) => {
     const s = (o as { status?: string }).status;
     const syncS = (o as { shopifySyncStatus?: string | null })
       .shopifySyncStatus;
-    return (s && s !== "completed" && s !== "failed") || syncS === "syncing";
+    const shopifySyncedAt = (
+      o as { shopifySyncedAt?: string | Date | null }
+    ).shopifySyncedAt;
+    const activeSyncing =
+      syncS === "syncing" &&
+      !isShopifySyncTimedOut({ syncStatus: syncS, shopifySyncedAt });
+    return (s && s !== "completed" && s !== "failed") || activeSyncing;
   });
   const hasUpscaling =
     optimisticBulkUpscalingIds.size > 0 ||
@@ -1892,7 +1958,11 @@ export default function Outfits() {
     outfits.some(
       (o) => o.videoStatus === "pending" || o.videoStatus === "processing",
     ) || optimisticVideoGeneratingIds.size > 0;
-  const hasInProgress = hasGenerating || hasUpscaling || hasVideoGenerating;
+  const hasInProgress =
+    hasGenerating ||
+    hasUpscaling ||
+    hasVideoGenerating ||
+    optimisticPublishingIds.size > 0;
   // Tighter poll (2.5s) for upscale-only since Real-ESRGAN is fast (5-15s)
   // Video generation uses 5s like image generation (takes 60-180s)
   const pollInterval = hasGenerating || hasVideoGenerating ? 5000 : 2500;
@@ -2009,6 +2079,7 @@ export default function Outfits() {
 
   async function publishOutfit(outfitId: string) {
     setSessionError(null);
+    setOptimisticPublishingIds((current) => new Set(current).add(outfitId));
     const res = await authenticatedFetch("/app/outfits", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2016,6 +2087,11 @@ export default function Outfits() {
     });
     if (!res.ok) {
       if (isSessionExpiredResponse(res)) handleSessionExpired();
+      setOptimisticPublishingIds((current) => {
+        const next = new Set(current);
+        next.delete(outfitId);
+        return next;
+      });
       return;
     }
     posthog.capture("outfit_published", { shop, outfitId });
@@ -2240,6 +2316,7 @@ export default function Outfits() {
                   optimisticVideoGenerating={optimisticVideoGeneratingIds.has(
                     outfit.id,
                   )}
+                  optimisticPublishing={optimisticPublishingIds.has(outfit.id)}
                   selected={selectedIds.has(outfit.id)}
                   onDelete={deleteOutfit}
                   onRename={renameOutfit}

@@ -31,7 +31,8 @@ api_version = "2026-04"
 [access_scopes]
 # read_products: read product info for context
 # write_products: push generated images back to product listings
-scopes = "read_products,write_products"
+# write_files: upload generated video to Shopify Files before attaching it to products
+scopes = "read_products,write_products,write_files"
 
 [auth]
 redirect_urls = [ "https://tinylemon.xyz/auth/callback" ]

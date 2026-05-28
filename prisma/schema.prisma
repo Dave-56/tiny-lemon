@@ -119,6 +119,8 @@ model Outfit {
   videoUrl             String?   // Vercel Blob MP4 URL
   videoErrorMessage    String?   // failure reason from video generation
   videoGeneratedAt     DateTime? // timestamp of last successful video generation
+  shopifyVideoFileId   String?   // GID: "gid://shopify/Video/123" from Shopify Files
+  shopifyVideoMediaId  String?   // Product media GID for the associated Shopify-hosted video
   deletedAt            DateTime?
   createdAt            DateTime  @default(now())
 
