@@ -1,7 +1,6 @@
 import type { LoaderFunctionArgs, MetaFunction } from "react-router";
 import { redirect, Link, useLoaderData } from "react-router";
 
-import { login } from "../../shopify.server";
 import { BeforeAfterSlider } from "../../components/BeforeAfterSlider";
 import { SHOPIFY_APP_STORE_URL } from "../../lib/shopifyAppStoreUrl";
 import {
@@ -16,16 +15,76 @@ const LANDING_2 = {
   before: "/landing-before-1.png",
   after: "/landing-after-1.png",
 };
+
+const FAQ_ITEMS = [
+  {
+    question: "Is Tiny Lemon a Shopify app?",
+    answer:
+      "Yes. Tiny Lemon is a Shopify app for fashion stores that turns flat-lay and supplier photos into AI model photos and short product videos for Shopify product listings.",
+  },
+  {
+    question: "What does Tiny Lemon do?",
+    answer:
+      "Tiny Lemon helps Shopify clothing stores turn flat-lay or supplier product photos into on-model product photos and short product videos without booking a photographer, model, or studio shoot.",
+  },
+];
+
+function getStructuredData(origin: string, installUrl: string) {
+  return {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "@id": `${origin}/#software`,
+        name: "Tiny Lemon",
+        alternateName: "TinyLemon",
+        applicationCategory: "Shopify app / ecommerce product photography",
+        applicationSubCategory: "AI model photos and product videos",
+        operatingSystem: "Shopify",
+        url: origin,
+        downloadUrl: installUrl,
+        sameAs: [installUrl],
+        description:
+          "Tiny Lemon is a Shopify app for fashion stores that turns flat-lay and supplier photos into AI model photos and short product videos for Shopify product listings.",
+        featureList: [
+          "AI model photos from flat-lay and supplier product photos",
+          "Short product videos for fashion product listings",
+          "Shopify product media workflow for clothing stores",
+        ],
+        offers: {
+          "@type": "Offer",
+          url: installUrl,
+        },
+      },
+      {
+        "@type": "FAQPage",
+        "@id": `${origin}/#faq`,
+        mainEntity: FAQ_ITEMS.map((item) => ({
+          "@type": "Question",
+          name: item.question,
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: item.answer,
+          },
+        })),
+      },
+    ],
+  };
+}
+
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  const title = "Tiny Lemon: Studio shots from flat-lays in 60 seconds";
+  const title = "Tiny Lemon Shopify App for AI Model Photos";
   const description =
-    "Turn flat-lays into studio shots in 60 seconds. Upload from your factory or your own shoot — get professional on-model photos, ready for your Shopify store.";
+    "Tiny Lemon is a Shopify app that turns flat-lay and supplier photos into AI model photos and short product videos for fashion product listings.";
   const ogImage = data?.origin ? `${data.origin}/app-icon-1200x1200.png` : undefined;
+  const origin = data?.origin ?? "https://tinylemon.xyz";
+  const installUrl = data?.installUrl ?? SHOPIFY_APP_STORE_URL;
   return [
     { title },
     { name: "description", content: description },
     { property: "og:title", content: title },
     { property: "og:description", content: description },
+    { "script:ld+json": getStructuredData(origin, installUrl) },
     ...(ogImage ? [{ property: "og:image", content: ogImage }] : []),
   ];
 };
@@ -37,10 +96,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     throw redirect(`/app?${url.searchParams.toString()}`);
   }
 
-  const installUrl = process.env.SHOPIFY_APP_INSTALL_URL ?? SHOPIFY_APP_STORE_URL;
+  const installUrl = SHOPIFY_APP_STORE_URL;
   const origin = new URL(request.url).origin;
-  // Install CTAs must point at a Shopify-owned install surface. Keep the env
-  // override for deployments, but use the live App Store listing by default.
   return { hasInstallUrl: Boolean(installUrl), installUrl, origin };
 };
 
@@ -78,13 +135,6 @@ export default function LandingPage() {
             )}
           </nav>
           <div className={styles.headerActions}>
-            <Link
-              to="/try"
-              className={styles.btnPrimary}
-              onClick={() => trackTryDemoClick("home_header")}
-            >
-              View demo
-            </Link>
             {hasInstallUrl && (
               <a
                 href={installUrl}
@@ -92,12 +142,22 @@ export default function LandingPage() {
                 rel="noopener noreferrer"
                 className={styles.btnPrimary}
                 onClick={() =>
-                  trackShopifyAppStoreClick("home_header", "Add to Shopify")
+                  trackShopifyAppStoreClick(
+                    "home_header",
+                    "Install from Shopify App Store",
+                  )
                 }
               >
-                Add to Shopify
+                Install app
               </a>
             )}
+            <Link
+              to="/try"
+              className={styles.btnGhost}
+              onClick={() => trackTryDemoClick("home_header")}
+            >
+              View demo
+            </Link>
           </div>
         </header>
       </div>
@@ -113,27 +173,33 @@ export default function LandingPage() {
             professional on-model photos, ready to publish on Shopify. No
             photographer, no shoot budget.
           </p>
+          <p className={styles.heroAppStoreNote}>
+            Tiny Lemon is available on the Shopify App Store.
+          </p>
           <div className={styles.heroCtas}>
-            <Link
-              to="/try"
-              className={styles.heroCta}
-              onClick={() => trackTryDemoClick("home_hero")}
-            >
-              View demo
-            </Link>
             {hasInstallUrl && (
               <a
                 href={installUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className={styles.heroCtaSecondary}
+                className={styles.heroCta}
                 onClick={() =>
-                  trackShopifyAppStoreClick("home_hero", "Add to Shopify")
+                  trackShopifyAppStoreClick(
+                    "home_hero",
+                    "Install from Shopify App Store",
+                  )
                 }
               >
-                Add to Shopify
+                Install from Shopify App Store
               </a>
             )}
+            <Link
+              to="/try"
+              className={styles.heroCtaSecondary}
+              onClick={() => trackTryDemoClick("home_hero")}
+            >
+              View demo
+            </Link>
           </div>
         </section>
 
@@ -210,7 +276,7 @@ export default function LandingPage() {
               </div>
               <h3 className={styles.featureCardTitle}>Built for Shopify</h3>
               <p className={styles.featureCardDesc}>
-                Generate images in the app and add them directly to your Shopify products. No export, no manual uploads, same look every time.
+                Install Tiny Lemon from the Shopify App Store to generate images in the app and add them directly to your Shopify products. No export, no manual uploads, same look every time.
               </p>
             </div>
             <div className={styles.featureCardGrid}>
@@ -232,7 +298,7 @@ export default function LandingPage() {
             <div className={styles.featureCardGrid}>
               <img
                 src="/every-photo-your-listing-needs-1600x900.png"
-                alt="Multiple product image types: on-model angles, detail close-ups, flat lay, and lifestyle"
+                alt="Multiple product media types: on-model angles, detail close-ups, flat lay, and lifestyle"
                 className={styles.featureCardImage}
                 width={1600}
                 height={900}
@@ -248,12 +314,25 @@ export default function LandingPage() {
           </div>
         </section>
 
+        <section id="faq" className={styles.faqSection}>
+          <h2 className={styles.faqTitle}>FAQ</h2>
+          <dl className={styles.faqList}>
+            {FAQ_ITEMS.map((item) => (
+              <div className={styles.faqItem} key={item.question}>
+                <dt className={styles.faqQuestion}>{item.question}</dt>
+                <dd className={styles.faqAnswer}>{item.answer}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+
         <section id="login" className={styles.loginSection}>
           <h2 className={styles.loginTitle}>Add Tiny Lemon to Shopify</h2>
           {hasInstallUrl ? (
             <>
               <p className={styles.loginSubtext}>
-                Add Tiny Lemon to your Shopify store in one click.
+                Install Tiny Lemon from the Shopify App Store to generate AI
+                model photos and product videos directly inside Shopify.
               </p>
               <a
                 href={installUrl}
@@ -267,7 +346,7 @@ export default function LandingPage() {
                   )
                 }
               >
-                Add the app to my store
+                Install from Shopify App Store
               </a>
               <p className={styles.loginDivider}>
                 Already installed? Open Tiny Lemon from your Shopify admin under Apps.
@@ -318,6 +397,20 @@ export default function LandingPage() {
               </Link>
               <a href="#features" className={styles.footerLink}>
                 Features
+              </a>
+              <a
+                href={installUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.footerLink}
+                onClick={() =>
+                  trackShopifyAppStoreClick(
+                    "home_footer",
+                    "Shopify App Store listing",
+                  )
+                }
+              >
+                Shopify App Store listing
               </a>
               <Link to="/pricing" className={styles.footerLink}>
                 Pricing

@@ -139,10 +139,17 @@
   font-size: 1.125rem;
   line-height: 1.6;
   color: var(--krea-muted, #555);
-  margin: 0 0 2rem;
+  margin: 0 0 0.75rem;
   max-width: 36rem;
   margin-left: auto;
   margin-right: auto;
+}
+
+.heroAppStoreNote {
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--krea-text, #111);
+  margin: 0 0 2rem;
 }
 
 .heroCta {
@@ -159,18 +166,6 @@
   transition: opacity 0.15s ease;
 }
 
-.heroCta:hover {
-  opacity: 0.9;
-}
-
-.heroCtas {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-}
-
 .heroCtaSecondary {
   display: inline-flex;
   align-items: center;
@@ -184,6 +179,18 @@
   background: transparent;
   text-decoration: none;
   transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.heroCta:hover {
+  opacity: 0.9;
+}
+
+.heroCtas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
 }
 
 .heroCtaSecondary:hover {
@@ -335,6 +342,50 @@
   line-height: 1.6;
   color: var(--krea-muted, #555);
   margin: 0 1.5rem 1.5rem;
+}
+
+/* ----- FAQ ----- */
+.faqSection {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 0 2rem 4rem;
+}
+
+.faqTitle {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin: 0 0 1rem;
+  font-family: "Space Grotesk", sans-serif;
+  text-align: center;
+}
+
+.faqList {
+  margin: 0;
+  padding: 0;
+}
+
+.faqItem {
+  padding: 1.25rem 0;
+  border-top: 1px solid var(--krea-border, rgba(0, 0, 0, 0.08));
+}
+
+.faqItem:last-child {
+  border-bottom: 1px solid var(--krea-border, rgba(0, 0, 0, 0.08));
+}
+
+.faqQuestion {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--krea-text, #111);
+  margin: 0 0 0.5rem;
+}
+
+.faqAnswer {
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  color: var(--krea-muted, #555);
+  margin: 0;
 }
 
 /* ----- Login section ----- */
@@ -618,6 +669,10 @@
 
   .featuresGrid {
     grid-template-columns: 1fr;
+  }
+
+  .faqSection {
+    padding: 0 1.25rem 3rem;
   }
 
   .loginSection {
