@@ -113,6 +113,7 @@ model Outfit {
   shopifyProductUrl    String?   // Shopify admin URL for deep-linking
   shopifyProductCreatedByApp Boolean @default(false) // true when this app created the product (safe to overwrite media); false when merchant picked an existing product
   shopifySyncedAt      DateTime? // timestamp of last successful sync
+  shopifySyncStartedAt DateTime? // timestamp of current/most recent sync start
   shopifySyncStatus    String?   // syncing | synced | stale | failed
   videoStatus          String?   // null | pending | processing | completed | failed
   videoJobId           String?   // Trigger.dev runId for generate-video task

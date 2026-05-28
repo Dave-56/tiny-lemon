@@ -56,10 +56,10 @@ const SHOPIFY_SYNC_RECENCY_WINDOW_MS = 10 * 60 * 1000;
 
 function isShopifySyncTimedOut(args: {
   syncStatus?: string | null;
-  shopifySyncedAt?: string | Date | null;
+  shopifySyncStartedAt?: string | Date | null;
 }): boolean {
-  if (args.syncStatus !== "syncing" || !args.shopifySyncedAt) return false;
-  const startedAt = new Date(args.shopifySyncedAt).getTime();
+  if (args.syncStatus !== "syncing" || !args.shopifySyncStartedAt) return false;
+  const startedAt = new Date(args.shopifySyncStartedAt).getTime();
   if (!Number.isFinite(startedAt)) return false;
   return Date.now() - startedAt >= SHOPIFY_SYNC_RECENCY_WINDOW_MS;
 }
@@ -181,7 +181,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
     await prisma.outfit.update({
       where: { id: outfitId },
-      data: { shopifySyncStatus: null },
+      data: { shopifySyncStatus: null, shopifySyncStartedAt: null },
     });
     return Response.json({ ok: true });
   }
@@ -196,6 +196,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         shopifyProductId: true,
         shopifySyncStatus: true,
         shopifySyncedAt: true,
+        shopifySyncStartedAt: true,
       },
     });
     if (!outfit) return Response.json({ error: "Not found" }, { status: 404 });
@@ -207,8 +208,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
     const syncStartedRecently =
       outfit.shopifySyncStatus === "syncing" &&
-      outfit.shopifySyncedAt != null &&
-      Date.now() - outfit.shopifySyncedAt.getTime() <
+      outfit.shopifySyncStartedAt != null &&
+      Date.now() - outfit.shopifySyncStartedAt.getTime() <
         SHOPIFY_SYNC_RECENCY_WINDOW_MS;
     if (syncStartedRecently) {
       console.info("[publish_to_shopify.idempotent_reuse]", {
@@ -233,7 +234,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     });
     await prisma.outfit.update({
       where: { id: outfitId },
-      data: { shopifySyncStatus: "syncing", jobId: handle.id },
+      data: {
+        shopifySyncStatus: "syncing",
+        shopifySyncStartedAt: new Date(),
+        jobId: handle.id,
+      },
     });
     return Response.json({ ok: true });
   }
@@ -1056,14 +1061,19 @@ function ShopifyPublishButton({
     .shopifySyncStatus;
   const productUrl = (outfit as { shopifyProductUrl?: string | null })
     .shopifyProductUrl;
-  const shopifySyncedAt = (
-    outfit as { shopifySyncedAt?: string | Date | null }
-  ).shopifySyncedAt;
+  const shopifySyncStartedAt = (
+    outfit as { shopifySyncStartedAt?: string | Date | null }
+  ).shopifySyncStartedAt;
   const videoStatus = (outfit as { videoStatus?: string | null }).videoStatus;
   const isVideoGenerating =
     videoStatus === "pending" || videoStatus === "processing";
-  const syncTimedOut = isShopifySyncTimedOut({ syncStatus, shopifySyncedAt });
-  const isPublishing = Boolean(optimisticPublishing) || (syncStatus === "syncing" && !syncTimedOut);
+  const syncTimedOut = isShopifySyncTimedOut({
+    syncStatus,
+    shopifySyncStartedAt,
+  });
+  const isPublishing =
+    Boolean(optimisticPublishing) ||
+    (syncStatus === "syncing" && !syncTimedOut);
 
   if (isPublishing) {
     return (
@@ -1939,12 +1949,12 @@ export default function Outfits() {
     const s = (o as { status?: string }).status;
     const syncS = (o as { shopifySyncStatus?: string | null })
       .shopifySyncStatus;
-    const shopifySyncedAt = (
-      o as { shopifySyncedAt?: string | Date | null }
-    ).shopifySyncedAt;
+    const shopifySyncStartedAt = (
+      o as { shopifySyncStartedAt?: string | Date | null }
+    ).shopifySyncStartedAt;
     const activeSyncing =
       syncS === "syncing" &&
-      !isShopifySyncTimedOut({ syncStatus: syncS, shopifySyncedAt });
+      !isShopifySyncTimedOut({ syncStatus: syncS, shopifySyncStartedAt });
     return (s && s !== "completed" && s !== "failed") || activeSyncing;
   });
   const hasUpscaling =

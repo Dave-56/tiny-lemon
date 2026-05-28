@@ -52,6 +52,7 @@ const baseOutfit = {
   status: 'completed',
   shopifySyncStatus: null as string | null,
   shopifySyncedAt: null as Date | null,
+  shopifySyncStartedAt: null as Date | null,
   shopifyProductCreatedByApp: false,
   videoStatus: null as string | null,
   videoUrl: null as string | null,
@@ -136,7 +137,13 @@ describe('syncOutfitToShopifyTask.run', () => {
     });
 
     mocks.adminGraphql.mockResolvedValueOnce(
-      graphqlResponse({ productCreateMedia: { media: [], mediaUserErrors: [], product: { id: EXISTING_PRODUCT_GID } } }),
+      graphqlResponse({
+        productCreateMedia: {
+          media: [],
+          mediaUserErrors: [],
+          product: { id: EXISTING_PRODUCT_GID },
+        },
+      }),
     );
 
     const result = await syncOutfitToShopifyTask.run({
@@ -145,7 +152,11 @@ describe('syncOutfitToShopifyTask.run', () => {
       shopifyProductId: EXISTING_PRODUCT_GID,
     });
 
-    expect(result).toMatchObject({ outfitId: OUTFIT_ID, productGid: EXISTING_PRODUCT_GID, status: 'synced' });
+    expect(result).toMatchObject({
+      outfitId: OUTFIT_ID,
+      productGid: EXISTING_PRODUCT_GID,
+      status: 'synced',
+    });
 
     expect(mocks.unauthenticatedAdmin).toHaveBeenCalledWith(SHOP);
 
@@ -156,6 +167,40 @@ describe('syncOutfitToShopifyTask.run', () => {
 
     const finalUpdate = mocks.outfitUpdate.mock.calls.at(-1)?.[0];
     expect(finalUpdate.data.shopifyProductCreatedByApp).toBe(false);
+  });
+
+  it('does not self-cancel a newly enqueued sync with a recent previous success', async () => {
+    mocks.outfitFindFirst.mockResolvedValue({
+      ...baseOutfit,
+      shopifyProductId: EXISTING_PRODUCT_GID,
+      shopifySyncStatus: 'syncing',
+      shopifySyncedAt: new Date(),
+      shopifyProductCreatedByApp: false,
+    });
+
+    mocks.adminGraphql.mockResolvedValueOnce(
+      graphqlResponse({
+        productCreateMedia: {
+          media: [],
+          mediaUserErrors: [],
+          product: { id: EXISTING_PRODUCT_GID },
+        },
+      }),
+    );
+
+    const result = await syncOutfitToShopifyTask.run({
+      outfitId: OUTFIT_ID,
+      shopId: SHOP,
+      shopifyProductId: EXISTING_PRODUCT_GID,
+    });
+
+    expect(result).toMatchObject({
+      outfitId: OUTFIT_ID,
+      productGid: EXISTING_PRODUCT_GID,
+      status: 'synced',
+    });
+    expect(mocks.unauthenticatedAdmin).toHaveBeenCalledWith(SHOP);
+    expect(extractMutationNames(mocks.adminGraphql)).toEqual(['productCreateMedia']);
   });
 
   it('syncs completed video through Shopify Files when enabled', async () => {
@@ -218,20 +263,14 @@ describe('syncOutfitToShopifyTask.run', () => {
       )
       .mockResolvedValueOnce(
         graphqlResponse({
-          productUpdate: {
-            product: {
-              id: EXISTING_PRODUCT_GID,
-              media: {
-                nodes: [
-                  {
-                    id: 'gid://shopify/Video/123',
-                    alt: 'Demo Outfit video',
-                    mediaContentType: 'VIDEO',
-                    status: 'READY',
-                  },
-                ],
+          fileUpdate: {
+            files: [
+              {
+                id: 'gid://shopify/Video/123',
+                alt: 'Demo Outfit video',
+                fileStatus: 'READY',
               },
-            },
+            ],
             userErrors: [],
           },
         }),
@@ -257,7 +296,7 @@ describe('syncOutfitToShopifyTask.run', () => {
       'stagedUploadsCreate',
       'fileCreate',
       'fileStatus',
-      'productUpdate',
+      'fileUpdate',
     ]);
 
     const stagedVariables = mocks.adminGraphql.mock.calls[1][1].variables;
@@ -268,11 +307,19 @@ describe('syncOutfitToShopifyTask.run', () => {
       fileSize: '3',
     });
 
-    const productUpdateVariables = mocks.adminGraphql.mock.calls[4][1].variables;
-    expect(productUpdateVariables.media[0]).toEqual({
-      originalSource: 'gid://shopify/Video/123',
+    const fileCreateVariables = mocks.adminGraphql.mock.calls[2][1].variables;
+    expect(fileCreateVariables.files[0]).toMatchObject({
+      originalSource: 'https://shopify-resource.example.com/video.mp4?external_video_id=1',
       alt: 'Demo Outfit video',
-      mediaContentType: 'VIDEO',
+      contentType: 'VIDEO',
+    });
+    expect(fileCreateVariables.files[0]).not.toHaveProperty('filename');
+
+    const fileUpdateVariables = mocks.adminGraphql.mock.calls[4][1].variables;
+    expect(fileUpdateVariables.files[0]).toEqual({
+      id: 'gid://shopify/Video/123',
+      alt: 'Demo Outfit video',
+      referencesToAdd: [EXISTING_PRODUCT_GID],
     });
 
     const finalUpdate = mocks.outfitUpdate.mock.calls.at(-1)?.[0];
@@ -366,18 +413,14 @@ describe('syncOutfitToShopifyTask.run', () => {
       .mockResolvedValueOnce(graphqlResponse({ node: { fileStatus: 'READY' } }))
       .mockResolvedValueOnce(
         graphqlResponse({
-          productUpdate: {
-            product: {
-              media: {
-                nodes: [
-                  {
-                    id: 'gid://shopify/Video/new',
-                    alt: 'Demo Outfit video',
-                    mediaContentType: 'VIDEO',
-                  },
-                ],
+          fileUpdate: {
+            files: [
+              {
+                id: 'gid://shopify/Video/new',
+                alt: 'Demo Outfit video',
+                fileStatus: 'READY',
               },
-            },
+            ],
             userErrors: [],
           },
         }),
@@ -396,13 +439,20 @@ describe('syncOutfitToShopifyTask.run', () => {
       'stagedUploadsCreate',
       'fileCreate',
       'fileStatus',
-      'productUpdate',
+      'fileUpdate',
     ]);
 
     const fileUpdateVariables = mocks.adminGraphql.mock.calls[1][1].variables;
     expect(fileUpdateVariables.files[0]).toEqual({
       id: 'gid://shopify/Video/old',
       referencesToRemove: [EXISTING_PRODUCT_GID],
+    });
+
+    const addFileUpdateVariables = mocks.adminGraphql.mock.calls[5][1].variables;
+    expect(addFileUpdateVariables.files[0]).toEqual({
+      id: 'gid://shopify/Video/new',
+      alt: 'Demo Outfit video',
+      referencesToAdd: [EXISTING_PRODUCT_GID],
     });
 
     const finalUpdate = mocks.outfitUpdate.mock.calls.at(-1)?.[0];

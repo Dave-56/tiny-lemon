@@ -72,7 +72,14 @@ export const syncOutfitToShopifyTask = task({
     const errorMessage = error instanceof Error ? error.message : 'Shopify sync failed.';
     logTaskLifecycle('task.failed_final', payload, { error: errorMessage });
     await prisma.outfit
-      .update({ where: { id: payload.outfitId }, data: { shopifySyncStatus: 'failed', errorMessage } })
+      .update({
+        where: { id: payload.outfitId },
+        data: {
+          shopifySyncStatus: 'failed',
+          shopifySyncStartedAt: null,
+          errorMessage,
+        },
+      })
       .catch(() => {});
   },
 
@@ -88,15 +95,6 @@ export const syncOutfitToShopifyTask = task({
     if (!outfit) throw new Error(`Outfit ${outfitId} not found for shop ${shopId}.`);
     if (outfit.status !== 'completed') throw new Error('Outfit is not completed. Cannot sync.');
 
-    // Idempotency guard: bail if already syncing recently (< 10 min)
-    if (
-      outfit.shopifySyncStatus === 'syncing' &&
-      outfit.shopifySyncedAt &&
-      Date.now() - outfit.shopifySyncedAt.getTime() < 10 * 60 * 1000
-    ) {
-      return { outfitId, status: 'already_syncing' };
-    }
-
     // ── 2. Load token-refresh-aware Shopify Admin client ─────────────────────
     // `unauthenticated.admin` loads the offline session and refreshes expiring
     // offline access tokens when needed. Reading Session.accessToken directly
@@ -105,7 +103,11 @@ export const syncOutfitToShopifyTask = task({
 
     await prisma.outfit.update({
       where: { id: outfitId },
-      data: { shopifySyncStatus: 'syncing', shopifySyncedAt: new Date() },
+      data: {
+        shopifySyncStatus: 'syncing',
+        shopifySyncStartedAt: new Date(),
+        errorMessage: null,
+      },
     });
 
     // ── 3. Order images: front → three-quarter → back ─────────────────────────
@@ -223,6 +225,8 @@ export const syncOutfitToShopifyTask = task({
         shopifyProductCreatedByApp: ownedByApp,
         shopifySyncStatus: 'synced',
         shopifySyncedAt: new Date(),
+        shopifySyncStartedAt: null,
+        errorMessage: null,
         ...(videoSync
           ? {
               shopifyVideoFileId: videoSync.fileId,
@@ -328,7 +332,7 @@ async function syncVideoToShopify(args: {
   const videoBuffer = await downloadVideo(outfit.videoUrl);
   const stagedTarget = await createVideoStagedUpload(admin, filename, videoBuffer.length);
   await uploadVideoToStagedTarget(stagedTarget, videoBuffer, filename);
-  const fileId = await createShopifyVideoFile(admin, stagedTarget.resourceUrl, alt, filename);
+  const fileId = await createShopifyVideoFile(admin, stagedTarget.resourceUrl, alt);
   await waitForShopifyFileReady(admin, fileId);
   const mediaId = await associateVideoFileWithProduct(admin, productGid, fileId, alt);
 
@@ -412,7 +416,6 @@ async function createShopifyVideoFile(
   admin: ShopifyAdminClient,
   resourceUrl: string,
   alt: string,
-  filename: string,
 ): Promise<string> {
   const data = await shopifyGraphQL(admin, `
     mutation fileCreate($files: [FileCreateInput!]!) {
@@ -431,7 +434,6 @@ async function createShopifyVideoFile(
         originalSource: resourceUrl,
         alt,
         contentType: 'VIDEO',
-        filename,
       },
     ],
   });
@@ -478,54 +480,35 @@ async function associateVideoFileWithProduct(
   alt: string,
 ): Promise<string> {
   const data = await shopifyGraphQL(admin, `
-    mutation productUpdate($product: ProductUpdateInput!, $media: [CreateMediaInput!]) {
-      productUpdate(product: $product, media: $media) {
-        product {
+    mutation fileUpdate($files: [FileUpdateInput!]!) {
+      fileUpdate(files: $files) {
+        files {
           id
-          media(first: 50) {
-            nodes {
-              id
-              alt
-              mediaContentType
-              status
-            }
-          }
+          alt
+          fileStatus
         }
         userErrors { field message }
       }
     }
   `, {
-    product: { id: productGid },
-    media: [
+    files: [
       {
-        originalSource: fileId,
+        id: fileId,
         alt,
-        mediaContentType: 'VIDEO',
+        referencesToAdd: [productGid],
       },
     ],
   });
 
-  const payload = data.productUpdate as {
-    product?: {
-      media?: {
-        nodes?: Array<{
-          id: string;
-          alt?: string | null;
-          mediaContentType?: string;
-          status?: string;
-        }>;
-      };
-    };
+  const payload = data.fileUpdate as {
+    files?: Array<{ id: string; alt?: string | null; fileStatus?: string }>;
     userErrors?: Array<{ field?: unknown; message: string }>;
   };
   if (payload.userErrors?.length) {
-    throw new Error(`productUpdate video media error: ${formatGraphqlUserError(payload.userErrors[0])}`);
+    throw new Error(`fileUpdate add video association error: ${formatGraphqlUserError(payload.userErrors[0])}`);
   }
 
-  const media = payload.product?.media?.nodes?.find(
-    (node) => node.id === fileId || (node.mediaContentType === 'VIDEO' && node.alt === alt),
-  );
-  return media?.id ?? fileId;
+  return payload.files?.[0]?.id ?? fileId;
 }
 
 async function removeTrackedVideoAssociation(

@@ -67,7 +67,7 @@ describe("app.outfits action publish_to_shopify", () => {
       status: "completed",
       shopifyProductId: "gid://shopify/Product/123",
       shopifySyncStatus: "syncing",
-      shopifySyncedAt: new Date(),
+      shopifySyncStartedAt: new Date(),
     });
 
     const res = await action({
@@ -91,7 +91,7 @@ describe("app.outfits action publish_to_shopify", () => {
       jobId: null,
       shopifyProductId: "gid://shopify/Product/123",
       shopifySyncStatus: "failed",
-      shopifySyncedAt: new Date(Date.now() - 20 * 60 * 1000),
+      shopifySyncStartedAt: new Date(Date.now() - 20 * 60 * 1000),
     });
 
     const res = await action({
@@ -112,7 +112,11 @@ describe("app.outfits action publish_to_shopify", () => {
     });
     expect(mocks.outfitUpdate).toHaveBeenCalledWith({
       where: { id: "outfit-123" },
-      data: { shopifySyncStatus: "syncing", jobId: "run_123" },
+      data: {
+        shopifySyncStatus: "syncing",
+        shopifySyncStartedAt: expect.any(Date),
+        jobId: "run_123",
+      },
     });
   });
 
@@ -122,7 +126,7 @@ describe("app.outfits action publish_to_shopify", () => {
       jobId: "run_stale",
       shopifyProductId: "gid://shopify/Product/123",
       shopifySyncStatus: "syncing",
-      shopifySyncedAt: new Date(Date.now() - 20 * 60 * 1000),
+      shopifySyncStartedAt: new Date(Date.now() - 20 * 60 * 1000),
     });
 
     const res = await action({
@@ -144,7 +148,11 @@ describe("app.outfits action publish_to_shopify", () => {
     });
     expect(mocks.outfitUpdate).toHaveBeenCalledWith({
       where: { id: "outfit-123" },
-      data: { shopifySyncStatus: "syncing", jobId: "run_123" },
+      data: {
+        shopifySyncStatus: "syncing",
+        shopifySyncStartedAt: expect.any(Date),
+        jobId: "run_123",
+      },
     });
   });
 
@@ -167,7 +175,7 @@ describe("app.outfits action publish_to_shopify", () => {
     expect(mocks.cancelRunSafely).toHaveBeenCalledWith("run_finished");
     expect(mocks.outfitUpdate).toHaveBeenCalledWith({
       where: { id: "outfit-123" },
-      data: { shopifySyncStatus: null },
+      data: { shopifySyncStatus: null, shopifySyncStartedAt: null },
     });
   });
 
