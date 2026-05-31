@@ -1,6 +1,6 @@
 # TinyLemon
 
-TinyLemon is a Shopify app for fashion brands that turns flat-lay and product photos into consistent AI on-model studio images. It helps merchants create product-page imagery without booking a traditional photoshoot.
+> TinyLemon is a Shopify app for fashion brands that turns flat-lay and product photos into consistent AI on-model studio images without a traditional photoshoot.
 
 ## Product
 

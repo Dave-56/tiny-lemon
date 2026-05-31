@@ -4,6 +4,7 @@ import { Link, useLoaderData } from "react-router";
 
 import { login } from "../shopify.server";
 import { SHOPIFY_APP_STORE_URL } from "../lib/shopifyAppStoreUrl";
+import { buildSeoMeta } from "../lib/seo";
 import {
   trackMarketingEvent,
   trackShopifyAppStoreClick,
@@ -14,15 +15,10 @@ import landingStyles from "./_index/styles.module.css";
 import styles from "../styles/pricing.module.css";
 
 export const meta: MetaFunction = () => {
-  const title = "Pricing — TinyLemon";
+  const title = "AI Fashion Product Photo Pricing | TinyLemon";
   const description =
     "Pricing tiers for TinyLemon: from free trial to scale. Beautiful product photos for fashion brands on Shopify.";
-  return [
-    { title },
-    { name: "description", content: description },
-    { property: "og:title", content: title },
-    { property: "og:description", content: description },
-  ];
+  return buildSeoMeta({ title, description, path: "/pricing" });
 };
 
 export const loader = async (_args: LoaderFunctionArgs) => {

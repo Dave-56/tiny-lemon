@@ -1,15 +1,15 @@
 import type { MetaFunction } from "react-router";
 import { Link } from "react-router";
+import { buildSeoMeta } from "../lib/seo";
 import styles from "../styles/legal.module.css";
 
-export const meta: MetaFunction = () => [
-  { title: "Terms of Service | TinyLemon" },
-  {
-    name: "description",
-    content:
+export const meta: MetaFunction = () =>
+  buildSeoMeta({
+    title: "Terms of Service | TinyLemon",
+    description:
       "TinyLemon terms of service for Shopify merchants using the AI product photography app.",
-  },
-];
+    path: "/terms",
+  });
 
 export default function Terms() {
   return (

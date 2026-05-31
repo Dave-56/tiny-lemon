@@ -1,5 +1,6 @@
 ---
 title: "Best Modelia Alternatives for Shopify Fashion Product Photos"
+seoTitle: "Modelia Alternatives for Shopify Fashion Photos"
 slug: "best-modelia-alternatives-for-shopify-fashion-product-photos"
 date: "2026-05-28"
 updated: "2026-05-28"

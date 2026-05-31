@@ -1,15 +1,18 @@
-import { readFileSync, readdirSync } from "fs";
+import { readFileSync, readdirSync, statSync } from "fs";
 import { join } from "path";
 
 const ROOT = process.cwd();
 const BLOG_DIR = join(ROOT, "content", "blog");
 const SITE_URL = "https://tinylemon.xyz";
 const BLOG_TITLE_SUFFIX = " | TinyLemon";
-const MAX_FINAL_TITLE_LENGTH = 70;
+const MIN_META_TITLE_LENGTH = 25;
+const MAX_META_TITLE_LENGTH = 66;
+const MAX_FINAL_TITLE_LENGTH = 66;
 const MAX_SEO_TITLE_LENGTH = 55;
 const MIN_EXCERPT_LENGTH = 80;
 const MAX_EXCERPT_LENGTH = 180;
 const MIN_INTERNAL_LINKS = 2;
+const MAX_OG_IMAGE_BYTES = 1_000_000;
 
 type BlogPost = {
   fileName: string;
@@ -104,6 +107,9 @@ function validateBlogPosts(posts: BlogPost[]) {
     }
 
     const finalTitle = `${seoTitle || title || ""}${BLOG_TITLE_SUFFIX}`;
+    if (finalTitle.length < MIN_META_TITLE_LENGTH) {
+      fail(`${label}: computed title is ${finalTitle.length} chars; keep it >= ${MIN_META_TITLE_LENGTH}`);
+    }
     if (finalTitle.length > MAX_FINAL_TITLE_LENGTH) {
       fail(`${label}: computed title is ${finalTitle.length} chars; keep it <= ${MAX_FINAL_TITLE_LENGTH}`);
     }
@@ -134,6 +140,14 @@ function validateLlmsTxt(posts: BlogPost[]) {
     return;
   }
 
+  const lines = llms.split(/\r?\n/);
+  if (!/^#\s+\S/.test(lines[0] || "")) {
+    fail("public/llms.txt: first line must be an H1 project name");
+  }
+  if (!lines.slice(0, 3).some((line) => /^>\s+\S/.test(line))) {
+    fail("public/llms.txt: add a blockquote summary within the first 3 lines");
+  }
+
   const requiredUrls = [
     `${SITE_URL}/`,
     `${SITE_URL}/try`,
@@ -147,23 +161,75 @@ function validateLlmsTxt(posts: BlogPost[]) {
   }
 }
 
+function extractMetaTitle(source: string): string | null {
+  const patterns = [
+    /const\s+title\s*=\s*["']([^"']+)["']/,
+    /title:\s*["']([^"']+)["']/,
+    /\{\s*title:\s*["']([^"']+)["']\s*\}/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = source.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+
+  return null;
+}
+
 function validatePublicRouteMeta() {
   for (const route of publicSeoRoutes) {
     const label = `${route.file} (${route.route})`;
     const source = readFileSync(join(ROOT, route.file), "utf-8");
+    const title = extractMetaTitle(source);
 
     if (!source.includes("export const meta")) {
       fail(`${label}: missing export const meta`);
     }
-    if (!/{\s*title\s*[:}]/s.test(source)) {
+    if (!title && !source.includes("buildSeoMeta")) {
       fail(`${label}: meta must set a title`);
     }
-    if (!/name:\s*["']description["']/.test(source)) {
+    if (!/buildSeoMeta|name:\s*["']description["']/.test(source)) {
       fail(`${label}: meta must set a description`);
+    }
+    if (title && title.length < MIN_META_TITLE_LENGTH) {
+      fail(`${label}: title is ${title.length} chars; keep it >= ${MIN_META_TITLE_LENGTH}`);
+    }
+    if (title && title.length > MAX_META_TITLE_LENGTH) {
+      fail(`${label}: title is ${title.length} chars; keep it <= ${MAX_META_TITLE_LENGTH}`);
+    }
+    if (!/buildSeoMeta|property:\s*["']og:image["']/.test(source)) {
+      fail(`${label}: meta must set an og:image`);
+    }
+    if (!/buildSeoMeta|rel:\s*["']canonical["']/.test(source)) {
+      fail(`${label}: meta must set a canonical link`);
     }
     if (/["']\/auth\/login["']/.test(source)) {
       fail(`${label}: public SEO routes must not link directly to /auth/login`);
     }
+  }
+}
+
+function validateBlogRouteMeta() {
+  const label = "app/routes/blog.$slug.tsx (/blog/:slug)";
+  const source = readFileSync(join(ROOT, "app/routes/blog.$slug.tsx"), "utf-8");
+
+  if (!/buildSeoMeta|property:\s*["']og:image["']/.test(source)) {
+    fail(`${label}: meta must set an og:image`);
+  }
+  if (!/buildSeoMeta|rel:\s*["']canonical["']/.test(source)) {
+    fail(`${label}: meta must set a canonical link`);
+  }
+}
+
+function validateDefaultOgImage() {
+  const ogPath = join(ROOT, "public", "og-default.jpg");
+  try {
+    const stats = statSync(ogPath);
+    if (stats.size > MAX_OG_IMAGE_BYTES) {
+      fail(`public/og-default.jpg: file is ${stats.size} bytes; keep it under ${MAX_OG_IMAGE_BYTES}`);
+    }
+  } catch {
+    fail("public/og-default.jpg: missing default OG image");
   }
 }
 
@@ -172,6 +238,8 @@ function main() {
   validateBlogPosts(posts);
   validateLlmsTxt(posts);
   validatePublicRouteMeta();
+  validateBlogRouteMeta();
+  validateDefaultOgImage();
 
   if (failures.length > 0) {
     console.error("SEO content check failed:\n");
