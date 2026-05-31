@@ -3,6 +3,7 @@ import { Link, useLoaderData } from "react-router";
 
 import { login } from "../shopify.server";
 import { SHOPIFY_APP_STORE_URL } from "../lib/shopifyAppStoreUrl";
+import { buildSeoMeta } from "../lib/seo";
 import {
   trackShopifyAppStoreClick,
   trackTryDemoClick,
@@ -12,15 +13,10 @@ import landingStyles from "./_index/styles.module.css";
 import styles from "../styles/features.module.css";
 
 export const meta: MetaFunction = () => {
-  const title = "Features — TinyLemon";
+  const title = "Shopify AI Model Photo Features | TinyLemon";
   const description =
     "Turn flat-lays into studio shots in minutes — upload from your factory or DIY shoot. On-model photos ready for your Shopify store. No photographer, no shoot day.";
-  return [
-    { title },
-    { name: "description", content: description },
-    { property: "og:title", content: title },
-    { property: "og:description", content: description },
-  ];
+  return buildSeoMeta({ title, description, path: "/features" });
 };
 
 export const loader = async (_args: LoaderFunctionArgs) => {

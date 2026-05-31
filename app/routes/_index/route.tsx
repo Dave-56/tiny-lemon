@@ -3,6 +3,7 @@ import { redirect, Link, useLoaderData } from "react-router";
 
 import { BeforeAfterSlider } from "../../components/BeforeAfterSlider";
 import { SHOPIFY_APP_STORE_URL } from "../../lib/shopifyAppStoreUrl";
+import { buildSeoMeta } from "../../lib/seo";
 import {
   trackShopifyAppStoreClick,
   trackTryDemoClick,
@@ -76,17 +77,14 @@ export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const title = "Tiny Lemon Shopify App for AI Model Photos";
   const description =
     "Tiny Lemon is a Shopify app that turns flat-lay and supplier photos into AI model photos and short product videos for fashion product listings.";
-  const ogImage = data?.origin ? `${data.origin}/app-icon-1200x1200.png` : undefined;
   const origin = data?.origin ?? "https://tinylemon.xyz";
   const installUrl = data?.installUrl ?? SHOPIFY_APP_STORE_URL;
-  return [
-    { title },
-    { name: "description", content: description },
-    { property: "og:title", content: title },
-    { property: "og:description", content: description },
-    { "script:ld+json": getStructuredData(origin, installUrl) },
-    ...(ogImage ? [{ property: "og:image", content: ogImage }] : []),
-  ];
+  return buildSeoMeta({
+    title,
+    description,
+    path: "/",
+    extra: [{ "script:ld+json": getStructuredData(origin, installUrl) }],
+  });
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {

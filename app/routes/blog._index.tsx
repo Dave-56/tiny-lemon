@@ -4,6 +4,7 @@ import { Link, useLoaderData } from "react-router";
 import { login } from "../shopify.server";
 import { getBlogPosts } from "../lib/blog.server";
 import { SHOPIFY_APP_STORE_URL } from "../lib/shopifyAppStoreUrl";
+import { buildSeoMeta } from "../lib/seo";
 import {
   trackShopifyAppStoreClick,
   trackTryDemoClick,
@@ -16,12 +17,7 @@ export const meta: MetaFunction = () => {
   const title = "Shopify AI Photo Guides — TinyLemon";
   const description =
     "Guides for Shopify fashion brands using AI product photography, model photos, and better product page imagery.";
-  return [
-    { title },
-    { name: "description", content: description },
-    { property: "og:title", content: title },
-    { property: "og:description", content: description },
-  ];
+  return buildSeoMeta({ title, description, path: "/blog" });
 };
 
 export const loader = async (_args: LoaderFunctionArgs) => {

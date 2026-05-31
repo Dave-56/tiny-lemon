@@ -11,6 +11,7 @@ import { DEMO_SHOP_ID } from "../lib/billing.server";
 import { buildRateLimitHeaders, consumeRateLimit } from "../lib/rateLimit.server";
 import { getNormalizedRateLimitSubject } from "../lib/rateLimitSubject.server";
 import { SHOPIFY_APP_STORE_URL } from "../lib/shopifyAppStoreUrl";
+import { buildSeoMeta } from "../lib/seo";
 import {
   trackMarketingEvent,
   trackShopifyAppStoreClick,
@@ -23,12 +24,7 @@ export const meta: MetaFunction = () => {
   const title = "Demo: flat-lay to studio shot — Tiny Lemon";
   const description =
     "Generate one AI studio shot from your flat-lay in seconds. No signup. For fashion brands on Shopify.";
-  return [
-    { title },
-    { name: "description", content: description },
-    { property: "og:title", content: title },
-    { property: "og:description", content: description },
-  ];
+  return buildSeoMeta({ title, description, path: "/try" });
 };
 
 type PresetModel = { id: string; name: string; imageUrl: string; gender: string; ethnicity: string; bodyBuild: string; height: string };

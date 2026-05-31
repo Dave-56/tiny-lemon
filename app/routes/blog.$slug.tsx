@@ -4,6 +4,7 @@ import { Link, useLoaderData } from "react-router";
 import { login } from "../shopify.server";
 import { getBlogPost, getSiteBaseUrl } from "../lib/blog.server";
 import { SHOPIFY_APP_STORE_URL } from "../lib/shopifyAppStoreUrl";
+import { buildSeoMeta } from "../lib/seo";
 import {
   trackShopifyAppStoreClick,
   trackTryDemoClick,
@@ -31,16 +32,16 @@ export const meta: MetaFunction<typeof loader> = ({ data }) => {
     : data.post.title;
   const title = `${data.post.seoTitle || data.post.title} | TinyLemon`;
   const description = data.post.excerpt || postTitle;
-  return [
-    { title },
-    { name: "description", content: description },
-    { property: "og:title", content: title },
-    { property: "og:description", content: description },
-    { property: "og:type", content: "article" },
-    { property: "og:url", content: data.postUrl },
-    { property: "article:published_time", content: data.post.date },
-    { property: "article:modified_time", content: data.post.updated },
-  ];
+  return buildSeoMeta({
+    title,
+    description,
+    path: `/blog/${data.post.slug}`,
+    type: "article",
+    extra: [
+      { property: "article:published_time", content: data.post.date },
+      { property: "article:modified_time", content: data.post.updated },
+    ],
+  });
 };
 
 export const loader = async ({
