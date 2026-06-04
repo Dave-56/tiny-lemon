@@ -16,6 +16,7 @@ export async function ensureBetaAccessForShop(shopId: string) {
       betaAccess: true,
       betaStatus: true,
       betaCap: true,
+      betaGrantedBy: true,
     },
   });
 
@@ -27,7 +28,16 @@ export async function ensureBetaAccessForShop(shopId: string) {
     return { granted: false as const, skipped: shop.betaStatus };
   }
 
+  const usesDefaultBetaCap = shop.betaCap == null || shop.betaGrantedBy === "default_beta";
+
   if (shop.betaAccess) {
+    if (usesDefaultBetaCap && shop.betaCap !== BETA_DEFAULT_CAP) {
+      await prisma.shop.update({
+        where: { id: normalizedShopId },
+        data: { betaCap: BETA_DEFAULT_CAP },
+      });
+    }
+
     return { granted: false as const, skipped: "already_granted" };
   }
 
@@ -36,7 +46,7 @@ export async function ensureBetaAccessForShop(shopId: string) {
     data: {
       betaAccess: true,
       betaStatus: BETA_STATUS.invited,
-      betaCap: shop.betaCap ?? BETA_DEFAULT_CAP,
+      betaCap: usesDefaultBetaCap ? BETA_DEFAULT_CAP : shop.betaCap,
       betaGrantedAt: new Date(),
       betaGrantedBy: "default_beta",
     },

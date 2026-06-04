@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => ({
   },
   canGenerateVideo: vi.fn(),
   getEffectiveEntitlements: vi.fn(),
+  getMonthlyUsage: vi.fn(),
+  reserveGenerations: vi.fn(),
+  refundReservedGeneration: vi.fn(),
   enqueueGenerateVideo: vi.fn(),
   cancelRunSafely: vi.fn(),
   logServerEvent: vi.fn(),
@@ -20,6 +23,9 @@ vi.mock("../db.server", () => ({ default: mocks.prisma }));
 vi.mock("./plans", () => ({ canGenerateVideo: mocks.canGenerateVideo }));
 vi.mock("./billing.server", () => ({
   getEffectiveEntitlements: mocks.getEffectiveEntitlements,
+  getMonthlyUsage: mocks.getMonthlyUsage,
+  reserveGenerations: mocks.reserveGenerations,
+  refundReservedGeneration: mocks.refundReservedGeneration,
 }));
 vi.mock("./triggerJobs.server", () => ({
   enqueueGenerateVideo: mocks.enqueueGenerateVideo,
@@ -38,7 +44,15 @@ describe("handleVideoGenerateRequest", () => {
     mocks.getEffectiveEntitlements.mockResolvedValue({
       publicPlan: "free",
       isBeta: true,
+      effectiveLimit: 100,
     });
+    mocks.getMonthlyUsage.mockResolvedValue(0);
+    mocks.reserveGenerations.mockResolvedValue({
+      publicPlan: "free",
+      isBeta: true,
+      effectiveLimit: 100,
+    });
+    mocks.refundReservedGeneration.mockResolvedValue(true);
     mocks.enqueueGenerateVideo.mockResolvedValue({ id: "run_123" });
     mocks.prisma.outfit.update.mockResolvedValue({});
     mocks.prisma.outfit.updateMany.mockResolvedValue({ count: 1 });
@@ -106,6 +120,7 @@ describe("handleVideoGenerateRequest", () => {
     expect(body.alreadyInProgress).toBe(true);
     expect(body.videoStatus).toBe("processing");
     expect(mocks.enqueueGenerateVideo).not.toHaveBeenCalled();
+    expect(mocks.reserveGenerations).not.toHaveBeenCalled();
   });
 
   it("returns idempotent alreadyCompleted for completed with videoUrl", async () => {
@@ -128,6 +143,7 @@ describe("handleVideoGenerateRequest", () => {
     expect(body.alreadyCompleted).toBe(true);
     expect(body.videoUrl).toBe("https://blob.example.com/video.mp4");
     expect(mocks.enqueueGenerateVideo).not.toHaveBeenCalled();
+    expect(mocks.reserveGenerations).not.toHaveBeenCalled();
   });
 
   it("enqueues a fresh job for explicit regenerate and keeps the existing videoUrl", async () => {
@@ -165,11 +181,22 @@ describe("handleVideoGenerateRequest", () => {
       }),
     );
     expect(claim.data).not.toHaveProperty("videoUrl");
-    expect(mocks.enqueueGenerateVideo).toHaveBeenCalledWith({
-      outfitId: "outfit_1",
-      shopId: "shop-a.myshopify.com",
-      brandStyleId: "minimal",
-    });
+    expect(mocks.reserveGenerations).toHaveBeenCalledWith(
+      "shop-a.myshopify.com",
+      1,
+      { description: expect.stringMatching(/^generation reservation:video:regenerate:outfit_1:/) },
+    );
+    expect(mocks.enqueueGenerateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outfitId: "outfit_1",
+        shopId: "shop-a.myshopify.com",
+        brandStyleId: "minimal",
+        creditReservation: {
+          reservationDescription: expect.stringMatching(/^generation reservation:video:regenerate:outfit_1:/),
+          refundDescription: expect.stringMatching(/^generation refund:video:regenerate:outfit_1:.*:no_output_failure$/),
+        },
+      }),
+    );
   });
 
   it("claims and enqueues for a fresh outfit", async () => {
@@ -196,11 +223,60 @@ describe("handleVideoGenerateRequest", () => {
         data: expect.objectContaining({ videoStatus: "pending" }),
       }),
     );
-    expect(mocks.enqueueGenerateVideo).toHaveBeenCalledWith({
+    expect(mocks.reserveGenerations).toHaveBeenCalledWith(
+      "shop-a.myshopify.com",
+      1,
+      { description: expect.stringMatching(/^generation reservation:video:generate:outfit_1:/) },
+    );
+    expect(mocks.enqueueGenerateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outfitId: "outfit_1",
+        shopId: "shop-a.myshopify.com",
+        brandStyleId: "editorial",
+        creditReservation: {
+          reservationDescription: expect.stringMatching(/^generation reservation:video:generate:outfit_1:/),
+          refundDescription: expect.stringMatching(/^generation refund:video:generate:outfit_1:.*:no_output_failure$/),
+        },
+      }),
+    );
+  });
+
+  it("returns 402 and restores claim when video credit limit is reached", async () => {
+    mocks.prisma.outfit.findFirst.mockResolvedValue({
+      id: "outfit_1",
+      status: "completed",
+      brandStyleId: "minimal",
+      videoStatus: null,
+      videoUrl: null,
+      images: [{ id: "img_1" }],
+    });
+    mocks.reserveGenerations.mockRejectedValue(new Error("insufficient_credits"));
+    mocks.getMonthlyUsage.mockResolvedValue(100);
+    mocks.getEffectiveEntitlements.mockResolvedValue({
+      publicPlan: "free",
+      isBeta: true,
+      effectiveLimit: 100,
+    });
+
+    const res = await handleVideoGenerateRequest({
       outfitId: "outfit_1",
       shopId: "shop-a.myshopify.com",
-      brandStyleId: "editorial",
     });
+
+    expect(res.status).toBe(402);
+    await expect(res.json()).resolves.toMatchObject({
+      error: "limit_reached",
+      used: 100,
+      limit: 100,
+      isBeta: true,
+    });
+    expect(mocks.enqueueGenerateVideo).not.toHaveBeenCalled();
+    expect(mocks.prisma.outfit.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "outfit_1" },
+        data: expect.objectContaining({ videoStatus: null, videoJobId: null }),
+      }),
+    );
   });
 
   it("returns 503 and restores claim when enqueue fails", async () => {
@@ -220,6 +296,13 @@ describe("handleVideoGenerateRequest", () => {
     });
 
     expect(res.status).toBe(503);
+    expect(mocks.refundReservedGeneration).toHaveBeenCalledWith(
+      "shop-a.myshopify.com",
+      {
+        reservationDescription: expect.stringMatching(/^generation reservation:video:generate:outfit_1:/),
+        refundDescription: expect.stringMatching(/^generation refund:video:generate:outfit_1:.*:pre_enqueue_failure$/),
+      },
+    );
     // Should restore the claim
     expect(mocks.prisma.outfit.update).toHaveBeenCalledWith(
       expect.objectContaining({

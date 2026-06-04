@@ -7,7 +7,8 @@ import { AuthenticatedFetchProvider } from "../contexts/AuthenticatedFetchContex
 import { PendingItemsProvider } from "../contexts/PendingItemsContext";
 import { PostHogProvider } from "../components/PostHogProvider";
 import { authenticate } from "../shopify.server";
-import prisma, { ensureShop } from "../db.server";
+import prisma from "../db.server";
+import { ensureBetaAccessForShop } from "../lib/betaAccess.server";
 import { getMonthlyUsage, getEffectiveEntitlements } from "../lib/billing.server";
 import { getAppFlowRedirect } from "../lib/appFlow.server";
 import { getSupportEmail } from "../lib/support.server";
@@ -15,7 +16,7 @@ import { shopifyRedirect } from "../shopify-params";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
-  await ensureShop(session.shop);
+  await ensureBetaAccessForShop(session.shop);
 
   const [shop, brandStyle, used, entitlements] = await Promise.all([
     prisma.shop.findUnique({

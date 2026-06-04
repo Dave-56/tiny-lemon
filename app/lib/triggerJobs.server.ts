@@ -65,6 +65,10 @@ type GenerateVideoTriggerPayload = {
   outfitId: string;
   shopId: string;
   brandStyleId: string;
+  creditReservation?: {
+    reservationDescription: string;
+    refundDescription: string;
+  };
 };
 
 async function triggerTaskWithLog<TPayload extends { shopId: string }>(
