@@ -1,5 +1,10 @@
 import type { LoaderFunctionArgs } from 'react-router';
 import prisma from '../db.server';
+import { cancelRunSafely } from '../lib/triggerJobs.server';
+
+const STALE_QUEUED_GENERATION_MS = 2 * 60 * 1000;
+const STALE_QUEUED_GENERATION_MESSAGE =
+  "Generation didn't start in time. Please try again.";
 
 /**
  * Public status endpoint for outfit generation polling.
@@ -19,6 +24,8 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     select: {
       status: true,
       errorMessage: true,
+      jobId: true,
+      createdAt: true,
       cleanFlatLayUrl: true,
       videoStatus: true,
       videoUrl: true,
@@ -29,6 +36,37 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   });
 
   if (!outfit) return Response.json({ error: 'Not found' }, { status: 404 });
+
+  const isStaleQueuedGeneration =
+    outfit.status === 'pending' &&
+    outfit.jobId != null &&
+    outfit.cleanFlatLayUrl == null &&
+    outfit.images.length === 0 &&
+    Date.now() - outfit.createdAt.getTime() >= STALE_QUEUED_GENERATION_MS;
+
+  if (isStaleQueuedGeneration) {
+    const jobId = outfit.jobId;
+    if (jobId) await cancelRunSafely(jobId);
+    await prisma.outfit.update({
+      where: { id: outfitId },
+      data: {
+        status: 'failed',
+        errorMessage: STALE_QUEUED_GENERATION_MESSAGE,
+        jobId: null,
+      },
+    });
+
+    return Response.json({
+      status: 'failed',
+      errorMessage: STALE_QUEUED_GENERATION_MESSAGE,
+      cleanFlatLayUrl: null,
+      videoStatus: outfit.videoStatus ?? null,
+      videoUrl: outfit.videoUrl ?? null,
+      videoErrorMessage: outfit.videoErrorMessage ?? null,
+      videoGeneratedAt: outfit.videoGeneratedAt ?? null,
+      images: outfit.images,
+    });
+  }
 
   return Response.json({
     status: outfit.status,
