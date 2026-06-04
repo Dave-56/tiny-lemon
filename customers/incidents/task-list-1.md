@@ -80,9 +80,9 @@ Implement a graphic-critical generation path for garments with visible logos, te
 
 ## 8. Customer Follow-Up
 
-- [ ] Follow up with the customer once credits are corrected.
-- [ ] Explain that the failure came from Gemini image generation and should not have counted.
-- [ ] Ask for the video/sample garment to investigate the graphic-quality regression.
+- [x] Follow up with the customer once credits are corrected.
+- [x] Explain that the failure came from Gemini image generation and should not have counted.
+- [x] Ask for the video/sample garment to investigate the graphic-quality regression.
 
 ## 9. Blob Collision, Error Sanitization, and No-Output Refunds
 
@@ -123,11 +123,15 @@ Context:
 - Customer cannot verify whether refunded generations are visible because the app shell now shows "Unexpected Server Error".
 - This is a blocking access incident, separate from the generation-quality/refund issue.
 - Likely surfaces through a route loader, app-shell loader, auth/session path, billing lookup, onboarding redirect, or data migration mismatch.
+- Local Shopify dev must never mutate the production app URLs while customers are on prod. The production Shopify config had `automatically_update_urls_on_dev = true`, which can point the live app at a local tunnel if `shopify app dev` is run against the prod app config.
 
 Tasks:
 
 - [ ] Capture affected shop domain, app URL/path, timestamp, browser, and whether it happens inside Shopify admin embedded mode.
 - [ ] Pull production logs for the failed request and identify the exact route/loader/action throwing.
+- [x] Set production `shopify.app.toml` to `automatically_update_urls_on_dev = false`.
+- [x] Create a separate dev Shopify app config before running local embedded-app dev again.
+- [ ] Use a separate dev Shopify app, dev store, dev database, and Trigger.dev dev keys for local testing.
 - [ ] Check whether the failure happens before or after `authenticate.admin(request)`.
 - [ ] Verify the app shell loader handles missing `Shop`, missing `BrandStyle`, missing beta fields, and stale sessions without throwing.
 - [ ] Add structured route-error logging with `shop`, route path, request id, and sanitized error kind so future "Unexpected Server Error" reports are actionable.
@@ -213,3 +217,23 @@ Tasks:
 - [x] Pass credit reservation metadata into `generate-video`.
 - [x] Refund video credits on final video task failure and stale-abort no-output cases.
 - [x] Add focused tests for video charging, limit exhaustion, enqueue refund, final failure refund, and stale-abort refund.
+
+## 15. Deployment, Backfill, and Support Operations
+
+Context:
+
+- Code changes only affect production once deployed, and existing database rows can have older entitlement state.
+- Launch/tester shops should have beta access immediately, not only after they next enter the app.
+- Merchants and support need clear visibility into what counts, what is refunded, and how credits can be corrected.
+
+Tasks:
+
+- [x] Audit existing `Shop` rows for plan, beta access, beta status, beta cap, and grant source.
+- [x] Backfill existing real shops to beta access while preserving paused/ended exclusions, manual grant labels, and paid-plan minimum allowances.
+- [x] Keep `__demo__` excluded from the beta backfill.
+- [x] Add entitlement guard so beta access cannot reduce a paid plan allowance such as Scale.
+- [ ] After deploy, verify production behavior for new install beta access, 100-generation beta allowance, video credit charging, and failed-attempt refunds.
+- [ ] Add merchant-facing copy for credit rules: video uses 1 generation, failed no-output attempts are not counted, and beta allowance is 100/month.
+- [ ] Add internal support/admin visibility for shop usage, refund transactions, beta status, beta cap, and grant source.
+- [ ] Add a safe support action or script for regranting/refunding credits without direct manual SQL.
+- [ ] Document the support policy for when to manually refund provider failures, video failures, and unsatisfactory-output disputes.

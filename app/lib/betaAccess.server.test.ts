@@ -27,6 +27,7 @@ describe("ensureBetaAccessForShop", () => {
 
   it("grants default beta access with the default cap for a shop that is not already beta", async () => {
     mocks.shopFindUnique.mockResolvedValueOnce({
+      plan: "free",
       betaAccess: false,
       betaStatus: null,
       betaCap: null,
@@ -44,6 +45,7 @@ describe("ensureBetaAccessForShop", () => {
     expect(mocks.shopFindUnique).toHaveBeenCalledWith({
       where: { id: "atlantic-mood.myshopify.com" },
       select: {
+        plan: true,
         betaAccess: true,
         betaStatus: true,
         betaCap: true,
@@ -64,6 +66,7 @@ describe("ensureBetaAccessForShop", () => {
 
   it("does not re-enable paused or ended beta shops", async () => {
     mocks.shopFindUnique.mockResolvedValueOnce({
+      plan: "free",
       betaAccess: false,
       betaStatus: BETA_STATUS.paused,
       betaCap: null,
@@ -80,6 +83,7 @@ describe("ensureBetaAccessForShop", () => {
 
   it("keeps default-beta shops aligned with the current default cap", async () => {
     mocks.shopFindUnique.mockResolvedValueOnce({
+      plan: "free",
       betaAccess: true,
       betaStatus: BETA_STATUS.active,
       betaCap: 50,
@@ -100,6 +104,7 @@ describe("ensureBetaAccessForShop", () => {
 
   it("preserves manually granted beta caps", async () => {
     mocks.shopFindUnique.mockResolvedValueOnce({
+      plan: "Growth",
       betaAccess: true,
       betaStatus: BETA_STATUS.active,
       betaCap: 150,
@@ -112,5 +117,31 @@ describe("ensureBetaAccessForShop", () => {
     });
 
     expect(mocks.shopUpdate).not.toHaveBeenCalled();
+  });
+
+  it("does not let default beta lower a higher paid plan limit", async () => {
+    mocks.shopFindUnique.mockResolvedValueOnce({
+      plan: "Scale",
+      betaAccess: false,
+      betaStatus: null,
+      betaCap: null,
+      betaGrantedBy: null,
+    });
+    mocks.shopUpdate.mockResolvedValueOnce({});
+
+    await expect(ensureBetaAccessForShop("shop-a.myshopify.com")).resolves.toEqual({
+      granted: true,
+    });
+
+    expect(mocks.shopUpdate).toHaveBeenCalledWith({
+      where: { id: "shop-a.myshopify.com" },
+      data: {
+        betaAccess: true,
+        betaStatus: BETA_STATUS.invited,
+        betaCap: 300,
+        betaGrantedAt: expect.any(Date),
+        betaGrantedBy: "default_beta",
+      },
+    });
   });
 });

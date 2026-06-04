@@ -1,6 +1,6 @@
 import prisma, { ensureShop } from "../db.server";
 import { BETA_STATUS } from "./beta";
-import { BETA_DEFAULT_CAP } from "./billing.server";
+import { getEffectiveBetaLimit } from "./billing.server";
 
 function normalizeShopDomain(domain: string): string {
   return domain.trim().toLowerCase();
@@ -13,6 +13,7 @@ export async function ensureBetaAccessForShop(shopId: string) {
   const shop = await prisma.shop.findUnique({
     where: { id: normalizedShopId },
     select: {
+      plan: true,
       betaAccess: true,
       betaStatus: true,
       betaCap: true,
@@ -28,13 +29,15 @@ export async function ensureBetaAccessForShop(shopId: string) {
     return { granted: false as const, skipped: shop.betaStatus };
   }
 
-  const usesDefaultBetaCap = shop.betaCap == null || shop.betaGrantedBy === "default_beta";
+  const usesDefaultBetaCap =
+    shop.betaCap == null || shop.betaGrantedBy === "default_beta";
+  const effectiveBetaLimit = getEffectiveBetaLimit(shop.plan, shop.betaCap);
 
   if (shop.betaAccess) {
-    if (usesDefaultBetaCap && shop.betaCap !== BETA_DEFAULT_CAP) {
+    if (usesDefaultBetaCap && shop.betaCap !== effectiveBetaLimit) {
       await prisma.shop.update({
         where: { id: normalizedShopId },
-        data: { betaCap: BETA_DEFAULT_CAP },
+        data: { betaCap: effectiveBetaLimit },
       });
     }
 
@@ -46,9 +49,9 @@ export async function ensureBetaAccessForShop(shopId: string) {
     data: {
       betaAccess: true,
       betaStatus: BETA_STATUS.invited,
-      betaCap: usesDefaultBetaCap ? BETA_DEFAULT_CAP : shop.betaCap,
+      betaCap: effectiveBetaLimit,
       betaGrantedAt: new Date(),
-      betaGrantedBy: "default_beta",
+      betaGrantedBy: shop.betaGrantedBy ?? "default_beta",
     },
   });
 

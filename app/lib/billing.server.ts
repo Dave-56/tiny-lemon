@@ -22,6 +22,14 @@ export const PLAN_ANGLES: Record<string, string[]> = {
   Scale: [...FULL_GENERATION_ANGLES],
 };
 
+export function getEffectiveBetaLimit(
+  publicPlan: string,
+  betaCap: number | null | undefined,
+): number {
+  const planLimit = PLAN_LIMITS[publicPlan] ?? PLAN_LIMITS.free;
+  return Math.max(betaCap ?? BETA_DEFAULT_CAP, BETA_DEFAULT_CAP, planLimit);
+}
+
 type ReserveGenerationsOptions = {
   description?: string;
 };
@@ -109,7 +117,7 @@ export async function getEffectiveEntitlements(
       publicPlan,
       isBeta: true,
       betaStatus,
-      effectiveLimit: shop?.betaCap ?? BETA_DEFAULT_CAP,
+      effectiveLimit: getEffectiveBetaLimit(publicPlan, shop?.betaCap),
       effectiveAngles: BETA_FULL_ANGLES,
       showUpgradePrompt: false,
     };
