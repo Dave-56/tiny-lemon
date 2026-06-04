@@ -12,6 +12,8 @@ export interface PendingEntry {
   id: string;          // matches BatchItem.id for deduplication
   file: File;
   backFile: File | null;
+  primaryImageSide: 'front' | 'back';
+  frontDescription: string;
   skuName: string;
   quality: FlatLayQuality | null;
 }

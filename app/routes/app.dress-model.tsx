@@ -175,6 +175,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       modelGender: body.modelGender as string | undefined,
       styleId: (body.styleId as string) ?? "white-studio",
       brandStyleId: (body.brandStyleId as string) ?? "minimal",
+      primaryImageSide: body.primaryImageSide as "front" | "back" | undefined,
+      frontDescription: body.frontDescription as string | null | undefined,
       frontB64: body.frontB64 as string,
       frontMime: (body.frontMime as string) ?? "image/png",
       backB64: body.backB64 as string | null,
@@ -486,6 +488,8 @@ interface BatchItem {
   frontPreview: string;
   backFile: File | null;
   backPreview: string | null;
+  primaryImageSide: "front" | "back";
+  frontDescription: string;
   skuName: string;
   status: ItemStatus;
   cleanPreview: string | null;
@@ -503,6 +507,12 @@ type PersistedItem = Omit<
   BatchItem,
   "frontFile" | "frontPreview" | "backFile" | "backPreview"
 >;
+
+function requiresFrontDescription(item: BatchItem) {
+  return (
+    item.primaryImageSide === "back" && item.frontDescription.trim().length === 0
+  );
+}
 
 const SESSION_KEY = (shop: string) => `dress-model-items-${shop}`;
 
@@ -751,6 +761,8 @@ export default function DressModel() {
         backPreview: entry.backFile
           ? URL.createObjectURL(entry.backFile)
           : null,
+        primaryImageSide: entry.primaryImageSide ?? "front",
+        frontDescription: entry.frontDescription ?? "",
         skuName: entry.skuName,
         status: "pending",
         cleanPreview: null,
@@ -775,6 +787,8 @@ export default function DressModel() {
             frontPreview: stored.cleanPreview ?? stored.thumbnail ?? "", // CDN URL for done items; thumbnail for in-progress
             backFile: null,
             backPreview: null,
+            primaryImageSide: stored.primaryImageSide ?? "front",
+            frontDescription: stored.frontDescription ?? "",
           });
         }
       }
@@ -808,6 +822,8 @@ export default function DressModel() {
         id: item.id,
         file: item.frontFile,
         backFile: item.backFile,
+        primaryImageSide: item.primaryImageSide,
+        frontDescription: item.frontDescription,
         skuName: item.skuName,
         quality: item.quality,
       }),
@@ -873,6 +889,8 @@ export default function DressModel() {
         frontPreview: URL.createObjectURL(file),
         backFile: null,
         backPreview: null,
+        primaryImageSide: "front",
+        frontDescription: "",
         skuName: file.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " "),
         status: "pending",
         cleanPreview: null,
@@ -1139,6 +1157,17 @@ export default function DressModel() {
     );
     if (!pending.length) return;
 
+    const missingFrontDescriptions = pending.filter(requiresFrontDescription);
+    if (missingFrontDescriptions.length > 0) {
+      missingFrontDescriptions.forEach((item) => {
+        updateItem(item.id, {
+          status: "error",
+          error: "Describe the front before generating from a back photo.",
+        });
+      });
+      return;
+    }
+
     const selectedModel = allModels.find((m) => m.id === selectedModelId);
     if (!selectedModel) return;
 
@@ -1185,6 +1214,8 @@ export default function DressModel() {
             modelGender: selectedModel.gender,
             styleId: "white-studio",
             brandStyleId,
+            primaryImageSide: item.primaryImageSide,
+            frontDescription: item.frontDescription.trim() || null,
             frontB64,
             frontMime,
             backB64,
@@ -1273,7 +1304,16 @@ export default function DressModel() {
     (i) => i.status === "pending" || i.status === "error",
   ).length;
   const errorCount = items.filter((i) => i.status === "error").length;
-  const canGenerate = pendingCount > 0 && !!selectedModelId && !isRunning;
+  const hasMissingFrontDescription = items.some(
+    (i) =>
+      (i.status === "pending" || i.status === "error") &&
+      requiresFrontDescription(i),
+  );
+  const canGenerate =
+    pendingCount > 0 &&
+    !!selectedModelId &&
+    !isRunning &&
+    !hasMissingFrontDescription;
   const doneCount = items.filter((i) => i.status === "done").length;
   // When any item is in progress, show that phase on the button
   const activeItem = items.find((i) =>
@@ -1465,7 +1505,38 @@ export default function DressModel() {
                         className="flex-1 text-sm bg-transparent focus:outline-none text-krea-text placeholder:text-krea-muted/50 disabled:opacity-60"
                       />
 
+                      {(item.status === "pending" || item.status === "error") && (
+                        <div className="flex flex-shrink-0 rounded-md border border-krea-border bg-krea-bg/60 p-0.5">
+                          {(["front", "back"] as const).map((side) => (
+                            <button
+                              key={side}
+                              type="button"
+                              onClick={() =>
+                                updateItem(item.id, {
+                                  primaryImageSide: side,
+                                  backFile:
+                                    side === "back" ? null : item.backFile,
+                                  backPreview:
+                                    side === "back" ? null : item.backPreview,
+                                  error: null,
+                                  status: "pending",
+                                })
+                              }
+                              className={`px-2 py-1 text-[11px] font-medium rounded transition-colors ${
+                                item.primaryImageSide === side
+                                  ? "bg-white text-krea-text shadow-sm"
+                                  : "text-krea-muted hover:text-krea-text"
+                              }`}
+                              aria-pressed={item.primaryImageSide === side}
+                            >
+                              {side === "front" ? "Front" : "Back"}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
                       {(item.status === "pending" || item.status === "error") &&
+                        item.primaryImageSide === "front" &&
                         (item.backPreview ? (
                           <div className="relative group w-8 h-8 rounded-md overflow-hidden flex-shrink-0">
                             <img
@@ -1547,6 +1618,33 @@ export default function DressModel() {
                         </button>
                       )}
                     </div>
+                    {(item.status === "pending" || item.status === "error") &&
+                      item.primaryImageSide === "back" && (
+                        <div className="px-1">
+                          <textarea
+                            value={item.frontDescription}
+                            onChange={(e) =>
+                              updateItem(item.id, {
+                                frontDescription: e.target.value,
+                                error: null,
+                                status: "pending",
+                              })
+                            }
+                            placeholder="Describe the front: graphics, neckline, buttons, pockets, logo placement..."
+                            rows={2}
+                            className={`w-full resize-none rounded-lg border bg-white px-3 py-2 text-xs text-krea-text placeholder:text-krea-muted/50 focus:outline-none focus:ring-2 focus:ring-krea-accent/20 ${
+                              requiresFrontDescription(item)
+                                ? "border-red-300"
+                                : "border-krea-border"
+                            }`}
+                          />
+                          {requiresFrontDescription(item) && (
+                            <p className="mt-1 text-[10px] text-red-500">
+                              Required when the uploaded photo is the back.
+                            </p>
+                          )}
+                        </div>
+                      )}
                     {item.quality === "warn" && item.status === "pending" && (
                       <p className="text-[10px] text-yellow-600 flex items-center gap-1 px-1">
                         <AlertTriangle className="w-3 h-3 flex-shrink-0" />
