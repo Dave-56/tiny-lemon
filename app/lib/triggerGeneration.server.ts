@@ -8,7 +8,6 @@ import {
   getEffectiveEntitlements,
   reserveGenerations,
   refundReservedGeneration,
-  PLAN_LIMITS,
   DEMO_SHOP_ID,
 } from "./billing.server";
 import {
@@ -23,6 +22,7 @@ import {
   enqueueGenerateOutfit,
   enqueueRegenerateOutfit,
 } from "./triggerJobs.server";
+import { getUserFacingGenerationError } from "./generationErrors.server";
 
 export type TriggerGenerationBody = {
   skuName?: string;
@@ -32,6 +32,8 @@ export type TriggerGenerationBody = {
   modelGender?: string;
   styleId?: string;
   brandStyleId?: string;
+  primaryImageSide?: "front" | "back";
+  frontDescription?: string | null;
   frontB64: string;
   frontMime?: string;
   backB64?: string | null;
@@ -48,7 +50,8 @@ type ResolvedModel = {
 };
 
 type ReservationContext = {
-  refundDescription: string;
+  preEnqueueRefundDescription: string;
+  providerCapacityRefundDescription: string;
   reservationDescription: string;
 };
 
@@ -96,7 +99,8 @@ function createReservationContext(flow: "generate" | "regenerate", referenceId: 
   const prefix = `${flow}:${referenceId}:${operationId}`;
   return {
     reservationDescription: `generation reservation:${prefix}`,
-    refundDescription: `generation refund:${prefix}:pre_enqueue_failure`,
+    preEnqueueRefundDescription: `generation refund:${prefix}:pre_enqueue_failure`,
+    providerCapacityRefundDescription: `generation refund:${prefix}:provider_capacity_failure`,
   };
 }
 
@@ -123,6 +127,8 @@ function buildGenerateRequestKey(body: {
   modelId: string;
   styleId?: string;
   brandStyleId?: string;
+  primaryImageSide?: "front" | "back";
+  frontDescription?: string | null;
   frontB64: string;
   frontMime?: string;
   backB64?: string | null;
@@ -136,6 +142,8 @@ function buildGenerateRequestKey(body: {
         modelId: body.modelId,
         styleId: normalizeOptionalInput(body.styleId) ?? "white-studio",
         brandStyleId: normalizeOptionalInput(body.brandStyleId) ?? "minimal",
+        primaryImageSide: body.primaryImageSide ?? "front",
+        frontDescription: normalizeOptionalInput(body.frontDescription),
         frontMime: normalizeOptionalInput(body.frontMime) ?? "image/png",
         backMime: normalizeOptionalInput(body.backMime),
         frontDigest: digestBase64Payload(body.frontB64),
@@ -202,6 +210,14 @@ export async function handleTriggerGeneration(
   const modelId = body.modelId;
   const styleId = body.styleId ?? "white-studio";
   const brandStyleId = body.brandStyleId ?? "minimal";
+  const primaryImageSide = body.primaryImageSide === "back" ? "back" : "front";
+  const frontDescription = normalizeOptionalInput(body.frontDescription);
+  if (primaryImageSide === "back" && !frontDescription) {
+    return Response.json(
+      { error: "Describe the front before generating from a back photo." },
+      { status: 400 }
+    );
+  }
   const frontB64 = body.frontB64;
   const frontMime = body.frontMime ?? "image/png";
   const backB64 = body.backB64 ?? null;
@@ -228,6 +244,8 @@ export async function handleTriggerGeneration(
       modelId: resolvedModel.modelId,
       styleId,
       brandStyleId,
+      primaryImageSide,
+      frontDescription,
       frontB64,
       frontMime,
       backB64,
@@ -322,7 +340,8 @@ export async function handleTriggerGeneration(
     const rawFrontUrl = await uploadBufferToBlob(
       Buffer.from(frontB64, "base64"),
       `outfits/${shopId}/${outfit.id}/raw-front.${frontExt}`,
-      frontMime
+      frontMime,
+      { allowOverwrite: true },
     );
     let rawBackUrl: string | undefined;
     if (backB64 && backMime) {
@@ -330,7 +349,8 @@ export async function handleTriggerGeneration(
       rawBackUrl = await uploadBufferToBlob(
         Buffer.from(backB64, "base64"),
         `outfits/${shopId}/${outfit.id}/raw-back.${backExt}`,
-        backMime
+        backMime,
+        { allowOverwrite: true },
       );
     }
 
@@ -341,6 +361,8 @@ export async function handleTriggerGeneration(
       rawBackUrl,
       frontMime,
       backMime: backB64 && backMime ? backMime : undefined,
+      primaryImageSide,
+      frontDescription: frontDescription ?? undefined,
       modelImageUrl: resolvedModel.modelImageUrl,
       modelHeight: resolvedModel.modelHeight,
       modelGender: resolvedModel.modelGender,
@@ -350,6 +372,10 @@ export async function handleTriggerGeneration(
       brandEnergy: brandStyleRecord?.brandEnergy ?? undefined,
       primaryCategory: brandStyleRecord?.primaryCategory ?? undefined,
       allowedPoses,
+      creditReservation: {
+        reservationDescription: reservation.reservationDescription,
+        refundDescription: reservation.providerCapacityRefundDescription,
+      },
     });
     enqueueSucceeded = true;
     const markedEnqueued = await markRequestEnqueued({
@@ -380,6 +406,7 @@ export async function handleTriggerGeneration(
     return Response.json({ outfitId: outfit.id, shopId, reused: false, jobId: handle.id });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
+    const userMessage = getUserFacingGenerationError(e, message || "Server error");
     if (idempotencyClaim && requestKey && !enqueueSucceeded) {
       await markRequestFailed({
         shopId,
@@ -391,7 +418,7 @@ export async function handleTriggerGeneration(
     if (reservedCredit && !enqueueSucceeded) {
       const refunded = await refundReservedGeneration(shopId, {
         reservationDescription: reservation.reservationDescription,
-        refundDescription: reservation.refundDescription,
+        refundDescription: reservation.preEnqueueRefundDescription,
       }).catch(() => false);
       logServerEvent("info", "trigger_generation.pre_enqueue_failure_refund", {
         refunded,
@@ -406,7 +433,7 @@ export async function handleTriggerGeneration(
       error: e instanceof Error ? e.message : String(e),
     });
     return Response.json(
-      { error: message || "Server error" },
+      { error: userMessage || "Server error" },
       { status: 500 }
     );
   }
@@ -556,6 +583,10 @@ export async function handleRegenerateOutfit(
       brandEnergy: brandStyle?.brandEnergy ?? undefined,
       primaryCategory: brandStyle?.primaryCategory ?? undefined,
       allowedPoses,
+      creditReservation: {
+        reservationDescription: reservation.reservationDescription,
+        refundDescription: reservation.providerCapacityRefundDescription,
+      },
     });
     enqueueSucceeded = true;
     const markedEnqueued = await markRequestEnqueued({
@@ -586,6 +617,7 @@ export async function handleRegenerateOutfit(
     return Response.json({ ok: true, outfitId, reused: false, jobId: handle.id });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
+    const userMessage = getUserFacingGenerationError(e, message || "Server error");
     if (idempotencyClaim && requestKey && !enqueueSucceeded) {
       await markRequestFailed({
         shopId,
@@ -597,7 +629,7 @@ export async function handleRegenerateOutfit(
     if (reservedCredit && !enqueueSucceeded) {
       const refunded = await refundReservedGeneration(shopId, {
         reservationDescription: reservation.reservationDescription,
-        refundDescription: reservation.refundDescription,
+        refundDescription: reservation.preEnqueueRefundDescription,
       }).catch(() => false);
       logServerEvent("info", "regenerate_outfit.pre_enqueue_failure_refund", {
         refunded,
@@ -613,7 +645,7 @@ export async function handleRegenerateOutfit(
       error: e instanceof Error ? e.message : String(e),
     });
     return Response.json(
-      { error: message || "Server error" },
+      { error: userMessage || "Server error" },
       { status: 500 }
     );
   }

@@ -13,7 +13,7 @@ export interface GarmentSpec {
   notable_details: string;
 }
 
-const EXTRACTION_PROMPT = `This image is the FRONT flat lay of the garment. The hem_length you report will be the single source of truth for all poses (front, three-quarter, back). Report length from this image only.
+const FRONT_EXTRACTION_PROMPT = `This image is the FRONT flat lay of the garment. The hem_length you report will be the single source of truth for all poses (front, three-quarter, back). Report length from this image only.
 
 Analyze this flat-lay garment image. Return ONLY valid JSON with these exact keys (no markdown, no code block):
 {
@@ -24,8 +24,28 @@ Analyze this flat-lay garment image. Return ONLY valid JSON with these exact key
   "silhouette": "bodycon | straight | A-line | trapeze | oversized",
   "primary_colors": ["array of 1-3 dominant colors"],
   "has_logo_or_text": true or false,
-  "notable_details": "brief string of distinctive features"
+  "notable_details": "brief string of distinctive features; if there is any logo, printed graphic, lettering, number, or visible text, describe its exact content, placement, scale, and colors as specifically as possible"
 }`;
+
+function buildExtractionPrompt(sourceSide: 'front' | 'back', frontDescription?: string): string {
+  if (sourceSide === 'front') return FRONT_EXTRACTION_PROMPT;
+  const description = frontDescription?.trim()
+    ? `\n\nMerchant description of the missing FRONT: ${frontDescription.trim()}`
+    : '';
+  return `This image is the BACK flat lay of the garment. Use it for shared material, color, fit, sleeve length, silhouette, and hem length. The merchant-provided front description is the source of truth for front-facing graphics, text, closures, neckline details, pockets, and logo placement.${description}
+
+Analyze this flat-lay garment image plus the merchant description. Return ONLY valid JSON with these exact keys (no markdown, no code block):
+{
+  "garment_type": "specific type, e.g. midi dress, cropped hoodie",
+  "hem_length": "above knee | at knee | below knee | ankle | floor (for tops: waist | hip)",
+  "sleeve_length": "sleeveless | cap | short | elbow | three-quarter | long",
+  "fit": "tight | fitted | relaxed | oversized",
+  "silhouette": "bodycon | straight | A-line | trapeze | oversized",
+  "primary_colors": ["array of 1-3 dominant colors"],
+  "has_logo_or_text": true or false,
+  "notable_details": "brief string combining visible back details and merchant-described front details; clearly label front-only vs back-only graphics/text when relevant"
+}`;
+}
 
 function parseSpecFromText(text: string): GarmentSpec | null {
   const trimmed = text.trim();
@@ -51,7 +71,7 @@ function parseSpecFromText(text: string): GarmentSpec | null {
 }
 
 import { GoogleGenAI } from '@google/genai';
-import { getUserFacingImageServiceError } from './flatLayCleanup';
+import { createUserFacingImageProviderError, logImageProviderError } from './flatLayCleanup';
 import { GEMINI_TEXT_MODEL } from './geminiModels';
 
 /**
@@ -61,7 +81,9 @@ import { GEMINI_TEXT_MODEL } from './geminiModels';
 export async function extractGarmentSpec(
   flatLayBase64: string,
   mimeType: string,
-  apiKey: string
+  apiKey: string,
+  sourceSide: 'front' | 'back' = 'front',
+  frontDescription?: string,
 ): Promise<GarmentSpec> {
   const ai = new GoogleGenAI({ apiKey });
   const mime = mimeType === 'image/jpeg' ? 'image/jpeg' : 'image/png';
@@ -72,7 +94,7 @@ export async function extractGarmentSpec(
       contents: {
         parts: [
           { inlineData: { data: flatLayBase64, mimeType: mime } },
-          { text: EXTRACTION_PROMPT },
+          { text: buildExtractionPrompt(sourceSide, frontDescription) },
         ],
       },
       config: {
@@ -81,11 +103,13 @@ export async function extractGarmentSpec(
       },
     });
   } catch (e) {
-    throw new Error(
-      getUserFacingImageServiceError(
-        e,
-        'Failed to analyse garment. Please try again.',
-      ),
+    logImageProviderError(e, {
+      taskId: 'garment-spec',
+      stage: 'garment_spec',
+    });
+    throw createUserFacingImageProviderError(
+      e,
+      'Failed to analyse garment. Please try again.',
     );
   }
 

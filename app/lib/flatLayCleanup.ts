@@ -1,8 +1,35 @@
 import { GoogleGenAI } from '@google/genai';
 import { GEMINI_IMAGE_MODEL } from './geminiModels';
+import { logServerEvent } from './observability.server';
 
 const LIGHT_BACKGROUND_THRESHOLD = 238;
 const MAX_CHANNEL_SPREAD = 18;
+export const IMAGE_SERVICE_CAPACITY_MESSAGE =
+  'AI image generation is temporarily at capacity. Please try again in a few minutes.';
+
+export type ImageProviderErrorKind =
+  | 'quota_or_rate_limit'
+  | 'provider_billing'
+  | 'safety'
+  | 'invalid_input'
+  | 'provider_unavailable'
+  | 'unknown';
+
+const REFUNDABLE_IMAGE_PROVIDER_ERROR_KINDS: readonly ImageProviderErrorKind[] = [
+  'quota_or_rate_limit',
+  'provider_billing',
+  'provider_unavailable',
+];
+
+export class UserFacingImageProviderError extends Error {
+  providerErrorKind: ImageProviderErrorKind;
+
+  constructor(message: string, providerErrorKind: ImageProviderErrorKind) {
+    super(message);
+    this.name = 'UserFacingImageProviderError';
+    this.providerErrorKind = providerErrorKind;
+  }
+}
 
 const CLEANUP_PROMPT = `You are given a photo of a clothing item. It may be on a hanger, on a person, on a table, or have a messy background.
 
@@ -51,7 +78,11 @@ export async function cleanFlatLay(
       },
     });
   } catch (e) {
-    throw new Error(getUserFacingImageServiceError(e, 'Failed to process image. Please try again.'));
+    logImageProviderError(e, {
+      taskId: 'flat-lay-cleanup',
+      stage: 'cleanup',
+    });
+    throw createUserFacingImageProviderError(e, 'Failed to process image. Please try again.');
   }
 
   const parts = response.candidates?.[0]?.content?.parts ?? [];
@@ -108,7 +139,11 @@ export async function cleanFlatLayForDemo(
       },
     });
   } catch (e) {
-    throw new Error(getUserFacingImageServiceError(e, 'Failed to process image. Please try again.'));
+    logImageProviderError(e, {
+      taskId: 'flat-lay-cleanup',
+      stage: 'demo_cleanup',
+    });
+    throw createUserFacingImageProviderError(e, 'Failed to process image. Please try again.');
   }
 
   const parts = response.candidates?.[0]?.content?.parts ?? [];
@@ -151,7 +186,7 @@ export function getUserFacingImageServiceError(error: unknown, fallback: string)
     lower.includes('credit') ||
     lower.includes('billing')
   ) {
-    return 'AI image generation is temporarily at capacity. Please try again in a few minutes.';
+    return IMAGE_SERVICE_CAPACITY_MESSAGE;
   }
 
   if (
@@ -169,6 +204,118 @@ export function getUserFacingImageServiceError(error: unknown, fallback: string)
   }
 
   return fallback;
+}
+
+export function createUserFacingImageProviderError(error: unknown, fallback: string) {
+  return new UserFacingImageProviderError(
+    getUserFacingImageServiceError(error, fallback),
+    classifyImageProviderError(error),
+  );
+}
+
+export function classifyImageProviderError(error: unknown): ImageProviderErrorKind {
+  const msg = getImageProviderErrorMessage(error).toLowerCase();
+
+  if (
+    msg.includes('safety') ||
+    msg.includes('blocked') ||
+    msg.includes('prohibited')
+  ) {
+    return 'safety';
+  }
+
+  if (
+    msg.includes('invalid_argument') ||
+    msg.includes('invalid image') ||
+    msg.includes('unsupported image') ||
+    msg.includes('unsupported mime') ||
+    msg.includes('400')
+  ) {
+    return 'invalid_input';
+  }
+
+  if (
+    msg.includes('resource_exhausted') ||
+    msg.includes('quota') ||
+    msg.includes('rate limit') ||
+    msg.includes('rate_limit') ||
+    msg.includes('too many requests') ||
+    msg.includes('429')
+  ) {
+    return 'quota_or_rate_limit';
+  }
+
+  if (
+    msg.includes('billing') ||
+    msg.includes('payment') ||
+    msg.includes('credit')
+  ) {
+    return 'provider_billing';
+  }
+
+  if (
+    msg.includes('unavailable') ||
+    msg.includes('overloaded') ||
+    msg.includes('capacity') ||
+    msg.includes('timeout') ||
+    msg.includes('deadline') ||
+    msg.includes('internal') ||
+    msg.includes('500') ||
+    msg.includes('503')
+  ) {
+    return 'provider_unavailable';
+  }
+
+  return 'unknown';
+}
+
+export function getImageProviderErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error ?? '');
+}
+
+function getImageProviderErrorField(error: unknown, field: 'status' | 'code') {
+  if (!error || typeof error !== 'object') return undefined;
+  const value = (error as Record<string, unknown>)[field];
+  if (typeof value === 'string' || typeof value === 'number') return value;
+  return undefined;
+}
+
+export function logImageProviderError(
+  error: unknown,
+  context: {
+    taskId: string;
+    stage: string;
+    outfitId?: string;
+    shopId?: string;
+  },
+) {
+  logServerEvent('error', 'image_provider.gemini_failed', {
+    ...context,
+    providerErrorKind: classifyImageProviderError(error),
+    providerStatus: getImageProviderErrorField(error, 'status'),
+    providerCode: getImageProviderErrorField(error, 'code'),
+    rawMessage: getImageProviderErrorMessage(error),
+  });
+}
+
+export function isImageServiceCapacityErrorMessage(message: string): boolean {
+  return message === IMAGE_SERVICE_CAPACITY_MESSAGE;
+}
+
+export function isRefundableImageProviderFailure(error: unknown): boolean {
+  if (error && typeof error === 'object') {
+    const providerErrorKind = (error as { providerErrorKind?: unknown }).providerErrorKind;
+    if (
+      typeof providerErrorKind === 'string' &&
+      REFUNDABLE_IMAGE_PROVIDER_ERROR_KINDS.includes(providerErrorKind as ImageProviderErrorKind)
+    ) {
+      return true;
+    }
+  }
+
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return isImageServiceCapacityErrorMessage(message);
 }
 
 export async function normalizeFlatLayToPng(

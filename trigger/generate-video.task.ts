@@ -87,6 +87,7 @@ export const generateVideoTask = task({
       select: {
         id: true,
         status: true,
+        shopifyProductId: true,
         images: {
           select: {
             id: true,
@@ -211,6 +212,7 @@ export const generateVideoTask = task({
         videoUrl,
         videoGeneratedAt: new Date(),
         videoErrorMessage: null,
+        ...(outfit.shopifyProductId ? { shopifySyncStatus: 'stale' } : {}),
       },
     });
 

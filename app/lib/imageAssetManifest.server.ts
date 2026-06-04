@@ -56,6 +56,7 @@ export async function createPoseAssetManifest({
     "image/png",
     31536000,
     "inline",
+    true,
   );
   const displayFallback = await createWebpDisplayFallback(
     pngBuffer,
@@ -141,6 +142,7 @@ export async function addUpscaledToManifest({
     "image/png",
     31536000,
     "inline",
+    true,
   );
   const displayFallback = await createWebpDisplayFallback(
     upscaledPngBuffer,

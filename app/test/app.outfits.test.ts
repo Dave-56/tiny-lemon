@@ -67,7 +67,7 @@ describe("app.outfits action publish_to_shopify", () => {
       status: "completed",
       shopifyProductId: "gid://shopify/Product/123",
       shopifySyncStatus: "syncing",
-      shopifySyncedAt: new Date(),
+      shopifySyncStartedAt: new Date(),
     });
 
     const res = await action({
@@ -88,9 +88,10 @@ describe("app.outfits action publish_to_shopify", () => {
   it("enqueues a sync when the outfit is not already syncing recently", async () => {
     mocks.outfitFindFirst.mockResolvedValue({
       status: "completed",
+      jobId: null,
       shopifyProductId: "gid://shopify/Product/123",
       shopifySyncStatus: "failed",
-      shopifySyncedAt: new Date(Date.now() - 20 * 60 * 1000),
+      shopifySyncStartedAt: new Date(Date.now() - 20 * 60 * 1000),
     });
 
     const res = await action({
@@ -111,7 +112,47 @@ describe("app.outfits action publish_to_shopify", () => {
     });
     expect(mocks.outfitUpdate).toHaveBeenCalledWith({
       where: { id: "outfit-123" },
-      data: { shopifySyncStatus: "syncing", jobId: "run_123" },
+      data: {
+        shopifySyncStatus: "syncing",
+        shopifySyncStartedAt: expect.any(Date),
+        jobId: "run_123",
+      },
+    });
+  });
+
+  it("cancels a stale syncing run before enqueueing a fresh publish", async () => {
+    mocks.outfitFindFirst.mockResolvedValue({
+      status: "completed",
+      jobId: "run_stale",
+      shopifyProductId: "gid://shopify/Product/123",
+      shopifySyncStatus: "syncing",
+      shopifySyncStartedAt: new Date(Date.now() - 20 * 60 * 1000),
+    });
+
+    const res = await action({
+      request: makeRequest({
+        intent: "publish_to_shopify",
+        outfitId: "outfit-123",
+      }),
+      params: {},
+      context: {},
+    } as any);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ ok: true });
+    expect(mocks.cancelRunSafely).toHaveBeenCalledWith("run_stale");
+    expect(mocks.enqueueShopifySync).toHaveBeenCalledWith({
+      outfitId: "outfit-123",
+      shopId: "shop-a.myshopify.com",
+      shopifyProductId: "gid://shopify/Product/123",
+    });
+    expect(mocks.outfitUpdate).toHaveBeenCalledWith({
+      where: { id: "outfit-123" },
+      data: {
+        shopifySyncStatus: "syncing",
+        shopifySyncStartedAt: expect.any(Date),
+        jobId: "run_123",
+      },
     });
   });
 
@@ -134,7 +175,7 @@ describe("app.outfits action publish_to_shopify", () => {
     expect(mocks.cancelRunSafely).toHaveBeenCalledWith("run_finished");
     expect(mocks.outfitUpdate).toHaveBeenCalledWith({
       where: { id: "outfit-123" },
-      data: { shopifySyncStatus: null },
+      data: { shopifySyncStatus: null, shopifySyncStartedAt: null },
     });
   });
 

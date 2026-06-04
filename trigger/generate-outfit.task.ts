@@ -5,8 +5,9 @@ import { uploadImageToBlob } from '../app/blob.server';
 import {
   cleanFlatLay,
   cleanFlatLayForDemo,
-  getUserFacingImageServiceError,
+  createUserFacingImageProviderError,
   hasCleanWhiteFlatLayBackground,
+  logImageProviderError,
   normalizeFlatLayToPng,
 } from '../app/lib/flatLayCleanup';
 import { extractGarmentSpec } from '../app/lib/garmentSpec';
@@ -14,12 +15,15 @@ import { buildPromptFromSpec } from '../app/lib/garmentFidelityPrompt';
 import { buildTryDemoPrompt } from '../app/lib/tryDemoPrompt';
 import { normalizeReferenceImageServer } from '../app/lib/normalizeReferenceImage.server';
 import { PDP_STYLE_PRESETS, BRAND_STYLE_PRESETS } from '../app/lib/pdpPresets';
-import { DEMO_SHOP_ID } from '../app/lib/billing.server';
+import { DEMO_SHOP_ID, refundReservedGeneration } from '../app/lib/billing.server';
 import { createGeneratedImageOrReuse } from '../app/lib/generatedImagePersistence.server';
 import { createPoseAssetManifest } from '../app/lib/imageAssetManifest.server';
 import { logServerEvent } from '../app/lib/observability.server';
 import { GEMINI_IMAGE_MODEL, GEMINI_TEXT_MODEL } from '../app/lib/geminiModels';
-import type { GarmentSpec } from '../app/lib/garmentSpec';
+import {
+  getUserFacingGenerationError,
+  maybeRefundFailedGeneration,
+} from '../app/lib/generationErrors.server';
 
 // ── Payload ───────────────────────────────────────────────────────────────────
 
@@ -31,6 +35,10 @@ interface GenerateOutfitPayload {
   rawBackUrl?: string;
   frontMime?: string;
   backMime?: string;
+  /** Whether rawFrontUrl is actually a front or back-facing product photo. */
+  primaryImageSide?: 'front' | 'back';
+  /** Merchant-provided details for the missing front when only a back photo was uploaded. */
+  frontDescription?: string;
   modelImageUrl: string;
   modelHeight?: string;
   /** Model gender (e.g. Male, Female) — used to pick male/neutral pose snippets when present. */
@@ -44,6 +52,10 @@ interface GenerateOutfitPayload {
   /** Primary category (womenswear | menswear | unisex | activewear | streetwear | formalwear | other) — shapes category context in prompt. */
   primaryCategory?: string;
   allowedPoses: string[];
+  creditReservation?: {
+    reservationDescription: string;
+    refundDescription: string;
+  };
 }
 
 function logTaskLifecycle(
@@ -68,7 +80,13 @@ export const generateOutfitTask = task({
   maxDuration: 600,
   /** Cap at 3 concurrent jobs to stay within Gemini rate limits */
   queue: { concurrencyLimit: 3 },
-  retry: { maxAttempts: 2 },
+  retry: {
+    maxAttempts: 4,
+    factor: 2,
+    minTimeoutInMs: 30_000,
+    maxTimeoutInMs: 180_000,
+    randomize: true,
+  },
 
   /** Called only after all retry attempts are exhausted — mark outfit failed */
   onFailure: async ({ payload, error }: { payload: GenerateOutfitPayload; error: unknown }) => {
@@ -77,8 +95,15 @@ export const generateOutfitTask = task({
       select: { errorMessage: true },
     });
     if (existing?.errorMessage === 'Cancelled by user') return;
-    const errorMessage = error instanceof Error ? error.message : 'Generation failed.';
-    logTaskLifecycle('task.failed_final', payload, { error: errorMessage });
+    const rawErrorMessage = error instanceof Error ? error.message : String(error ?? 'Generation failed.');
+    const errorMessage = getUserFacingGenerationError(error, 'Generation failed. Please try again.');
+    logTaskLifecycle('task.failed_final', payload, { error: rawErrorMessage });
+    await maybeRefundFailedGeneration({
+      taskId: 'generate-outfit',
+      payload,
+      error,
+      refundReservedGeneration,
+    });
     await prisma.outfit
       .update({ where: { id: payload.outfitId }, data: { status: 'failed', errorMessage } })
       .catch(() => {});
@@ -92,6 +117,8 @@ export const generateOutfitTask = task({
       rawBackUrl,
       frontMime = 'image/png',
       backMime = 'image/png',
+      primaryImageSide = 'front',
+      frontDescription,
       modelImageUrl,
       modelHeight,
       modelGender,
@@ -138,7 +165,7 @@ export const generateOutfitTask = task({
         isDemo,
         shopId,
         outfitId,
-        side: 'front',
+        side: primaryImageSide,
       });
       cleanBackFlatLayB64 = rawBackB64;
       cleanFlatLayUrl = rawFrontUrl;
@@ -150,10 +177,17 @@ export const generateOutfitTask = task({
         isDemo,
         shopId,
         outfitId,
-        side: 'front',
+        side: primaryImageSide,
       });
       const [uploadedUrl, cleanedBack] = await Promise.all([
-        uploadImageToBlob(Buffer.from(cleanFlatLayB64, 'base64'), `outfits/${shopId}/${outfitId}/flat-lay.png`),
+        uploadImageToBlob(
+          Buffer.from(cleanFlatLayB64, 'base64'),
+          `outfits/${shopId}/${outfitId}/flat-lay.png`,
+          'image/png',
+          undefined,
+          'inline',
+          true,
+        ),
         rawBackB64
           ? prepareCleanFlatLay({
               rawImageBase64: rawBackB64,
@@ -172,13 +206,23 @@ export const generateOutfitTask = task({
         cleanBackFlatLayUrl = await uploadImageToBlob(
           Buffer.from(cleanBackFlatLayB64, 'base64'),
           `outfits/${shopId}/${outfitId}/flat-lay-back.png`,
+          'image/png',
+          undefined,
+          'inline',
+          true,
         );
       }
     }
 
     // ── 2. Spec extraction + model normalisation in parallel ──────────────────
     const [garmentSpec, normalizedModelB64] = await Promise.all([
-      extractGarmentSpec(cleanFlatLayB64, cleanMime, apiKey),
+      extractGarmentSpec(
+        cleanFlatLayB64,
+        cleanMime,
+        apiKey,
+        primaryImageSide,
+        frontDescription,
+      ),
       fetchAsBuffer(modelImageUrl)
         .then(buf => normalizeReferenceImageServer(buf))
         .then(buf => buf.toString('base64')),
@@ -186,7 +230,18 @@ export const generateOutfitTask = task({
 
     await prisma.outfit.update({
       where: { id: outfitId, shopId },
-      data: { frontFlatLayUrl: cleanFlatLayUrl, cleanFlatLayUrl, cleanBackFlatLayUrl, garmentSpec: JSON.parse(JSON.stringify(garmentSpec)) },
+      data: {
+        frontFlatLayUrl: cleanFlatLayUrl,
+        cleanFlatLayUrl,
+        cleanBackFlatLayUrl,
+        garmentSpec: JSON.parse(JSON.stringify({
+          ...garmentSpec,
+          referenceContext: {
+            primaryImageSide,
+            frontDescription: frontDescription ?? null,
+          },
+        })),
+      },
     });
 
     // ── 3. Idempotency: skip poses already done on a previous attempt ─────────
@@ -219,7 +274,11 @@ export const generateOutfitTask = task({
     const backGenConfig = { ...baseGenConfig, temperature: 0.3 };
     const sharp = (await import('sharp')).default;
 
-    const hasBack = !!cleanBackFlatLayB64;
+    const hasBack = primaryImageSide === 'back' || !!cleanBackFlatLayB64;
+    const promptContext = {
+      primaryImageSide,
+      frontDescription,
+    };
 
     // ── 6. Front pose ─────────────────────────────────────────────────────────
     let frontB64: string;
@@ -230,7 +289,7 @@ export const generateOutfitTask = task({
       await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_front' } });
       const frontPrompt = isDemo
         ? buildTryDemoPrompt(garmentSpec, modelGender, modelHeight)
-        : buildPromptFromSpec(garmentSpec, 'front', backdropSnippet, hasBack, false, modelHeight, stylingDir, modelGender, pricePoint, brandEnergy, primaryCategory);
+        : buildPromptFromSpec(garmentSpec, 'front', backdropSnippet, hasBack, false, modelHeight, stylingDir, modelGender, pricePoint, brandEnergy, primaryCategory, promptContext);
       const frontResp = await generateImageContent(ai, {
         model: MODEL,
         contents: [{
@@ -242,7 +301,7 @@ export const generateOutfitTask = task({
           ],
         }],
         config: frontGenConfig,
-      });
+      }, { outfitId, shopId, stage: 'front' });
       frontB64 = extractBase64(frontResp);
       const frontCropped = await sharp(Buffer.from(frontB64, 'base64'))
         .resize({ width: 800, height: 1200, fit: 'cover', position: 'top' })
@@ -285,7 +344,7 @@ export const generateOutfitTask = task({
     const generateThreeQuarter = async () => {
       if (!needsTq) return;
       const tqPrompt = buildPromptFromSpec(
-        garmentSpec, 'three-quarter', backdropSnippet, hasBack, true, modelHeight, stylingDir, modelGender, pricePoint, brandEnergy, primaryCategory,
+        garmentSpec, 'three-quarter', backdropSnippet, hasBack, true, modelHeight, stylingDir, modelGender, pricePoint, brandEnergy, primaryCategory, promptContext,
       );
       const tqContents = [{
         role: 'user' as const,
@@ -301,16 +360,16 @@ export const generateOutfitTask = task({
         model: MODEL,
         contents: tqContents,
         config: threeQuarterGenConfig,
-      });
+      }, { outfitId, shopId, stage: 'three-quarter' });
       let tqB64 = extractBase64(tqResp);
       // Validate pose — retry once with slightly higher temperature if 3/4 collapsed to front
-      const tqValid = await validatePose(ai, tqB64, 'three-quarter');
+      const tqValid = await validatePose(ai, tqB64, 'three-quarter', { outfitId, shopId });
       if (!tqValid) {
         const retryResp = await generateImageContent(ai, {
           model: MODEL,
           contents: tqContents,
           config: { ...threeQuarterGenConfig, temperature: 0.45 },
-        });
+        }, { outfitId, shopId, stage: 'three-quarter_retry' });
         tqB64 = extractBase64(retryResp);
       }
       const tqCropped = await sharp(Buffer.from(tqB64, 'base64'))
@@ -344,7 +403,7 @@ export const generateOutfitTask = task({
     const generateBack = async () => {
       if (!needsBack) return;
       const backPrompt = buildPromptFromSpec(
-        garmentSpec, 'back', backdropSnippet, hasBack, true, modelHeight, stylingDir, modelGender, pricePoint, brandEnergy, primaryCategory,
+        garmentSpec, 'back', backdropSnippet, hasBack, true, modelHeight, stylingDir, modelGender, pricePoint, brandEnergy, primaryCategory, promptContext,
       );
       const backContents = [{
         role: 'user' as const,
@@ -360,16 +419,16 @@ export const generateOutfitTask = task({
         model: MODEL,
         contents: backContents,
         config: backGenConfig,
-      });
+      }, { outfitId, shopId, stage: 'back' });
       let backB64 = extractBase64(backResp);
       // Validate pose — retry once with slightly higher temperature if back collapsed
-      const backValid = await validatePose(ai, backB64, 'back');
+      const backValid = await validatePose(ai, backB64, 'back', { outfitId, shopId });
       if (!backValid) {
         const retryResp = await generateImageContent(ai, {
           model: MODEL,
           contents: backContents,
           config: { ...backGenConfig, temperature: 0.4 },
-        });
+        }, { outfitId, shopId, stage: 'back_retry' });
         backB64 = extractBase64(retryResp);
       }
       const backCropped = await sharp(Buffer.from(backB64, 'base64'))
@@ -473,15 +532,22 @@ type GenerateContentRequest = Parameters<GoogleGenAI['models']['generateContent'
 async function generateImageContent(
   ai: GoogleGenAI,
   request: GenerateContentRequest,
+  context: {
+    outfitId: string;
+    shopId: string;
+    stage: string;
+  },
 ) {
   try {
     return await ai.models.generateContent(request);
   } catch (error) {
-    throw new Error(
-      getUserFacingImageServiceError(
-        error,
-        'Failed to generate outfit image. Please try again.',
-      ),
+    logImageProviderError(error, {
+      taskId: 'generate-outfit',
+      ...context,
+    });
+    throw createUserFacingImageProviderError(
+      error,
+      'Failed to generate outfit image. Please try again.',
     );
   }
 }
@@ -494,6 +560,10 @@ async function validatePose(
   ai: GoogleGenAI,
   imageB64: string,
   expectedPose: 'three-quarter' | 'back',
+  context: {
+    outfitId: string;
+    shopId: string;
+  },
 ): Promise<boolean> {
   const question = expectedPose === 'three-quarter'
     ? "Look at this fashion photo. Is the model's torso visibly rotated at least 30 degrees away from the camera, showing a clear three-quarter angle (not facing the camera straight on)? Answer ONLY 'yes' or 'no'."
@@ -512,7 +582,13 @@ async function validatePose(
     });
     const text = resp.candidates?.[0]?.content?.parts?.[0]?.text?.toLowerCase() ?? '';
     return text.includes('yes');
-  } catch {
+  } catch (error) {
+    logImageProviderError(error, {
+      taskId: 'generate-outfit',
+      outfitId: context.outfitId,
+      shopId: context.shopId,
+      stage: `validate_${expectedPose}`,
+    });
     // If validation call fails, don't block generation — assume pose is OK
     return true;
   }

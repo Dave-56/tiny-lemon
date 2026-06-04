@@ -181,6 +181,23 @@ describe("handleTriggerGeneration", () => {
     expect(mocks.enqueueGenerateOutfit).not.toHaveBeenCalled();
   });
 
+  it("requires a front description when the uploaded primary image is the back", async () => {
+    const res = await handleTriggerGeneration("shop-a.myshopify.com", {
+      modelId: "model-01",
+      frontB64: "ZmFrZQ==",
+      primaryImageSide: "back",
+      frontDescription: "   ",
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "Describe the front before generating from a back photo.",
+    });
+    expect(mocks.claimGenerateRequestIdempotency).not.toHaveBeenCalled();
+    expect(mocks.reserveGenerations).not.toHaveBeenCalled();
+    expect(mocks.enqueueGenerateOutfit).not.toHaveBeenCalled();
+  });
+
   it("uses the server-resolved preset model instead of client-supplied model data", async () => {
     mocks.modelFindFirst.mockResolvedValue(null);
 
@@ -209,6 +226,25 @@ describe("handleTriggerGeneration", () => {
         modelGender: "Female",
         modelHeight: "5'10\" (178cm)",
       })
+    );
+  });
+
+  it("forwards back-primary reference context to the generate task", async () => {
+    mocks.modelFindFirst.mockResolvedValue(null);
+
+    const res = await handleTriggerGeneration("shop-a.myshopify.com", {
+      modelId: "model-01",
+      frontB64: "ZmFrZQ==",
+      primaryImageSide: "back",
+      frontDescription: "red cherry graphic on front chest",
+    });
+
+    expect(res.status).toBe(200);
+    expect(mocks.enqueueGenerateOutfit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        primaryImageSide: "back",
+        frontDescription: "red cherry graphic on front chest",
+      }),
     );
   });
 
@@ -261,6 +297,34 @@ describe("handleTriggerGeneration", () => {
         refundDescription: expect.stringMatching(/^generation refund:generate:model-01:.*:pre_enqueue_failure$/),
       }),
     );
+    expect(mocks.markRequestFailed).toHaveBeenCalledWith({
+      shopId: "shop-a.myshopify.com",
+      operation: "generate",
+      requestKey: expect.any(String),
+      runToken: "run-token-generate",
+    });
+  });
+
+  it("sanitizes and refunds when raw Blob upload fails before enqueue", async () => {
+    mocks.modelFindFirst.mockResolvedValue(null);
+    mocks.uploadBufferToBlob.mockRejectedValueOnce(
+      new Error(
+        "Vercel Blob: This blob already exists, use `allowOverwrite: true` if you want to overwrite it.",
+      ),
+    );
+
+    const res = await handleTriggerGeneration("shop-a.myshopify.com", {
+      modelId: "model-01",
+      frontB64: "ZmFrZQ==",
+    });
+
+    expect(res.status).toBe(500);
+    await expect(res.json()).resolves.toEqual({
+      error:
+        "We hit a storage issue while saving your image. This attempt was not counted. Please try again.",
+    });
+    expect(mocks.enqueueGenerateOutfit).not.toHaveBeenCalled();
+    expect(mocks.refundReservedGeneration).toHaveBeenCalledTimes(1);
     expect(mocks.markRequestFailed).toHaveBeenCalledWith({
       shopId: "shop-a.myshopify.com",
       operation: "generate",

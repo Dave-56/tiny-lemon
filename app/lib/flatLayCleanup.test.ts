@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import sharp from "sharp";
 import {
+  classifyImageProviderError,
+  createUserFacingImageProviderError,
   getUserFacingImageServiceError,
   hasCleanWhiteFlatLayBackground,
+  isRefundableImageProviderFailure,
   normalizeFlatLayToPng,
 } from "./flatLayCleanup";
 
@@ -65,5 +68,63 @@ describe("flat lay cleanup helpers", () => {
     ).toBe(
       "AI image generation is temporarily at capacity. Please try again in a few minutes.",
     );
+  });
+
+  it("classifies Gemini quota and rate limit errors together", () => {
+    expect(
+      classifyImageProviderError(
+        new Error("429 RESOURCE_EXHAUSTED: quota exceeded"),
+      ),
+    ).toBe("quota_or_rate_limit");
+    expect(
+      classifyImageProviderError(
+        new Error("Too many requests. Please respect the rate limit."),
+      ),
+    ).toBe("quota_or_rate_limit");
+  });
+
+  it("classifies provider billing errors separately from quota errors", () => {
+    expect(
+      classifyImageProviderError(
+        new Error("Billing account disabled or payment required"),
+      ),
+    ).toBe("provider_billing");
+  });
+
+  it("classifies input and safety errors", () => {
+    expect(classifyImageProviderError(new Error("SAFETY: blocked"))).toBe(
+      "safety",
+    );
+    expect(classifyImageProviderError(new Error("INVALID_ARGUMENT: invalid image"))).toBe(
+      "invalid_input",
+    );
+  });
+
+  it("marks provider-side image failures as refundable", () => {
+    const quotaError = createUserFacingImageProviderError(
+      new Error("429 RESOURCE_EXHAUSTED: quota exceeded"),
+      "fallback",
+    );
+    const unavailableError = createUserFacingImageProviderError(
+      new Error("503 model overloaded"),
+      "fallback",
+    );
+
+    expect(isRefundableImageProviderFailure(quotaError)).toBe(true);
+    expect(isRefundableImageProviderFailure(unavailableError)).toBe(true);
+  });
+
+  it("does not mark merchant input failures as refundable", () => {
+    const safetyError = createUserFacingImageProviderError(
+      new Error("SAFETY: blocked"),
+      "fallback",
+    );
+    const invalidInputError = createUserFacingImageProviderError(
+      new Error("INVALID_ARGUMENT: invalid image"),
+      "fallback",
+    );
+
+    expect(isRefundableImageProviderFailure(safetyError)).toBe(false);
+    expect(isRefundableImageProviderFailure(invalidInputError)).toBe(false);
   });
 });

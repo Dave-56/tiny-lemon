@@ -246,6 +246,11 @@ export function generateGarmentFidelityPrompt(
 /** Pose identifiers for the multi-turn chat flow (no anchor). */
 export type SpecPose = 'front' | 'three-quarter' | 'back';
 
+type GarmentReferenceContext = {
+  primaryImageSide?: 'front' | 'back';
+  frontDescription?: string;
+};
+
 /**
  * Camera geometry constants — defined once per angle, shared across all brand styles.
  * These describe WHERE the camera is, not how the model stands.
@@ -275,6 +280,14 @@ const FRAMING_BLOCK =
 const RELAXED_QUALITY_CUE =
   'Professional fashion e-commerce photography. Clean studio image, natural catalog posture, realistic body proportions, and a clear readable view of the garment.';
 
+function buildGraphicFidelityCue(spec: GarmentSpec): string {
+  if (!spec.has_logo_or_text) return '';
+  const detail = spec.notable_details
+    ? ` Visible graphic/text detail: ${spec.notable_details}.`
+    : '';
+  return ` Graphic/text fidelity is critical.${detail} Preserve the exact placement, scale, color, spacing, and legibility of every printed graphic, logo, label, letter, number, and word from the flat lay. Do not redraw, paraphrase, mirror, scramble, stylize, replace, or invent any graphics or text.`;
+}
+
 const STYLE_DIRECTION_CUES: Record<string, string> = {
   minimal:
     'STYLE DIRECTION (visual only): Minimal Clarity. Neutral studio catalog image with matte grey balance, crisp garment edges, low contrast, and no decorative styling. Keep the pose, gaze, expression, and hand placement controlled by the pose instructions only.',
@@ -294,8 +307,17 @@ function buildStyleDirectionBlock(brandStyle?: BrandStylePreset): string {
 }
 
 /** Length + lighting rules: front flat lay is source of truth for hem; match reference lighting. */
-function lengthAndLightingBlock(spec: GarmentSpec, hasBackFlatLay: boolean, pose: SpecPose, backdropSnippet: string): string {
-  const lengthLine = `Hem length (source of truth): ${spec.hem_length}, from the front flat lay only. Use this exact length for this pose.`;
+function lengthAndLightingBlock(
+  spec: GarmentSpec,
+  hasBackFlatLay: boolean,
+  pose: SpecPose,
+  backdropSnippet: string,
+  referenceContext?: GarmentReferenceContext,
+): string {
+  const source = referenceContext?.primaryImageSide === 'back'
+    ? 'from the product reference photo and merchant front description'
+    : 'from the front flat lay only';
+  const lengthLine = `Hem length (source of truth): ${spec.hem_length}, ${source}. Use this exact length for this pose.`;
   const backNote =
     pose === 'back' && hasBackFlatLay
       ? ' If a back flat lay is provided, use it only for back design details (e.g. neckline, zipper); do not use it for garment length.'
@@ -323,21 +345,31 @@ export function buildPromptFromSpec(
   _pricePoint?: string,
   _brandEnergy?: string,
   _primaryCategory?: string,
+  referenceContext?: GarmentReferenceContext,
 ): string {
+  void _pricePoint;
+  void _brandEnergy;
+  void _primaryCategory;
+
   const colors = spec.primary_colors.length ? spec.primary_colors.join(' ') : 'neutral';
   const heightNote = modelHeight ? ` The model is ${modelHeight} tall.` : '';
-  const base = `${RELAXED_QUALITY_CUE}\n\nPhoto of the person in the reference image wearing a ${colors} ${spec.fit}-fit ${spec.silhouette} ${spec.garment_type}, ${spec.sleeve_length} sleeves, hem ${spec.hem_length}${spec.notable_details ? `, ${spec.notable_details}` : ''}.${heightNote}`;
+  const graphicFidelityCue = buildGraphicFidelityCue(spec);
+  const base = `${RELAXED_QUALITY_CUE}\n\nPhoto of the person in the reference image wearing a ${colors} ${spec.fit}-fit ${spec.silhouette} ${spec.garment_type}, ${spec.sleeve_length} sleeves, hem ${spec.hem_length}${spec.notable_details ? `, ${spec.notable_details}` : ''}.${heightNote}${graphicFidelityCue}`;
   const effectiveBackdrop = brandStyle?.backdropSnippet ?? styleSnippet;
   const styleDirection = buildStyleDirectionBlock(brandStyle);
-  const tail = lengthAndLightingBlock(spec, hasBackFlatLay, pose, effectiveBackdrop);
+  const tail = lengthAndLightingBlock(spec, hasBackFlatLay, pose, effectiveBackdrop, referenceContext);
 
   const styling = resolveStyling(spec, modelGender);
   const genderLock = getGenderLock(modelGender);
+  const missingFrontBlock =
+    referenceContext?.primaryImageSide === 'back' && referenceContext.frontDescription
+      ? `\n\nMISSING FRONT REFERENCE (merchant supplied): The uploaded product photo is the BACK of the garment, not the front. Generate the front-facing view using this front description as the source of truth for visible front details: ${referenceContext.frontDescription}. Keep any shared material, color, fit, sleeve length, and hem consistent with the uploaded back photo. Do not copy back-only graphics, labels, or closures onto the front unless the description says they also appear on the front.`
+      : '';
 
   if (pose === 'front') {
     const poseInstruction = DEFAULT_POSE_INSTRUCTIONS.front;
     // Inject gender lock after base and before camera geometry.
-    return `${base} ${genderLock}${styleDirection ? `${styleDirection} ` : ''}${POSE_GEOMETRY.front} ${poseInstruction} ${HAND_SAFETY_BLOCK} Full body, ${effectiveBackdrop}. ${FRAMING_BLOCK} ${tail}\n\n${buildStylingBlock(styling)}`;
+    return `${base}${missingFrontBlock} ${genderLock}${styleDirection ? `${styleDirection} ` : ''}${POSE_GEOMETRY.front} ${poseInstruction} ${HAND_SAFETY_BLOCK} Full body, ${effectiveBackdrop}. ${FRAMING_BLOCK} ${tail}\n\n${buildStylingBlock(styling)}`;
   }
 
   // For non-front poses, prepend an image enumeration header. The relaxed prompt
@@ -345,7 +377,9 @@ export function buildPromptFromSpec(
   // as a visual anchor, because that can leak front-pose stance into later views.
   let imageHeader = '';
   const isBackWithBackFlatLay = pose === 'back' && hasBackFlatLay;
-  const img1Desc = isBackWithBackFlatLay
+  const img1Desc = referenceContext?.primaryImageSide === 'back'
+    ? 'The BACK flat lay garment photo — source for back garment details, shared material, color, fit, sleeve length, and hem. Front details come from the merchant front description.'
+    : isBackWithBackFlatLay
     ? 'The BACK flat lay garment photo — source for back garment details (neckline, zipper, back design). Do NOT use this for garment length.'
     : 'The FRONT flat lay garment photo — source for garment details.';
   if (hasLengthAnchor) {
@@ -367,9 +401,9 @@ export function buildPromptFromSpec(
     const bodyLanguage = DEFAULT_POSE_INSTRUCTIONS['three-quarter'];
     // Insert gender lock immediately after imageHeader so it scopes turns 2/3.
     const headerWithLock = genderLock ? `${imageHeader}${genderLock}\n` : imageHeader;
-    return `${headerWithLock}${styleDirection ? `${styleDirection}\n` : ''}Same person, same garment. ${POSE_GEOMETRY['three-quarter']} ${bodyLanguage} ${HAND_SAFETY_BLOCK} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
+    return `${headerWithLock}${styleDirection ? `${styleDirection}\n` : ''}${missingFrontBlock}\nSame person, same garment. ${POSE_GEOMETRY['three-quarter']} ${bodyLanguage} ${HAND_SAFETY_BLOCK} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
   }
   const bodyLanguage = DEFAULT_POSE_INSTRUCTIONS.back;
   const headerWithLock = genderLock ? `${imageHeader}${genderLock}\n` : imageHeader;
-  return `${headerWithLock}${styleDirection ? `${styleDirection}\n` : ''}Same person, same garment. ${POSE_GEOMETRY.back} ${bodyLanguage} ${HAND_SAFETY_BLOCK} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
+  return `${headerWithLock}${styleDirection ? `${styleDirection}\n` : ''}${missingFrontBlock}\nSame person, same garment. ${POSE_GEOMETRY.back} ${bodyLanguage} ${HAND_SAFETY_BLOCK} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
 }
