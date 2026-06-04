@@ -48,14 +48,20 @@ function startOfCalendarMonth(): Date {
   return d;
 }
 
+function usageFromLedgerAmount(amount: number | null | undefined): number {
+  return Math.max(0, -(amount ?? 0));
+}
+
 export async function getMonthlyUsage(shopId: string): Promise<number> {
-  return prisma.creditTransaction.count({
+  const aggregate = await prisma.creditTransaction.aggregate({
     where: {
       shopId,
-      type: "usage",
+      type: { in: ["usage", "refund"] },
       createdAt: { gte: startOfCalendarMonth() },
     },
+    _sum: { amount: true },
   });
+  return usageFromLedgerAmount(aggregate._sum.amount);
 }
 
 export async function getPlanForShop(shopId: string): Promise<string> {
@@ -146,13 +152,15 @@ export async function reserveGenerations(
 
   await prisma.$transaction(
     async (tx) => {
-      const used = await tx.creditTransaction.count({
+      const usageAggregate = await tx.creditTransaction.aggregate({
         where: {
           shopId,
-          type: "usage",
+          type: { in: ["usage", "refund"] },
           createdAt: { gte: startOfMonth },
         },
+        _sum: { amount: true },
       });
+      const used = usageFromLedgerAmount(usageAggregate._sum.amount);
 
       if (process.env.NODE_ENV !== "production" && process.env.ENFORCE_BILLING !== "true") {
         return; // skip limit checks in dev

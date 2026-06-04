@@ -14,10 +14,25 @@ import {
 } from '../app/lib/videoOrchestration.server';
 import { cancelRunSafely } from '../app/lib/triggerJobs.server';
 import { PDP_STYLE_PRESETS, BRAND_STYLE_PRESETS } from '../app/lib/pdpPresets';
-import { getUserFacingImageServiceError } from '../app/lib/flatLayCleanup';
+import {
+  createUserFacingImageProviderError,
+  logImageProviderError,
+} from '../app/lib/flatLayCleanup';
+import { refundReservedGeneration } from '../app/lib/billing.server';
 import { GEMINI_IMAGE_MODEL, GEMINI_TEXT_MODEL } from '../app/lib/geminiModels';
 import type { GarmentSpec } from '../app/lib/garmentSpec';
 import type { PoseImageAssetManifest } from '../app/lib/imageAssetManifest';
+import {
+  getUserFacingGenerationError,
+  maybeRefundFailedGeneration,
+} from '../app/lib/generationErrors.server';
+
+type StoredGarmentSpec = GarmentSpec & {
+  referenceContext?: {
+    primaryImageSide?: 'front' | 'back';
+    frontDescription?: string | null;
+  };
+};
 
 // ── Payload ───────────────────────────────────────────────────────────────────
 
@@ -37,6 +52,10 @@ interface RegenerateOutfitPayload {
   /** Primary category (womenswear | menswear | unisex | activewear | streetwear | formalwear | other) — shapes category context in prompt. */
   primaryCategory?: string;
   allowedPoses: string[];
+  creditReservation?: {
+    reservationDescription: string;
+    refundDescription: string;
+  };
 }
 
 function logTaskLifecycle(
@@ -73,15 +92,22 @@ type GenerateContentRequest = Parameters<GoogleGenAI['models']['generateContent'
 async function generateImageContent(
   ai: GoogleGenAI,
   request: GenerateContentRequest,
+  context: {
+    outfitId: string;
+    shopId: string;
+    stage: string;
+  },
 ) {
   try {
     return await ai.models.generateContent(request);
   } catch (error) {
-    throw new Error(
-      getUserFacingImageServiceError(
-        error,
-        'Failed to generate outfit image. Please try again.',
-      ),
+    logImageProviderError(error, {
+      taskId: 'regenerate-outfit',
+      ...context,
+    });
+    throw createUserFacingImageProviderError(
+      error,
+      'Failed to generate outfit image. Please try again.',
     );
   }
 }
@@ -94,6 +120,10 @@ async function validatePose(
   ai: GoogleGenAI,
   imageB64: string,
   expectedPose: 'three-quarter' | 'back',
+  context: {
+    outfitId: string;
+    shopId: string;
+  },
 ): Promise<boolean> {
   const question = expectedPose === 'three-quarter'
     ? "Look at this fashion photo. Is the model's torso visibly rotated at least 30 degrees away from the camera, showing a clear three-quarter angle (not facing the camera straight on)? Answer ONLY 'yes' or 'no'."
@@ -112,7 +142,13 @@ async function validatePose(
     });
     const text = resp.candidates?.[0]?.content?.parts?.[0]?.text?.toLowerCase() ?? '';
     return text.includes('yes');
-  } catch {
+  } catch (error) {
+    logImageProviderError(error, {
+      taskId: 'regenerate-outfit',
+      outfitId: context.outfitId,
+      shopId: context.shopId,
+      stage: `validate_${expectedPose}`,
+    });
     // If validation call fails, don't block generation — assume pose is OK
     return true;
   }
@@ -145,7 +181,13 @@ export const regenerateOutfitTask = task({
   id: 'regenerate-outfit',
   maxDuration: 600,
   queue: { concurrencyLimit: 3 },
-  retry: { maxAttempts: 2 },
+  retry: {
+    maxAttempts: 4,
+    factor: 2,
+    minTimeoutInMs: 30_000,
+    maxTimeoutInMs: 180_000,
+    randomize: true,
+  },
 
   onFailure: async ({ payload, error }: { payload: RegenerateOutfitPayload; error: unknown }) => {
     const existing = await prisma.outfit.findFirst({
@@ -153,8 +195,15 @@ export const regenerateOutfitTask = task({
       select: { errorMessage: true },
     });
     if (existing?.errorMessage === 'Cancelled by user') return;
-    const errorMessage = error instanceof Error ? error.message : 'Regeneration failed.';
-    logTaskLifecycle('task.failed_final', payload, { error: errorMessage });
+    const rawErrorMessage = error instanceof Error ? error.message : String(error ?? 'Regeneration failed.');
+    const errorMessage = getUserFacingGenerationError(error, 'Regeneration failed. Please try again.');
+    logTaskLifecycle('task.failed_final', payload, { error: rawErrorMessage });
+    await maybeRefundFailedGeneration({
+      taskId: 'regenerate-outfit',
+      payload,
+      error,
+      refundReservedGeneration,
+    });
     await prisma.outfit
       .update({ where: { id: payload.outfitId }, data: { status: 'failed', errorMessage } })
       .catch(() => {});
@@ -191,8 +240,14 @@ export const regenerateOutfitTask = task({
     if (!outfit?.cleanFlatLayUrl) {
       throw new Error('Outfit not found or missing clean flat lay. Cannot regenerate.');
     }
-    const garmentSpec = outfit.garmentSpec as GarmentSpec | null;
+    const garmentSpec = outfit.garmentSpec as StoredGarmentSpec | null;
     if (!garmentSpec) throw new Error('Garment spec missing from outfit record.');
+    const referenceContext = garmentSpec.referenceContext
+      ? {
+          primaryImageSide: garmentSpec.referenceContext.primaryImageSide,
+          frontDescription: garmentSpec.referenceContext.frontDescription ?? undefined,
+        }
+      : undefined;
 
     await prisma.outfit.update({
       where: { id: outfitId, shopId },
@@ -203,7 +258,7 @@ export const regenerateOutfitTask = task({
     const cleanBackFlatLayB64 = outfit.cleanBackFlatLayUrl
       ? await fetchAsBase64(outfit.cleanBackFlatLayUrl).catch(() => null)
       : null;
-    const hasBack = !!cleanBackFlatLayB64;
+    const hasBack = referenceContext?.primaryImageSide === 'back' || !!cleanBackFlatLayB64;
 
     const modelBuffer = await fetchAsBuffer(modelImageUrl);
     const normalizedModelBuffer = await normalizeReferenceImageServer(modelBuffer);
@@ -246,6 +301,7 @@ export const regenerateOutfitTask = task({
         pricePoint,
         brandEnergy,
         primaryCategory,
+        referenceContext,
       ),
       userDirection,
     );
@@ -260,7 +316,7 @@ export const regenerateOutfitTask = task({
         ],
       }],
       config: frontGenConfig,
-    });
+    }, { outfitId, shopId, stage: 'front' });
     const frontB64 = extractBase64(frontResp);
     const frontPng = await sharp(Buffer.from(frontB64, 'base64'))
       .resize({ width: 800, height: 1200, fit: 'cover', position: 'top' })
@@ -306,6 +362,7 @@ export const regenerateOutfitTask = task({
           pricePoint,
           brandEnergy,
           primaryCategory,
+          referenceContext,
         ),
         userDirection,
       );
@@ -323,15 +380,15 @@ export const regenerateOutfitTask = task({
         model: MODEL,
         contents: tqContents,
         config: threeQuarterGenConfig,
-      });
+      }, { outfitId, shopId, stage: 'three-quarter' });
       let tqB64 = extractBase64(tqResp);
-      const tqValid = await validatePose(ai, tqB64, 'three-quarter');
+      const tqValid = await validatePose(ai, tqB64, 'three-quarter', { outfitId, shopId });
       if (!tqValid) {
         const retryResp = await generateImageContent(ai, {
           model: MODEL,
           contents: tqContents,
           config: { ...threeQuarterGenConfig, temperature: 0.45 },
-        });
+        }, { outfitId, shopId, stage: 'three-quarter_retry' });
         tqB64 = extractBase64(retryResp);
       }
       const tqPng = await sharp(Buffer.from(tqB64, 'base64'))
@@ -365,6 +422,7 @@ export const regenerateOutfitTask = task({
           pricePoint,
           brandEnergy,
           primaryCategory,
+          referenceContext,
         ),
         userDirection,
       );
@@ -382,15 +440,15 @@ export const regenerateOutfitTask = task({
         model: MODEL,
         contents: backContents,
         config: backGenConfig,
-      });
+      }, { outfitId, shopId, stage: 'back' });
       let backB64 = extractBase64(backResp);
-      const backValid = await validatePose(ai, backB64, 'back');
+      const backValid = await validatePose(ai, backB64, 'back', { outfitId, shopId });
       if (!backValid) {
         const retryResp = await generateImageContent(ai, {
           model: MODEL,
           contents: backContents,
           config: { ...backGenConfig, temperature: 0.4 },
-        });
+        }, { outfitId, shopId, stage: 'back_retry' });
         backB64 = extractBase64(retryResp);
       }
       const backPng = await sharp(Buffer.from(backB64, 'base64'))

@@ -55,6 +55,22 @@ describe('buildPromptFromSpec hand-safety prompts', () => {
     expect(prompt).toContain('No distorted fingers, fused hands, or hidden hands unless intentionally requested.');
   });
 
+  it('adds a protected graphic/text fidelity instruction when the garment has printed content', () => {
+    const prompt = buildPromptFromSpec(
+      {
+        ...spec,
+        has_logo_or_text: true,
+        notable_details: 'large white "PARIS 88" chest graphic',
+      },
+      'front',
+      backdropSnippet,
+    );
+
+    expect(prompt).toContain('Graphic/text fidelity is critical.');
+    expect(prompt).toContain('large white "PARIS 88" chest graphic');
+    expect(prompt).toContain('Do not redraw, paraphrase, mirror, scramble, stylize, replace, or invent any graphics or text.');
+  });
+
   it('does not let the minimal preset override the relaxed catalog stance', () => {
     const prompt = buildPromptFromSpec(
       spec,
@@ -264,5 +280,35 @@ describe('buildPromptFromSpec hand-safety prompts', () => {
     expect(prompt).toContain('Do NOT copy the pose, body angle, arm positions, or camera angle');
     expect(prompt).toContain('Standing naturally from the rear angle with feet placed comfortably and realistically.');
     expect(prompt).not.toContain('Head turned 45° to the right');
+  });
+
+  it('uses merchant front details when the uploaded reference is the back', () => {
+    const prompt = buildPromptFromSpec(
+      {
+        ...spec,
+        garment_type: 't-shirt',
+        notable_details: 'plain back with ribbed collar',
+      },
+      'front',
+      backdropSnippet,
+      true,
+      false,
+      undefined,
+      getBrandStyle('minimal'),
+      'Male',
+      undefined,
+      undefined,
+      undefined,
+      {
+        primaryImageSide: 'back',
+        frontDescription:
+          'large red cherry graphic centered on the chest with red brand text above it',
+      },
+    );
+
+    expect(prompt).toContain('MISSING FRONT REFERENCE');
+    expect(prompt).toContain('uploaded product photo is the BACK');
+    expect(prompt).toContain('large red cherry graphic centered on the chest');
+    expect(prompt).toContain('Do not copy back-only graphics');
   });
 });

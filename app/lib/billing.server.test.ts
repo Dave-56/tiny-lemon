@@ -4,8 +4,10 @@ import { Prisma } from "@prisma/client";
 const mocks = vi.hoisted(() => ({
   shopFindUnique: vi.fn(),
   creditCount: vi.fn(),
+  creditAggregate: vi.fn(),
   transaction: vi.fn(),
   txCreditCount: vi.fn(),
+  txCreditAggregate: vi.fn(),
   txCreateMany: vi.fn(),
   txCreate: vi.fn(),
 }));
@@ -13,7 +15,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../db.server", () => ({
   default: {
     shop: { findUnique: mocks.shopFindUnique },
-    creditTransaction: { count: mocks.creditCount },
+    creditTransaction: {
+      count: mocks.creditCount,
+      aggregate: mocks.creditAggregate,
+    },
     $transaction: mocks.transaction,
   },
 }));
@@ -25,6 +30,7 @@ import {
   PLAN_ANGLES,
   PLAN_LIMITS,
   getEffectiveEntitlements,
+  getMonthlyUsage,
   refundReservedGeneration,
   reserveGenerations,
 } from "./billing.server";
@@ -43,6 +49,7 @@ describe("billing.server", () => {
         callback: (tx: {
           creditTransaction: {
             count: typeof mocks.txCreditCount;
+            aggregate: typeof mocks.txCreditAggregate;
             createMany: typeof mocks.txCreateMany;
             create: typeof mocks.txCreate;
           };
@@ -51,6 +58,7 @@ describe("billing.server", () => {
         callback({
           creditTransaction: {
             count: mocks.txCreditCount,
+            aggregate: mocks.txCreditAggregate,
             createMany: mocks.txCreateMany,
             create: mocks.txCreate,
           },
@@ -111,7 +119,9 @@ describe("billing.server", () => {
       betaStatus: null,
       betaCap: null,
     });
-    mocks.txCreditCount.mockResolvedValueOnce(PLAN_LIMITS.free - 1);
+    mocks.txCreditAggregate.mockResolvedValueOnce({
+      _sum: { amount: -(PLAN_LIMITS.free - 1) },
+    });
     mocks.txCreateMany.mockResolvedValueOnce({ count: 1 });
 
     const entitlements = await reserveGenerations("shop-a", 1, {
@@ -143,7 +153,9 @@ describe("billing.server", () => {
       betaStatus: null,
       betaCap: null,
     });
-    mocks.txCreditCount.mockResolvedValueOnce(PLAN_LIMITS.free);
+    mocks.txCreditAggregate.mockResolvedValueOnce({
+      _sum: { amount: -PLAN_LIMITS.free },
+    });
 
     await expect(reserveGenerations("shop-a", 1)).rejects.toThrow(
       "insufficient_credits",
@@ -158,12 +170,32 @@ describe("billing.server", () => {
       betaStatus: null,
       betaCap: null,
     });
-    mocks.txCreditCount.mockResolvedValueOnce(99);
+    mocks.txCreditAggregate.mockResolvedValueOnce({ _sum: { amount: -99 } });
 
     const entitlements = await reserveGenerations("shop-a", 1);
 
     expect(entitlements.effectiveLimit).toBe(PLAN_LIMITS.free);
     expect(mocks.txCreateMany).not.toHaveBeenCalled();
+  });
+
+  it("subtracts refund transactions from monthly usage", async () => {
+    mocks.creditAggregate.mockResolvedValueOnce({ _sum: { amount: -3 } });
+
+    await expect(getMonthlyUsage("shop-a")).resolves.toBe(3);
+    expect(mocks.creditAggregate).toHaveBeenCalledWith({
+      where: {
+        shopId: "shop-a",
+        type: { in: ["usage", "refund"] },
+        createdAt: { gte: expect.any(Date) },
+      },
+      _sum: { amount: true },
+    });
+  });
+
+  it("never reports negative monthly usage when refunds exceed usage", async () => {
+    mocks.creditAggregate.mockResolvedValueOnce({ _sum: { amount: 2 } });
+
+    await expect(getMonthlyUsage("shop-a")).resolves.toBe(0);
   });
 
   it("does not refund demo-shop usage", async () => {

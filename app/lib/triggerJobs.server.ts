@@ -8,6 +8,8 @@ type GenerateOutfitTriggerPayload = {
   rawBackUrl?: string;
   frontMime?: string;
   backMime?: string;
+  primaryImageSide?: "front" | "back";
+  frontDescription?: string;
   modelImageUrl: string;
   modelHeight?: string;
   modelGender?: string;
@@ -17,6 +19,10 @@ type GenerateOutfitTriggerPayload = {
   brandEnergy?: string;
   primaryCategory?: string;
   allowedPoses: string[];
+  creditReservation?: {
+    reservationDescription: string;
+    refundDescription: string;
+  };
 };
 
 type RegenerateOutfitTriggerPayload = {
@@ -31,6 +37,10 @@ type RegenerateOutfitTriggerPayload = {
   brandEnergy?: string;
   primaryCategory?: string;
   allowedPoses: string[];
+  creditReservation?: {
+    reservationDescription: string;
+    refundDescription: string;
+  };
 };
 
 type SyncOutfitToShopifyTriggerPayload = {
@@ -68,12 +78,19 @@ async function triggerTaskWithLog<TPayload extends { shopId: string }>(
   payload: TPayload,
 ) {
   const handle = await tasks.trigger(taskId, payload);
+  const outfitId = "outfitId" in payload && typeof payload.outfitId === "string"
+    ? payload.outfitId
+    : undefined;
+  const generatedImageId =
+    "generatedImageId" in payload && typeof payload.generatedImageId === "string"
+      ? payload.generatedImageId
+      : undefined;
   logServerEvent("info", "trigger_job.enqueued", {
     taskId,
     shopId: payload.shopId,
     jobId: handle.id,
-    ...("outfitId" in payload ? { outfitId: (payload as any).outfitId } : {}),
-    ...("generatedImageId" in payload ? { generatedImageId: (payload as any).generatedImageId } : {}),
+    ...(outfitId ? { outfitId } : {}),
+    ...(generatedImageId ? { generatedImageId } : {}),
   });
   return handle;
 }

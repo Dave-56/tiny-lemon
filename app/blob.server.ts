@@ -8,7 +8,11 @@ export async function uploadBufferToBlob(
   buffer: Buffer,
   pathname: string,
   contentType: string = 'image/png',
-  opts?: { cacheControlMaxAge?: number; contentDisposition?: 'inline' | 'attachment' },
+  opts?: {
+    cacheControlMaxAge?: number;
+    contentDisposition?: 'inline' | 'attachment';
+    allowOverwrite?: boolean;
+  },
 ): Promise<string> {
   const { url } = await put(pathname, buffer, {
     access: 'public',
@@ -17,6 +21,7 @@ export async function uploadBufferToBlob(
     // Long-lived caching for immutable assets when provided
     cacheControlMaxAge: opts?.cacheControlMaxAge,
     contentDisposition: opts?.contentDisposition,
+    allowOverwrite: opts?.allowOverwrite,
   } as any);
   return url;
 }
@@ -33,8 +38,13 @@ export async function uploadImageToBlob(
   contentType: string = 'image/png',
   cacheControlMaxAge?: number,
   contentDisposition: 'inline' | 'attachment' = 'inline',
+  allowOverwrite = false,
 ): Promise<string> {
-  return uploadBufferToBlob(buffer, pathname, contentType, { cacheControlMaxAge, contentDisposition });
+  return uploadBufferToBlob(buffer, pathname, contentType, {
+    cacheControlMaxAge,
+    contentDisposition,
+    allowOverwrite,
+  });
 }
 
 export async function uploadImageVariant(
@@ -46,5 +56,6 @@ export async function uploadImageVariant(
   return uploadBufferToBlob(buffer, pathname, contentType, {
     cacheControlMaxAge: cacheSeconds,
     contentDisposition: 'inline',
+    allowOverwrite: true,
   });
 }
