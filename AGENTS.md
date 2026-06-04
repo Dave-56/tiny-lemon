@@ -224,6 +224,39 @@ When adding or editing public SEO pages or `content/blog/*.md`, keep the Semrush
 
 <!-- SEO content guard END -->
 
+<!-- Shopify dev/prod safety START -->
+# Shopify dev/prod safety
+
+Tiny Lemon has separate production and development Shopify app configs. Do not run local embedded-app development against the production Shopify app.
+
+## Production
+
+- Config file: `shopify.app.toml`
+- Shopify app: `tiny-lemon`
+- App URL: `https://tinylemon.xyz`
+- `automatically_update_urls_on_dev` must stay `false`.
+
+## Development
+
+- Config file: `shopify.app.dev.toml`
+- Shopify app: `tiny-lemon-dev`
+- Dev client ID: `3e80e60620c246003ca008b94e6a37e1`
+- Dev store: `still-cloth.myshopify.com`
+- Dev Neon branch: `dev-local`
+- `DATABASE_URL` should use the pooled dev host containing `ep-rough-tooth-ai6k3v0u-pooler`.
+- `DIRECT_URL` should use the direct dev host containing `ep-rough-tooth-ai6k3v0u` and must not include `-pooler`.
+- Use a Trigger.dev dev key (`tr_dev_...`) for local testing.
+
+Run local embedded-app dev with:
+
+```sh
+npm run dev -- --config dev --store still-cloth.myshopify.com
+```
+
+Never commit `.env`, `.env.local`, database URLs, Shopify API secrets, or Trigger.dev secrets.
+
+<!-- Shopify dev/prod safety END -->
+
 <!-- gstack START -->
 # gstack (workflow skills)
 
