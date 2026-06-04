@@ -9,6 +9,7 @@ import {
 } from '../app/lib/videoProvider.server';
 import { parsePoseImageAssetManifest } from '../app/lib/imageAssetManifest';
 import { logServerEvent } from '../app/lib/observability.server';
+import { refundReservedGeneration } from '../app/lib/billing.server';
 import crypto from 'crypto';
 
 // ── Payload ──────────────────────────────────────────────────────────────────
@@ -17,6 +18,10 @@ interface GenerateVideoPayload {
   outfitId: string;
   shopId: string;
   brandStyleId: string;
+  creditReservation?: {
+    reservationDescription: string;
+    refundDescription: string;
+  };
 }
 
 function buildImageFingerprint(
@@ -66,6 +71,9 @@ export const generateVideoTask = task({
   onFailure: async ({ payload, error }: { payload: GenerateVideoPayload; error: unknown }) => {
     const errorMessage = error instanceof Error ? error.message : 'Video generation failed.';
     logTaskLifecycle('task.failed_final', payload, { error: errorMessage });
+    if (payload.creditReservation) {
+      await refundReservedGeneration(payload.shopId, payload.creditReservation).catch(() => false);
+    }
     await prisma.outfit
       .update({
         where: { id: payload.outfitId },
@@ -174,6 +182,10 @@ export const generateVideoTask = task({
           data: { videoStatus: null, videoJobId: null },
         })
         .catch(() => {});
+
+      if (payload.creditReservation) {
+        await refundReservedGeneration(shopId, payload.creditReservation).catch(() => false);
+      }
 
       return { outfitId, status: 'aborted_stale' };
     }
