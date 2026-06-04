@@ -1,0 +1,38 @@
+# Dev-only Shopify app config.
+#
+# Before running local embedded-app dev, create/use a separate Shopify app in
+# Partners and replace the placeholder client_id below with that dev app's ID.
+# Do not put the production Tiny Lemon client_id in this file.
+
+client_id = "REPLACE_WITH_DEV_SHOPIFY_APP_CLIENT_ID"
+name = "tiny-lemon-dev"
+application_url = "https://replace-with-dev-tunnel.example"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = true
+
+[webhooks]
+api_version = "2026-04"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks/app/scopes_update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app_subscriptions/update" ]
+  uri = "/webhooks/app_subscriptions/update"
+
+  [[webhooks.subscriptions]]
+  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+  uri = "/webhooks/compliance"
+
+[access_scopes]
+scopes = "read_products,write_products,write_files"
+
+[auth]
+redirect_urls = [ "https://replace-with-dev-tunnel.example/auth/callback" ]
