@@ -1,9 +1,15 @@
 import prisma from "../db.server";
 import { canGenerateVideo } from "./plans";
-import { getEffectiveEntitlements } from "./billing.server";
+import {
+  getEffectiveEntitlements,
+  getMonthlyUsage,
+  refundReservedGeneration,
+  reserveGenerations,
+} from "./billing.server";
 import { enqueueGenerateVideo, cancelRunSafely } from "./triggerJobs.server";
 import { logServerEvent } from "./observability.server";
 import { Prisma } from "@prisma/client";
+import crypto from "crypto";
 
 // ── Response types ───────────────────────────────────────────────────────────
 
@@ -15,10 +21,36 @@ type VideoRequestResultBody =
 const VIDEO_UNAVAILABLE_MESSAGE =
   "Could not start video generation right now. Please try again.";
 
+type VideoReservationContext = {
+  reservationDescription: string;
+  preEnqueueRefundDescription: string;
+  noOutputRefundDescription: string;
+};
+
 export type VideoGenerateMode = "generate" | "regenerate";
 
 function jsonError(error: string, status: number) {
   return Response.json({ error }, { status });
+}
+
+function createVideoReservationContext(
+  mode: VideoGenerateMode,
+  outfitId: string,
+): VideoReservationContext {
+  const operationId = crypto.randomUUID();
+  const prefix = `video:${mode}:${outfitId}:${operationId}`;
+  return {
+    reservationDescription: `generation reservation:${prefix}`,
+    preEnqueueRefundDescription: `generation refund:${prefix}:pre_enqueue_failure`,
+    noOutputRefundDescription: `generation refund:${prefix}:no_output_failure`,
+  };
+}
+
+function createLimitReachedMessage(isBeta: boolean) {
+  if (isBeta) {
+    return "You've used your beta allocation for now. Contact us if you need more access.";
+  }
+  return "You've used all your generations this month. Upgrade to continue.";
 }
 
 // ── Access check ─────────────────────────────────────────────────────────────
@@ -179,6 +211,9 @@ export async function handleVideoGenerateRequest(args: {
   }
 
   // ── Claim and enqueue ─────────────────────────────────────────────────────
+  const reservation = createVideoReservationContext(mode, outfit.id);
+  let reservedCredit = false;
+  let enqueueSucceeded = false;
   const claimed = await claimOutfitForVideo({
     outfitId: outfit.id,
     allowCompleted:
@@ -211,11 +246,45 @@ export async function handleVideoGenerateRequest(args: {
   }
 
   try {
+    try {
+      await reserveGenerations(args.shopId, 1, {
+        description: reservation.reservationDescription,
+      });
+      reservedCredit = true;
+    } catch (error) {
+      await restoreVideoClaim(outfit.id, outfit.videoStatus).catch(() => undefined);
+
+      if (error instanceof Error && error.message === "insufficient_credits") {
+        const [used, entitlements] = await Promise.all([
+          getMonthlyUsage(args.shopId),
+          getEffectiveEntitlements(args.shopId),
+        ]);
+        return Response.json(
+          {
+            error: "limit_reached",
+            used,
+            limit: entitlements.effectiveLimit,
+            plan: entitlements.publicPlan,
+            isBeta: entitlements.isBeta,
+            message: createLimitReachedMessage(entitlements.isBeta),
+          },
+          { status: 402 },
+        );
+      }
+
+      return jsonError(VIDEO_UNAVAILABLE_MESSAGE, 503);
+    }
+
     const handle = await enqueueGenerateVideo({
       outfitId: outfit.id,
       shopId: args.shopId,
       brandStyleId: outfit.brandStyleId,
+      creditReservation: {
+        reservationDescription: reservation.reservationDescription,
+        refundDescription: reservation.noOutputRefundDescription,
+      },
     });
+    enqueueSucceeded = true;
 
     await prisma.outfit.update({
       where: { id: outfit.id },
@@ -237,6 +306,12 @@ export async function handleVideoGenerateRequest(args: {
     return Response.json(body);
   } catch (error) {
     await restoreVideoClaim(outfit.id, outfit.videoStatus).catch(() => undefined);
+    if (reservedCredit && !enqueueSucceeded) {
+      await refundReservedGeneration(args.shopId, {
+        reservationDescription: reservation.reservationDescription,
+        refundDescription: reservation.preEnqueueRefundDescription,
+      }).catch(() => false);
+    }
 
     logServerEvent("error", "video.enqueue_failed", {
       outfitId: outfit.id,
