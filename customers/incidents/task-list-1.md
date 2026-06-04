@@ -9,6 +9,8 @@ Latest customer report, 2026-06-04:
 > I can't confirm however whether I got those generations back as I am unable to access the app, it keeps saying "Unexpected Server Error".
 >
 > I am launching a new clothing brand and being budget conscious, I am trying the AI model option. So far it works quite well, my biggest concern was consistency, and your product clearly does it right. However, two big downsides: the first is not being able to prompt the image before generating, so to choose the rest of the outfit, etc. And the second is not being able select different pose styles. Another one is not being able to regenerate only one of the images, rather than the 4 of them, it seems unnecessary and a bit "wasteful".
+>
+> I think the product overall is great, but still needs a bit more work to avoid so many regenerations and odd prompting where you're not sure how it will be applied across the 3 model pics.
 
 Trigger.dev error:
 
@@ -147,6 +149,7 @@ Context:
 - Main friction: they cannot guide the outfit/styling before first generation.
 - Main control gap: they cannot pick different pose styles.
 - Main waste concern: regenerating the whole set when only one image needs improvement feels unnecessary.
+- Prompt clarity gap: merchants are not sure whether custom instructions apply to one image, all three model images, styling only, or the actual product details.
 
 Tasks:
 
@@ -154,16 +157,26 @@ Tasks:
 - [ ] Make the UI clear that the pre-generation direction applies across the full generated set so front, three-quarter, and back stay consistent.
 - [ ] Pass pre-generation user direction through `handleTriggerGeneration`, `generate-outfit`, and prompt construction.
 - [ ] Add focused tests proving pre-generation direction is persisted in the outfit and reaches the generation task payload.
+- [ ] Add optional pre-generation style notes so users can specify outfit/styling direction before the first generation, such as bottoms, shoes, accessories, background, or mood.
 - [ ] Define a small v1 pose-style taxonomy, such as neutral studio, hands relaxed, slight contrapposto, editorial, and side-profile-adjacent.
 - [ ] Add pose-style selection to the generation UI without reintroducing confusing plan-based angle controls.
 - [ ] Thread pose-style selection into prompt construction for each generated angle.
 - [ ] Add tests proving selected pose style changes prompt text while preserving required front/three-quarter/back angle constraints.
+- [ ] Add image-level regenerate actions for each output image: Front, Three-quarter, Back, and Flat lay where applicable.
+- [ ] Pass scoped regenerate targets through the client/API/task payload, such as `targetPoses: ["front"]`, so regenerating one pose does not touch the others.
 - [ ] Design single-image regeneration in Outfits for one pose at a time: front, three-quarter, back, or any future fourth image.
+- [ ] Update regenerate persistence so untouched generated images are preserved and only selected target poses are replaced.
 - [ ] Decide credit behavior for single-image regeneration so merchants are not charged like a full outfit set.
 - [ ] Ensure single-image regeneration replaces only the selected `GeneratedImage` row and leaves the other pose images intact.
+- [ ] Apply user custom instructions only to the selected target pose(s), not globally to every generated image.
+- [ ] Default custom instructions to product preservation: keep garment color, graphics, text, fit, model identity, and non-target poses unchanged unless explicitly requested.
+- [ ] Add a prompt intent normalizer that converts user text into a safe structured regeneration intent: target image(s), edit subject, normalized instruction, preservation rules, risk level, and whether clarification is needed.
+- [ ] Avoid a chatty back-and-forth; only ask for confirmation when the instruction could change the actual product, remove/alter graphics, alter model identity, or otherwise destroy accuracy.
+- [ ] Add a small UI scope summary before submit or in the regenerate modal, such as "Applies to: Front only - Product details preserved."
 - [ ] If an outfit is already synced to Shopify, mark Shopify sync stale after a single-image regeneration.
 - [ ] Preserve existing video behavior intentionally: either clear stale video on source-image change or label it as based on the previous image set.
 - [ ] Add tests for single-pose regeneration success, failure, refund/credit behavior, and stale Shopify sync marking.
+- [ ] Add tests proving vague background/lighting instructions preserve garment graphics and product details by default.
 - [ ] Update customer follow-up copy to acknowledge all three product asks and share which are planned vs already available.
 
 ## 12. Beta Access and Launch Allowance
