@@ -106,7 +106,7 @@ Tasks:
 - [x] Refund final failures for known no-output storage failures, including Blob upload/save failures after image generation.
 - [x] Sanitize and refund pre-enqueue raw Blob upload failures before a Trigger.dev run exists.
 - [x] Ensure polling APIs and failed-state UI never expose raw Blob errors, stack traces, provider internals, or signed/internal URLs.
-- [ ] Refresh or revalidate usage after a refunded storage/provider failure so the usage meter reflects the refund.
+- [x] Refresh or revalidate usage after a refunded storage/provider failure so the usage meter reflects the refund.
 - [x] Add tests proving duplicate Blob uploads no longer fail.
 - [x] Add tests proving raw Vercel Blob errors never reach polling API/UI.
 - [x] Add tests proving refunds happen for provider-capacity failures and no-output storage failures.

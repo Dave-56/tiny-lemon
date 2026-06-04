@@ -36,7 +36,10 @@ vi.mock("../lib/triggerGeneration.server", () => ({
 vi.mock("../lib/support.server", () => ({ getSupportEmail: () => "help@example.com" }));
 vi.mock("../lib/flatlayCache", () => ({ getCachedFlatLay: vi.fn(), setCachedFlatLay: vi.fn() }));
 
-import { action } from "../routes/app.dress-model";
+import {
+  action,
+  shouldRefreshUsageAfterGenerationFailure,
+} from "../routes/app.dress-model";
 
 function makeRequest(body: Record<string, unknown>) {
   return new Request("https://example.com/app/dress-model", {
@@ -90,5 +93,24 @@ describe("app.dress-model action trigger_generation", () => {
       "shop-a.myshopify.com",
       expect.objectContaining({ shopifyProductId: null }),
     );
+  });
+});
+
+describe("shouldRefreshUsageAfterGenerationFailure", () => {
+  it("refreshes usage for refunded generation failures", () => {
+    expect(
+      shouldRefreshUsageAfterGenerationFailure(
+        "We hit a storage issue while saving your image. This attempt was not counted. Please try again.",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not refresh usage for non-refunded failures", () => {
+    expect(
+      shouldRefreshUsageAfterGenerationFailure(
+        "Image generation failed. Please try again.",
+      ),
+    ).toBe(false);
+    expect(shouldRefreshUsageAfterGenerationFailure(null)).toBe(false);
   });
 });
