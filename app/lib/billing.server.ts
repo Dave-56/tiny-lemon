@@ -3,7 +3,7 @@ import prisma from "../db.server";
 
 /** Demo shop id for public /try free tool. No credits; rate limit only. */
 export const DEMO_SHOP_ID = process.env.DEMO_SHOP_ID ?? "__demo__";
-export const BETA_DEFAULT_CAP = 50;
+export const BETA_DEFAULT_CAP = 100;
 export const FULL_GENERATION_ANGLES = ["front", "three-quarter", "back"] as const;
 export const BETA_FULL_ANGLES = FULL_GENERATION_ANGLES;
 
@@ -21,6 +21,14 @@ export const PLAN_ANGLES: Record<string, string[]> = {
   Growth: [...FULL_GENERATION_ANGLES],
   Scale: [...FULL_GENERATION_ANGLES],
 };
+
+export function getEffectiveBetaLimit(
+  publicPlan: string,
+  betaCap: number | null | undefined,
+): number {
+  const planLimit = PLAN_LIMITS[publicPlan] ?? PLAN_LIMITS.free;
+  return Math.max(betaCap ?? BETA_DEFAULT_CAP, BETA_DEFAULT_CAP, planLimit);
+}
 
 type ReserveGenerationsOptions = {
   description?: string;
@@ -109,7 +117,7 @@ export async function getEffectiveEntitlements(
       publicPlan,
       isBeta: true,
       betaStatus,
-      effectiveLimit: shop?.betaCap ?? BETA_DEFAULT_CAP,
+      effectiveLimit: getEffectiveBetaLimit(publicPlan, shop?.betaCap),
       effectiveAngles: BETA_FULL_ANGLES,
       showUpgradePrompt: false,
     };
@@ -132,7 +140,8 @@ export async function getEffectiveEntitlements(
  * `used` count and both succeed when only one slot remains.
  *
  * Credits are deducted on enqueue (not on success). This prevents gaming the
- * limit by firing concurrent requests. Failed jobs are not refunded in V1.
+ * limit by firing concurrent requests. Known no-output provider/storage failures
+ * are refunded by the generation tasks once the final retry fails.
  *
  * Throws:
  *   'insufficient_credits' — shop is at or over their monthly limit
