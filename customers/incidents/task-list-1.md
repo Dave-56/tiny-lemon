@@ -133,7 +133,7 @@ Tasks:
 - [ ] Pull production logs for the failed request and identify the exact route/loader/action throwing.
 - [x] Set production `shopify.app.toml` to `automatically_update_urls_on_dev = false`.
 - [x] Create a separate dev Shopify app config before running local embedded-app dev again.
-- [ ] Use a separate dev Shopify app, dev store, dev database, and Trigger.dev dev keys for local testing.
+- [x] Use a separate dev Shopify app, dev store, dev database, and Trigger.dev dev keys for local testing.
 - [ ] Check whether the failure happens before or after `authenticate.admin(request)`.
 - [ ] Verify the app shell loader handles missing `Shop`, missing `BrandStyle`, missing beta fields, and stale sessions without throwing.
 - [ ] Add structured route-error logging with `shop`, route path, request id, and sanitized error kind so future "Unexpected Server Error" reports are actionable.
