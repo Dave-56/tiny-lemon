@@ -12,6 +12,7 @@ import {
   useNavigate,
   useBlocker,
   useBeforeUnload,
+  useRevalidator,
   Link,
 } from "react-router";
 import { usePendingItems } from "../contexts/PendingItemsContext";
@@ -531,6 +532,12 @@ const UPGRADE_MSG =
 const BETA_LIMIT_MSG =
   "You've used your beta allocation for now. Contact us if you need more access.";
 
+export function shouldRefreshUsageAfterGenerationFailure(
+  errorMessage: string | null | undefined,
+) {
+  return errorMessage?.toLowerCase().includes("not counted") ?? false;
+}
+
 function ErrorMsg({
   msg,
   isBeta,
@@ -597,6 +604,7 @@ export default function DressModel() {
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const { revalidate } = useRevalidator();
   const pendingItemsCtx = usePendingItems();
 
   const [pickedProduct, setPickedProduct] = useState<{
@@ -1025,6 +1033,9 @@ export default function DressModel() {
                 status: "error",
                 error: errorMessage ?? "Generation failed. Please try again.",
               });
+              if (shouldRefreshUsageAfterGenerationFailure(errorMessage)) {
+                revalidate();
+              }
             } else {
               const uiStatus: ItemStatus =
                 status === "generating_front"
