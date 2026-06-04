@@ -111,6 +111,24 @@ describe("billing.server", () => {
     });
   });
 
+  it("does not let beta access reduce a higher paid plan limit", async () => {
+    mocks.shopFindUnique.mockResolvedValueOnce({
+      plan: "Scale",
+      betaAccess: true,
+      betaStatus: "active",
+      betaCap: 100,
+    });
+
+    await expect(getEffectiveEntitlements("shop-a")).resolves.toEqual({
+      publicPlan: "Scale",
+      isBeta: true,
+      betaStatus: "active",
+      effectiveLimit: PLAN_LIMITS.Scale,
+      effectiveAngles: BETA_FULL_ANGLES,
+      showUpgradePrompt: false,
+    });
+  });
+
   it("reserves credits when usage lands exactly on the monthly limit", async () => {
     process.env.NODE_ENV = "production";
     mocks.shopFindUnique.mockResolvedValue({

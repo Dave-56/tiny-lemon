@@ -11,6 +11,11 @@ export interface GarmentSpec {
   primary_colors: string[];
   has_logo_or_text: boolean;
   notable_details: string;
+  graphicFidelity?: {
+    critical: boolean;
+    description?: string;
+    referenceCropUrl?: string;
+  };
 }
 
 const FRONT_EXTRACTION_PROMPT = `This image is the FRONT flat lay of the garment. The hem_length you report will be the single source of truth for all poses (front, three-quarter, back). Report length from this image only.

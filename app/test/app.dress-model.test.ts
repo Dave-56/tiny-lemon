@@ -94,6 +94,28 @@ describe("app.dress-model action trigger_generation", () => {
       expect.objectContaining({ shopifyProductId: null }),
     );
   });
+
+  it("forwards primary image side and front description", async () => {
+    await action({
+      request: makeRequest({
+        intent: "trigger_generation",
+        modelId: "model-01",
+        frontB64: "ZmFrZQ==",
+        primaryImageSide: "back",
+        frontDescription: "large cherry graphic on the front",
+      }),
+      params: {},
+      context: {},
+    } as any);
+
+    expect(mocks.handleTriggerGeneration).toHaveBeenCalledWith(
+      "shop-a.myshopify.com",
+      expect.objectContaining({
+        primaryImageSide: "back",
+        frontDescription: "large cherry graphic on the front",
+      }),
+    );
+  });
 });
 
 describe("shouldRefreshUsageAfterGenerationFailure", () => {

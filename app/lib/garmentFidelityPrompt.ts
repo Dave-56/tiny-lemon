@@ -1,5 +1,6 @@
 import type { PdpStylePreset, AnglePreset, BrandStylePreset } from './types';
 import type { GarmentSpec } from './garmentSpec';
+import type { GraphicFidelityPromptContext } from './graphicFidelity';
 
 // ── Styling Resolver ──────────────────────────────────────────────────────────
 
@@ -246,7 +247,7 @@ export function generateGarmentFidelityPrompt(
 /** Pose identifiers for the multi-turn chat flow (no anchor). */
 export type SpecPose = 'front' | 'three-quarter' | 'back';
 
-type GarmentReferenceContext = {
+export type GarmentReferenceContext = {
   primaryImageSide?: 'front' | 'back';
   frontDescription?: string;
 };
@@ -280,12 +281,20 @@ const FRAMING_BLOCK =
 const RELAXED_QUALITY_CUE =
   'Professional fashion e-commerce photography. Clean studio image, natural catalog posture, realistic body proportions, and a clear readable view of the garment.';
 
-function buildGraphicFidelityCue(spec: GarmentSpec): string {
-  if (!spec.has_logo_or_text) return '';
-  const detail = spec.notable_details
-    ? ` Visible graphic/text detail: ${spec.notable_details}.`
+function buildGraphicFidelityCue(
+  spec: GarmentSpec,
+  graphicFidelity?: GraphicFidelityPromptContext,
+): string {
+  const isCritical = graphicFidelity?.critical || spec.has_logo_or_text;
+  if (!isCritical) return '';
+  const detail = graphicFidelity?.description ?? spec.notable_details;
+  const detailText = detail
+    ? ` Visible graphic/text detail: ${detail}.`
     : '';
-  return ` Graphic/text fidelity is critical.${detail} Preserve the exact placement, scale, color, spacing, and legibility of every printed graphic, logo, label, letter, number, and word from the flat lay. Do not redraw, paraphrase, mirror, scramble, stylize, replace, or invent any graphics or text.`;
+  const referenceText = graphicFidelity?.hasReferenceCrop
+    ? ' A close-up reference crop of the graphic/print is provided as an additional image. Use that crop as the exact visual source for the graphic details.'
+    : '';
+  return ` Graphic/text fidelity is critical.${detailText}${referenceText} Preserve the exact placement, scale, color, spacing, and legibility of every printed graphic, logo, label, letter, number, and word from the flat lay. Do not redraw, paraphrase, mirror, scramble, stylize, replace, or invent any graphics or text.`;
 }
 
 const STYLE_DIRECTION_CUES: Record<string, string> = {
@@ -346,6 +355,7 @@ export function buildPromptFromSpec(
   _brandEnergy?: string,
   _primaryCategory?: string,
   referenceContext?: GarmentReferenceContext,
+  graphicFidelity?: GraphicFidelityPromptContext,
 ): string {
   void _pricePoint;
   void _brandEnergy;
@@ -353,7 +363,7 @@ export function buildPromptFromSpec(
 
   const colors = spec.primary_colors.length ? spec.primary_colors.join(' ') : 'neutral';
   const heightNote = modelHeight ? ` The model is ${modelHeight} tall.` : '';
-  const graphicFidelityCue = buildGraphicFidelityCue(spec);
+  const graphicFidelityCue = buildGraphicFidelityCue(spec, graphicFidelity);
   const base = `${RELAXED_QUALITY_CUE}\n\nPhoto of the person in the reference image wearing a ${colors} ${spec.fit}-fit ${spec.silhouette} ${spec.garment_type}, ${spec.sleeve_length} sleeves, hem ${spec.hem_length}${spec.notable_details ? `, ${spec.notable_details}` : ''}.${heightNote}${graphicFidelityCue}`;
   const effectiveBackdrop = brandStyle?.backdropSnippet ?? styleSnippet;
   const styleDirection = buildStyleDirectionBlock(brandStyle);
@@ -382,12 +392,28 @@ export function buildPromptFromSpec(
     : isBackWithBackFlatLay
     ? 'The BACK flat lay garment photo — source for back garment details (neckline, zipper, back design). Do NOT use this for garment length.'
     : 'The FRONT flat lay garment photo — source for garment details.';
+  const hasGraphicReference = Boolean(graphicFidelity?.critical && graphicFidelity.hasReferenceCrop);
   if (hasLengthAnchor) {
+    if (hasGraphicReference) {
+      imageHeader =
+        `You are given 4 images:\n` +
+        `1) ${img1Desc}\n` +
+        `2) A close-up crop of the garment graphic, logo, print, or typography — source for exact graphic details ONLY.\n` +
+        `3) A reference photo of the model — source for identity ONLY (face, skin tone, hair, body proportions). Do NOT copy the pose, stance, body angle, or arm positions from this image.\n` +
+        `4) A front-view result of this model already wearing this garment — use this STRICTLY as a BACKGROUND, LIGHTING, and OUTFIT CONSISTENCY anchor. Match the exact same backdrop color/gradient, floor tone, contact shadow softness, lighting direction, complementary pieces (trousers, shoes, base layer), garment length, and fit. The garment hem MUST end at the same point on the body. Do NOT copy the pose, body angle, arm positions, or camera angle from this image.\n\n`;
+    } else {
+      imageHeader =
+        `You are given 3 images:\n` +
+        `1) ${img1Desc}\n` +
+        `2) A reference photo of the model — source for identity ONLY (face, skin tone, hair, body proportions). Do NOT copy the pose, stance, body angle, or arm positions from this image.\n` +
+        `3) A front-view result of this model already wearing this garment — use this STRICTLY as a BACKGROUND, LIGHTING, and OUTFIT CONSISTENCY anchor. Match the exact same backdrop color/gradient, floor tone, contact shadow softness, lighting direction, complementary pieces (trousers, shoes, base layer), garment length, and fit. The garment hem MUST end at the same point on the body. Do NOT copy the pose, body angle, arm positions, or camera angle from this image.\n\n`;
+    }
+  } else if (hasGraphicReference) {
     imageHeader =
       `You are given 3 images:\n` +
       `1) ${img1Desc}\n` +
-      `2) A reference photo of the model — source for identity ONLY (face, skin tone, hair, body proportions). Do NOT copy the pose, stance, body angle, or arm positions from this image.\n` +
-      `3) A front-view result of this model already wearing this garment — use this STRICTLY as a BACKGROUND, LIGHTING, and OUTFIT CONSISTENCY anchor. Match the exact same backdrop color/gradient, floor tone, contact shadow softness, lighting direction, complementary pieces (trousers, shoes, base layer), garment length, and fit. The garment hem MUST end at the same point on the body. Do NOT copy the pose, body angle, arm positions, or camera angle from this image.\n\n`;
+      `2) A close-up crop of the garment graphic, logo, print, or typography — source for exact graphic details ONLY.\n` +
+      `3) A reference photo of the model — source for identity ONLY (face, skin tone, hair, body proportions). Do NOT copy the pose, stance, body angle, or arm positions from this image.\n\n`;
   } else {
     imageHeader =
       `You are given 2 images:\n` +
@@ -401,9 +427,9 @@ export function buildPromptFromSpec(
     const bodyLanguage = DEFAULT_POSE_INSTRUCTIONS['three-quarter'];
     // Insert gender lock immediately after imageHeader so it scopes turns 2/3.
     const headerWithLock = genderLock ? `${imageHeader}${genderLock}\n` : imageHeader;
-    return `${headerWithLock}${styleDirection ? `${styleDirection}\n` : ''}${missingFrontBlock}\nSame person, same garment. ${POSE_GEOMETRY['three-quarter']} ${bodyLanguage} ${HAND_SAFETY_BLOCK} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
+    return `${headerWithLock}${styleDirection ? `${styleDirection}\n` : ''}${missingFrontBlock}${graphicFidelityCue}\nSame person, same garment. ${POSE_GEOMETRY['three-quarter']} ${bodyLanguage} ${HAND_SAFETY_BLOCK} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
   }
   const bodyLanguage = DEFAULT_POSE_INSTRUCTIONS.back;
   const headerWithLock = genderLock ? `${imageHeader}${genderLock}\n` : imageHeader;
-  return `${headerWithLock}${styleDirection ? `${styleDirection}\n` : ''}${missingFrontBlock}\nSame person, same garment. ${POSE_GEOMETRY.back} ${bodyLanguage} ${HAND_SAFETY_BLOCK} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
+  return `${headerWithLock}${styleDirection ? `${styleDirection}\n` : ''}${missingFrontBlock}${graphicFidelityCue}\nSame person, same garment. ${POSE_GEOMETRY.back} ${bodyLanguage} ${HAND_SAFETY_BLOCK} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
 }

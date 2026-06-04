@@ -12,6 +12,13 @@ import {
 } from '../app/lib/flatLayCleanup';
 import { extractGarmentSpec } from '../app/lib/garmentSpec';
 import { buildPromptFromSpec } from '../app/lib/garmentFidelityPrompt';
+import {
+  extractGraphicReferenceCrop,
+  getGraphicPromptContext,
+  isGraphicCriticalSpec,
+  mergeGraphicFidelityIntoSpec,
+  validateGeneratedGraphicFidelity,
+} from '../app/lib/graphicFidelity';
 import { buildTryDemoPrompt } from '../app/lib/tryDemoPrompt';
 import { normalizeReferenceImageServer } from '../app/lib/normalizeReferenceImage.server';
 import { PDP_STYLE_PRESETS, BRAND_STYLE_PRESETS } from '../app/lib/pdpPresets';
@@ -148,6 +155,29 @@ export const generateOutfitTask = task({
     // ── 0. Fetch raw images ───────────────────────────────────────────────────
     const rawFrontB64 = await fetchAsBase64(rawFrontUrl);
     const rawBackB64 = rawBackUrl ? await fetchAsBase64(rawBackUrl).catch(() => null) : null;
+    const rawFrontSpec = await extractGarmentSpec(
+      rawFrontB64,
+      frontMime,
+      apiKey,
+      primaryImageSide,
+      frontDescription,
+    );
+    const rawGraphicCritical = isGraphicCriticalSpec(rawFrontSpec);
+    let graphicReferenceCropB64: string | undefined;
+    let graphicReferenceCropUrl: string | undefined;
+
+    if (rawGraphicCritical) {
+      const cropBuffer = await extractGraphicReferenceCrop(rawFrontB64);
+      graphicReferenceCropB64 = cropBuffer.toString('base64');
+      graphicReferenceCropUrl = await uploadImageToBlob(
+        cropBuffer,
+        `outfits/${shopId}/${outfitId}/graphic-reference-front.png`,
+        'image/png',
+        undefined,
+        'inline',
+        true,
+      );
+    }
 
     // ── 1. Clean flat lay — skipped for demo to save ~20s ────────────────────
     let cleanFlatLayB64: string;
@@ -215,7 +245,7 @@ export const generateOutfitTask = task({
     }
 
     // ── 2. Spec extraction + model normalisation in parallel ──────────────────
-    const [garmentSpec, normalizedModelB64] = await Promise.all([
+    const [cleanedGarmentSpec, normalizedModelB64] = await Promise.all([
       extractGarmentSpec(
         cleanFlatLayB64,
         cleanMime,
@@ -227,6 +257,12 @@ export const generateOutfitTask = task({
         .then(buf => normalizeReferenceImageServer(buf))
         .then(buf => buf.toString('base64')),
     ]);
+    const garmentSpec = mergeGraphicFidelityIntoSpec(
+      cleanedGarmentSpec,
+      rawFrontSpec,
+      graphicReferenceCropUrl,
+    );
+    const graphicPromptContext = getGraphicPromptContext(garmentSpec);
 
     await prisma.outfit.update({
       where: { id: outfitId, shopId },
@@ -288,21 +324,49 @@ export const generateOutfitTask = task({
     } else {
       await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_front' } });
       const frontPrompt = isDemo
-        ? buildTryDemoPrompt(garmentSpec, modelGender, modelHeight)
-        : buildPromptFromSpec(garmentSpec, 'front', backdropSnippet, hasBack, false, modelHeight, stylingDir, modelGender, pricePoint, brandEnergy, primaryCategory, promptContext);
+        ? buildTryDemoPrompt(garmentSpec, modelGender, modelHeight, graphicPromptContext)
+        : buildPromptFromSpec(
+            garmentSpec,
+            'front',
+            backdropSnippet,
+            hasBack,
+            false,
+            modelHeight,
+            stylingDir,
+            modelGender,
+            pricePoint,
+            brandEnergy,
+            primaryCategory,
+            promptContext,
+            graphicPromptContext,
+          );
+      const frontParts = buildGenerationParts({
+        garmentB64: cleanFlatLayB64,
+        garmentMime: cleanMime,
+        modelB64: normalizedModelB64,
+        prompt: frontPrompt,
+        graphicReferenceCropB64,
+      });
       const frontResp = await generateImageContent(ai, {
         model: MODEL,
         contents: [{
           role: 'user',
-          parts: [
-            { inlineData: { data: cleanFlatLayB64, mimeType: cleanMime } },
-            { inlineData: { data: normalizedModelB64, mimeType: 'image/png' as const } },
-            { text: frontPrompt },
-          ],
+          parts: frontParts,
         }],
         config: frontGenConfig,
       }, { outfitId, shopId, stage: 'front' });
       frontB64 = extractBase64(frontResp);
+      frontB64 = await retryIfGraphicFidelityFailed({
+        ai,
+        b64: frontB64,
+        contents: [{ role: 'user' as const, parts: frontParts }],
+        config: { ...frontGenConfig, temperature: 0.15 },
+        graphicReferenceCropB64,
+        description: graphicPromptContext?.description,
+        outfitId,
+        shopId,
+        stage: 'front',
+      });
       const frontCropped = await sharp(Buffer.from(frontB64, 'base64'))
         .resize({ width: 800, height: 1200, fit: 'cover', position: 'top' })
         .png({ progressive: true })
@@ -344,17 +408,19 @@ export const generateOutfitTask = task({
     const generateThreeQuarter = async () => {
       if (!needsTq) return;
       const tqPrompt = buildPromptFromSpec(
-        garmentSpec, 'three-quarter', backdropSnippet, hasBack, true, modelHeight, stylingDir, modelGender, pricePoint, brandEnergy, primaryCategory, promptContext,
+        garmentSpec, 'three-quarter', backdropSnippet, hasBack, true, modelHeight, stylingDir, modelGender, pricePoint, brandEnergy, primaryCategory, promptContext, graphicPromptContext,
       );
       const tqContents = [{
         role: 'user' as const,
-        parts: [
-          { text: 'THREE-QUARTER VIEW: camera positioned 45° to the model\'s right. Do NOT generate a front-facing pose.' },
-          { inlineData: { data: cleanFlatLayB64, mimeType: cleanMime } },
-          { inlineData: { data: normalizedModelB64, mimeType: 'image/png' as const } },
-          { inlineData: { data: frontB64, mimeType: 'image/png' as const } },
-          { text: tqPrompt },
-        ],
+        parts: buildGenerationParts({
+          instruction: 'THREE-QUARTER VIEW: camera positioned 45° to the model\'s right. Do NOT generate a front-facing pose.',
+          garmentB64: cleanFlatLayB64,
+          garmentMime: cleanMime,
+          modelB64: normalizedModelB64,
+          frontAnchorB64: frontB64,
+          prompt: tqPrompt,
+          graphicReferenceCropB64,
+        }),
       }];
       const tqResp = await generateImageContent(ai, {
         model: MODEL,
@@ -372,6 +438,17 @@ export const generateOutfitTask = task({
         }, { outfitId, shopId, stage: 'three-quarter_retry' });
         tqB64 = extractBase64(retryResp);
       }
+      tqB64 = await retryIfGraphicFidelityFailed({
+        ai,
+        b64: tqB64,
+        contents: tqContents,
+        config: { ...threeQuarterGenConfig, temperature: 0.25 },
+        graphicReferenceCropB64,
+        description: graphicPromptContext?.description,
+        outfitId,
+        shopId,
+        stage: 'three-quarter',
+      });
       const tqCropped = await sharp(Buffer.from(tqB64, 'base64'))
         .resize({ width: 800, height: 1200, fit: 'cover', position: 'attention' })
         .png({ progressive: true })
@@ -403,17 +480,19 @@ export const generateOutfitTask = task({
     const generateBack = async () => {
       if (!needsBack) return;
       const backPrompt = buildPromptFromSpec(
-        garmentSpec, 'back', backdropSnippet, hasBack, true, modelHeight, stylingDir, modelGender, pricePoint, brandEnergy, primaryCategory, promptContext,
+        garmentSpec, 'back', backdropSnippet, hasBack, true, modelHeight, stylingDir, modelGender, pricePoint, brandEnergy, primaryCategory, promptContext, graphicPromptContext,
       );
       const backContents = [{
         role: 'user' as const,
-        parts: [
-          { text: 'BACK VIEW: camera directly behind the model. Do NOT generate a front-facing pose.' },
-          { inlineData: { data: cleanBackFlatLayB64 ?? cleanFlatLayB64, mimeType: cleanMime } },
-          { inlineData: { data: normalizedModelB64, mimeType: 'image/png' as const } },
-          { inlineData: { data: frontB64, mimeType: 'image/png' as const } },
-          { text: backPrompt },
-        ],
+        parts: buildGenerationParts({
+          instruction: 'BACK VIEW: camera directly behind the model. Do NOT generate a front-facing pose.',
+          garmentB64: cleanBackFlatLayB64 ?? cleanFlatLayB64,
+          garmentMime: cleanMime,
+          modelB64: normalizedModelB64,
+          frontAnchorB64: frontB64,
+          prompt: backPrompt,
+          graphicReferenceCropB64,
+        }),
       }];
       const backResp = await generateImageContent(ai, {
         model: MODEL,
@@ -431,6 +510,17 @@ export const generateOutfitTask = task({
         }, { outfitId, shopId, stage: 'back_retry' });
         backB64 = extractBase64(retryResp);
       }
+      backB64 = await retryIfGraphicFidelityFailed({
+        ai,
+        b64: backB64,
+        contents: backContents,
+        config: { ...backGenConfig, temperature: 0.25 },
+        graphicReferenceCropB64,
+        description: graphicPromptContext?.description,
+        outfitId,
+        shopId,
+        stage: 'back',
+      });
       const backCropped = await sharp(Buffer.from(backB64, 'base64'))
         .resize({ width: 800, height: 1200, fit: 'cover', position: 'attention' })
         .png({ progressive: true })
@@ -528,6 +618,91 @@ async function prepareCleanFlatLay(args: {
 }
 
 type GenerateContentRequest = Parameters<GoogleGenAI['models']['generateContent']>[0];
+type GenerateContentPart =
+  | { text: string }
+  | { inlineData: { data: string; mimeType: 'image/png' } };
+
+function buildGenerationParts(args: {
+  instruction?: string;
+  garmentB64: string;
+  garmentMime: 'image/png';
+  modelB64: string;
+  prompt: string;
+  graphicReferenceCropB64?: string;
+  frontAnchorB64?: string;
+}): GenerateContentPart[] {
+  const parts: GenerateContentPart[] = [];
+  if (args.instruction) parts.push({ text: args.instruction });
+  parts.push(
+    { text: 'IMAGE 1: Cleaned or normalized garment flat lay reference.' },
+    { inlineData: { data: args.garmentB64, mimeType: args.garmentMime } },
+  );
+  let nextImage = 2;
+  if (args.graphicReferenceCropB64) {
+    parts.push(
+      { text: 'IMAGE 2: Close-up reference crop for the garment graphic, logo, print, or typography.' },
+      { inlineData: { data: args.graphicReferenceCropB64, mimeType: 'image/png' } },
+    );
+    nextImage = 3;
+  }
+  parts.push(
+    { text: `IMAGE ${nextImage}: Model reference image.` },
+    { inlineData: { data: args.modelB64, mimeType: 'image/png' } },
+  );
+  nextImage += 1;
+  if (args.frontAnchorB64) {
+    parts.push(
+      { text: `IMAGE ${nextImage}: Front generated image for background, lighting, and outfit consistency only.` },
+      { inlineData: { data: args.frontAnchorB64, mimeType: 'image/png' } },
+    );
+  }
+  parts.push({ text: args.prompt });
+  return parts;
+}
+
+async function retryIfGraphicFidelityFailed(args: {
+  ai: GoogleGenAI;
+  b64: string;
+  contents: GenerateContentRequest['contents'];
+  config: GenerateContentRequest['config'];
+  graphicReferenceCropB64?: string;
+  description?: string;
+  outfitId: string;
+  shopId: string;
+  stage: string;
+}): Promise<string> {
+  if (!args.graphicReferenceCropB64) return args.b64;
+  const verdict = await validateGeneratedGraphicFidelity(args.ai, {
+    referenceCropBase64: args.graphicReferenceCropB64,
+    generatedImageBase64: args.b64,
+    description: args.description,
+    outfitId: args.outfitId,
+    shopId: args.shopId,
+    taskId: 'generate-outfit',
+    stage: args.stage,
+  });
+  if (verdict !== 'failed') return args.b64;
+
+  const retryResp = await generateImageContent(args.ai, {
+    model: GEMINI_IMAGE_MODEL,
+    contents: args.contents,
+    config: args.config,
+  }, { outfitId: args.outfitId, shopId: args.shopId, stage: `${args.stage}_graphic_retry` });
+  const retryB64 = extractBase64(retryResp);
+  const retryVerdict = await validateGeneratedGraphicFidelity(args.ai, {
+    referenceCropBase64: args.graphicReferenceCropB64,
+    generatedImageBase64: retryB64,
+    description: args.description,
+    outfitId: args.outfitId,
+    shopId: args.shopId,
+    taskId: 'generate-outfit',
+    stage: `${args.stage}_graphic_retry`,
+  });
+  if (retryVerdict === 'failed') {
+    throw new Error('Generated image failed graphic fidelity validation.');
+  }
+  return retryB64;
+}
 
 async function generateImageContent(
   ai: GoogleGenAI,

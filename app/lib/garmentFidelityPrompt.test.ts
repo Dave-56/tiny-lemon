@@ -71,6 +71,37 @@ describe('buildPromptFromSpec hand-safety prompts', () => {
     expect(prompt).toContain('Do not redraw, paraphrase, mirror, scramble, stylize, replace, or invent any graphics or text.');
   });
 
+  it('uses a close-up graphic crop as an exact visual source when provided', () => {
+    const prompt = buildPromptFromSpec(
+      {
+        ...spec,
+        has_logo_or_text: true,
+        notable_details: 'red cherry graphic and red "another." text',
+      },
+      'three-quarter',
+      backdropSnippet,
+      false,
+      true,
+      undefined,
+      getBrandStyle('minimal'),
+      'Male',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        critical: true,
+        description: 'red cherry graphic and red "another." text',
+        hasReferenceCrop: true,
+      },
+    );
+
+    expect(prompt).toContain('You are given 4 images:');
+    expect(prompt).toContain('A close-up crop of the garment graphic, logo, print, or typography');
+    expect(prompt).toContain('Use that crop as the exact visual source for the graphic details.');
+    expect(prompt).toContain('red cherry graphic and red "another." text');
+  });
+
   it('does not let the minimal preset override the relaxed catalog stance', () => {
     const prompt = buildPromptFromSpec(
       spec,

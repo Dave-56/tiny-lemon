@@ -1,5 +1,6 @@
 import type { GarmentSpec } from './garmentSpec';
 import { buildPromptFromSpec } from './garmentFidelityPrompt';
+import type { GraphicFidelityPromptContext } from './graphicFidelity';
 import { BRAND_STYLE_PRESETS, PDP_STYLE_PRESETS } from './pdpPresets';
 
 const FORMALWEAR_RE = /evening dress|occasion dress|cocktail dress|gown|tuxedo|suit/i;
@@ -24,6 +25,7 @@ export function buildTryDemoPrompt(
   spec: GarmentSpec,
   modelGender?: string,
   modelHeight?: string,
+  graphicFidelity?: GraphicFidelityPromptContext,
 ): string {
   const isFormal = FORMALWEAR_RE.test(spec.garment_type);
   const stylingDir = BRAND_STYLE_PRESETS.find(
@@ -40,6 +42,11 @@ export function buildTryDemoPrompt(
     modelHeight,
     stylingDir,
     modelGender,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    graphicFidelity,
   );
 
   return base + DEMO_QUALITY_SUFFIX;
