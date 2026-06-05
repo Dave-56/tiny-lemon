@@ -82,7 +82,7 @@
 
 .tiers {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1.25rem;
   margin-bottom: 2rem;
 }
@@ -272,6 +272,7 @@
   min-width: 640px;
   border-collapse: collapse;
   font-size: 0.875rem;
+  table-layout: fixed;
 }
 
 .table th,
@@ -287,16 +288,31 @@
   background: var(--krea-sidebar, #fafafa);
 }
 
+.table th:first-child,
+.table td:first-child {
+  width: 18%;
+}
+
+.table th:not(:first-child) {
+  text-align: center;
+}
+
 .table th:first-child {
   border-radius: 1rem 0 0 0;
 }
 
 .table td {
   color: var(--krea-text, #111);
+  line-height: 1.45;
+  vertical-align: middle;
 }
 
 .table td:not(:first-child) {
   text-align: center;
+}
+
+.table td:first-child {
+  font-weight: 500;
 }
 
 .table tbody tr:last-child td {

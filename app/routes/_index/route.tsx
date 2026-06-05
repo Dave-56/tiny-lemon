@@ -31,7 +31,7 @@ const FAQ_ITEMS = [
   },
   {
     question: "Can I try Tiny Lemon for free?",
-    answer: `Yes. During the beta launch, eligible early Shopify fashion merchants can get up to ${BETA_LAUNCH_GENERATION_CAP} free outfit generations to test Tiny Lemon with real products before choosing a paid plan.`,
+    answer: `Yes. With launch access, eligible early Shopify fashion merchants can get up to ${BETA_LAUNCH_GENERATION_CAP} free outfit generations to test Tiny Lemon with real products before choosing a paid plan.`,
   },
 ];
 
@@ -55,7 +55,7 @@ function getStructuredData(origin: string, installUrl: string) {
         featureList: [
           "AI model photos from flat-lay and supplier product photos",
           "Short product videos for fashion product listings",
-          `Beta launch access with up to ${BETA_LAUNCH_GENERATION_CAP} free outfit generations`,
+          `Launch access with up to ${BETA_LAUNCH_GENERATION_CAP} free outfit generations`,
           "Shopify product media workflow for clothing stores",
         ],
         offers: {
@@ -80,9 +80,9 @@ function getStructuredData(origin: string, installUrl: string) {
 }
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  const title = "Tiny Lemon Shopify App for AI Model Photos";
+  const title = "Tiny Lemon Shopify App for AI Model Photos & Video";
   const description =
-    `Tiny Lemon turns flat-lay and supplier photos into AI model photos for Shopify fashion listings. Beta merchants can get up to ${BETA_LAUNCH_GENERATION_CAP} free generations.`;
+    `Tiny Lemon turns flat-lay and supplier photos into AI model photos and short product videos for Shopify fashion listings. Early merchants can get up to ${BETA_LAUNCH_GENERATION_CAP} free launch generations.`;
   const origin = data?.origin ?? "https://tinylemon.xyz";
   const installUrl = data?.installUrl ?? SHOPIFY_APP_STORE_URL;
   return buildSeoMeta({
@@ -173,16 +173,17 @@ export default function LandingPage() {
           </h1>
           <p className={styles.heroSubhead}>
             Upload a flat-lay from your factory or your own shoot. Get
-            professional on-model photos, ready to publish on Shopify. No
-            photographer, no shoot budget.
+            professional on-model photos and a short branded product video,
+            then publish them directly to your Shopify listing. No photographer,
+            no shoot budget.
           </p>
           <p
             className={styles.heroOffer}
-            aria-label={`Get up to ${BETA_LAUNCH_GENERATION_CAP} free outfit generations during beta.`}
+            aria-label={`Get up to ${BETA_LAUNCH_GENERATION_CAP} free outfit generations with launch access.`}
           >
             <span>Get up to </span>
             <strong>{BETA_LAUNCH_GENERATION_CAP} free outfit generations</strong>
-            <span> during beta.</span>
+            <span> with launch access.</span>
           </p>
           <p className={styles.heroAppStoreNote}>
             No credit card. Test with real products before choosing a paid plan.
@@ -237,15 +238,15 @@ export default function LandingPage() {
           <ol className={styles.howItWorksList}>
             <li className={styles.howItWorksItem}>
               <span className={styles.howItWorksStep}>1</span>
-              <span>Upload your flat-lay — from your factory, supplier, or your own shoot</span>
+              <span>Upload your flat-lay from your factory, supplier, or your own shoot</span>
             </li>
             <li className={styles.howItWorksItem}>
               <span className={styles.howItWorksStep}>2</span>
-              <span>Get a full set of on-model photos in minutes</span>
+              <span>Generate on-model photos plus a short branded product video</span>
             </li>
             <li className={styles.howItWorksItem}>
               <span className={styles.howItWorksStep}>3</span>
-              <span>Add to your Shopify products and publish</span>
+              <span>Publish the assets directly to your Shopify listing</span>
             </li>
           </ol>
         </section>
@@ -317,9 +318,9 @@ export default function LandingPage() {
               <div className={styles.featureCardIcon}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
               </div>
-              <h3 className={styles.featureCardTitle}>Every photo your listing needs</h3>
+              <h3 className={styles.featureCardTitle}>Every product asset your listing needs</h3>
               <p className={styles.featureCardDesc}>
-                On-model front, side, and back views, detail close-ups, flat lay, and lifestyle. Each tier unlocks more of the set for your store.
+                On-model front, side, and back views, detail close-ups, flat lay, lifestyle, and short branded product video. Build more PDP, Reels, and TikTok creative from one flat-lay.
               </p>
             </div>
           </div>
@@ -343,8 +344,8 @@ export default function LandingPage() {
             <>
               <p className={styles.loginSubtext}>
                 Install Tiny Lemon from the Shopify App Store to claim up to{" "}
-                {BETA_LAUNCH_GENERATION_CAP} free beta generations and create AI
-                model photos directly inside Shopify.
+                {BETA_LAUNCH_GENERATION_CAP} free launch generations and create
+                AI model photos plus short product videos directly inside Shopify.
               </p>
               <a
                 href={installUrl}

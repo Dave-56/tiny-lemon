@@ -6,7 +6,7 @@ import { boundary } from '@shopify/shopify-app-react-router/server';
 import { authenticate } from '../shopify.server';
 import { BILLING_PLANS } from '../lib/plans';
 import prisma, { ensureShop } from '../db.server';
-import { getMonthlyUsage, getEffectiveEntitlements, PLAN_LIMITS } from '../lib/billing.server';
+import { getMonthlyUsage, getEffectiveEntitlements } from '../lib/billing.server';
 import { getSupportEmail } from '../lib/support.server';
 
 // ── Loader ────────────────────────────────────────────────────────────────────
@@ -75,7 +75,7 @@ const PLANS = [
     price: '$0',
     generations: 50,
     angles: 'Front · 3/4 · Back',
-    features: ['50 generations / month', 'Full 3-angle structural set', '1 brand style profile'],
+    features: ['50 generations / month', 'Full 3-angle structural set', 'Short product videos during launch', '1 brand style profile'],
   },
   {
     id: BILLING_PLANS.Starter,
@@ -83,7 +83,7 @@ const PLANS = [
     price: '$39',
     generations: 30,
     angles: 'Front · 3/4 · Back',
-    features: ['30 generations / month', 'Full 3-angle structural set', 'High-res output', '1 brand style profile'],
+    features: ['30 generations / month', 'Full 3-angle structural set', 'Short product videos during launch', 'High-resolution output', '1 brand style profile'],
   },
   {
     id: BILLING_PLANS.Growth,
@@ -91,7 +91,7 @@ const PLANS = [
     price: '$99',
     generations: 100,
     angles: 'Front · 3/4 · Back',
-    features: ['100 generations / month', 'Full 3-angle structural set', 'Detail close-up generation', 'Flat lay output', '2 brand style profiles'],
+    features: ['100 generations / month', 'Full 3-angle structural set', 'Short product videos during launch', 'Detail close-up generation', 'Flat lay output', '2 brand style profiles'],
   },
   {
     id: BILLING_PLANS.Scale,
@@ -99,7 +99,7 @@ const PLANS = [
     price: '$249',
     generations: 300,
     angles: 'Front · 3/4 · Back',
-    features: ['300 generations / month', 'Full 3-angle structural set', 'Detail close-up generation', 'Flat lay output', 'Lifestyle image generation', 'Unlimited brand style profiles', 'Credit rollover (up to 1 month)'],
+    features: ['300 generations / month', 'Full 3-angle structural set', 'Short product videos during launch', 'Detail close-up generation', 'Flat lay output', 'Lifestyle image generation', 'Unlimited brand style profiles', 'Credit rollover (up to 1 month)'],
   },
 ] as const;
 
@@ -131,7 +131,8 @@ export default function Billing() {
                 {used} / {limit} generations used
               </p>
               <p className="text-xs text-krea-muted mt-0.5">
-                Resets on the 1st of each month
+                Outfit generations and new or regenerated videos both count
+                toward this allowance. Resets on the 1st of each month.
               </p>
             </div>
             <div className="w-32 h-1.5 bg-krea-border rounded-full overflow-hidden">
@@ -145,9 +146,13 @@ export default function Billing() {
 
         {isBeta && (
           <section className="rounded-xl border border-krea-accent/20 bg-krea-accent/5 px-4 py-4 text-sm text-krea-text">
-            <p className="font-medium">Beta access active</p>
+            <p className="font-medium">Launch access active</p>
             <p className="mt-1 text-xs text-krea-muted">
-              Your beta access is free during the program. If you need more room this month, contact us and we&apos;ll extend access.
+              Launch access is free while the program is open and raises your
+              monthly allowance to the number shown above. Short product videos
+              are included during launch, and each new or regenerated video uses
+              1 generation. If you need more room this month, contact us and
+              we&apos;ll extend access.
             </p>
             <a
               href={`mailto:${supportEmail}?subject=${encodeURIComponent('TinyLemon beta support')}`}
