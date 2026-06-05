@@ -4,6 +4,10 @@ import { Link, useLoaderData } from "react-router";
 
 import { login } from "../shopify.server";
 import { SHOPIFY_APP_STORE_URL } from "../lib/shopifyAppStoreUrl";
+import {
+  BETA_LAUNCH_GENERATION_CAP,
+  FREE_PLAN_GENERATION_LIMIT,
+} from "../lib/planConstants";
 import { buildSeoMeta } from "../lib/seo";
 import {
   trackMarketingEvent,
@@ -15,9 +19,9 @@ import landingStyles from "./_index/styles.module.css";
 import styles from "../styles/pricing.module.css";
 
 export const meta: MetaFunction = () => {
-  const title = "AI Fashion Product Photo Pricing | TinyLemon";
+  const title = `AI Fashion Pricing: ${BETA_LAUNCH_GENERATION_CAP} Free Generations | TinyLemon`;
   const description =
-    "Pricing tiers for TinyLemon: from free trial to scale. Beautiful product photos for fashion brands on Shopify.";
+    `TinyLemon pricing for Shopify fashion brands. Start in beta with up to ${BETA_LAUNCH_GENERATION_CAP} free outfit generations, then upgrade when you need more catalog volume.`;
   return buildSeoMeta({ title, description, path: "/pricing" });
 };
 
@@ -73,7 +77,7 @@ export default function PricingPage() {
                   trackShopifyAppStoreClick("pricing_header", "Add to Shopify")
                 }
               >
-                Add to Shopify
+                Claim {BETA_LAUNCH_GENERATION_CAP} free
               </a>
             )}
           </div>
@@ -82,21 +86,56 @@ export default function PricingPage() {
 
       <main>
         <section className={styles.section}>
-          <h1 className={styles.pageTitle}>Pricing Tiers</h1>
+          <div className={styles.launchBanner}>
+            <p className={styles.launchEyebrow}>Beta launch offer</p>
+            <h1 className={styles.pageTitle}>
+              Start with {BETA_LAUNCH_GENERATION_CAP} free outfit generations
+            </h1>
+            <p className={styles.subtitle}>
+              Install Tiny Lemon, test it with real Shopify products, and only
+              upgrade when you are ready for more catalog volume, high-res
+              exports, and expanded brand workflows.
+            </p>
+            <a
+              href={SHOPIFY_APP_STORE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.launchCta}
+              onClick={() => {
+                trackMarketingEvent("pricing_cta_clicked", {
+                  plan: "beta_launch",
+                  source: "pricing_hero",
+                });
+                trackShopifyAppStoreClick(
+                  "pricing_hero",
+                  `Claim ${BETA_LAUNCH_GENERATION_CAP} free generations`,
+                  { plan: "beta_launch" },
+                );
+              }}
+            >
+              Claim {BETA_LAUNCH_GENERATION_CAP} free generations
+            </a>
+            <p className={styles.launchFinePrint}>
+              No credit card required. Beta access is available for early Shopify
+              fashion merchants while the program is open.
+            </p>
+          </div>
+
+          <h2 className={styles.planSectionTitle}>Choose a plan when you are ready</h2>
           <p className={styles.subtitle}>
-            From free trial to scale. The framework: structural angles first,
-            then detail and flat lay, then lifestyle. Each tier unlocks the
-            next layer of the image set.
+            Paid plans are for merchants who want higher output quality, more
+            saved models, and larger catalog workflows after the beta test.
           </p>
 
           <div className={styles.tiers}>
             {/* FREE */}
             <div className={styles.tierCard}>
               <div className={styles.tierCardHeader}>
-                <h2 className={styles.tierName}>Free</h2>
+                <h2 className={styles.tierName}>Free Beta</h2>
+                <span className={styles.tierBadge}>Launch offer</span>
               </div>
               <p className={styles.tierTagline}>
-                Try before you commit. No credit card.
+                Test Tiny Lemon with real products before you commit.
               </p>
               <p className={styles.tierPriceAmount}>
                 $0<span className={styles.unit}>/mo</span>
@@ -116,10 +155,11 @@ export default function PricingPage() {
                   });
                 }}
               >
-                Add to Shopify →
+                Claim {BETA_LAUNCH_GENERATION_CAP} free →
               </a>
               <ul className={styles.tierList}>
-                <li>50 outfit generations per month</li>
+                <li>Up to {BETA_LAUNCH_GENERATION_CAP} beta outfit generations</li>
+                <li>{FREE_PLAN_GENERATION_LIMIT} outfit generations/month after beta</li>
                 <li>1 model save</li>
                 <li>Full 3-angle set (Front + 3/4 + Back)</li>
                 <li>White studio background</li>
@@ -285,7 +325,7 @@ export default function PricingPage() {
               <tbody>
                 <tr>
                   <td>Generations/month</td>
-                  <td>50</td>
+                  <td>{BETA_LAUNCH_GENERATION_CAP} beta / {FREE_PLAN_GENERATION_LIMIT} monthly</td>
                   <td>30</td>
                   <td>100</td>
                   <td>300</td>
@@ -369,7 +409,7 @@ export default function PricingPage() {
                 </tr>
                 <tr>
                   <td>Price</td>
-                  <td>Free</td>
+                  <td>Free beta</td>
                   <td>~$39/mo</td>
                   <td>~$99/mo</td>
                   <td>~$249/mo</td>

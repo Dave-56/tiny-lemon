@@ -1,0 +1,2 @@
+export const BETA_LAUNCH_GENERATION_CAP = 100;
+export const FREE_PLAN_GENERATION_LIMIT = 50;

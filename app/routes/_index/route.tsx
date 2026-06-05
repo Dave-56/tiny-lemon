@@ -4,6 +4,7 @@ import { redirect, Link, useLoaderData } from "react-router";
 import { BeforeAfterSlider } from "../../components/BeforeAfterSlider";
 import { SHOPIFY_APP_STORE_URL } from "../../lib/shopifyAppStoreUrl";
 import { buildSeoMeta } from "../../lib/seo";
+import { BETA_LAUNCH_GENERATION_CAP } from "../../lib/planConstants";
 import {
   trackShopifyAppStoreClick,
   trackTryDemoClick,
@@ -28,6 +29,10 @@ const FAQ_ITEMS = [
     answer:
       "Tiny Lemon helps Shopify clothing stores turn flat-lay or supplier product photos into on-model product photos and short product videos without booking a photographer, model, or studio shoot.",
   },
+  {
+    question: "Can I try Tiny Lemon for free?",
+    answer: `Yes. During the beta launch, eligible early Shopify fashion merchants can get up to ${BETA_LAUNCH_GENERATION_CAP} free outfit generations to test Tiny Lemon with real products before choosing a paid plan.`,
+  },
 ];
 
 function getStructuredData(origin: string, installUrl: string) {
@@ -50,6 +55,7 @@ function getStructuredData(origin: string, installUrl: string) {
         featureList: [
           "AI model photos from flat-lay and supplier product photos",
           "Short product videos for fashion product listings",
+          `Beta launch access with up to ${BETA_LAUNCH_GENERATION_CAP} free outfit generations`,
           "Shopify product media workflow for clothing stores",
         ],
         offers: {
@@ -76,7 +82,7 @@ function getStructuredData(origin: string, installUrl: string) {
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const title = "Tiny Lemon Shopify App for AI Model Photos";
   const description =
-    "Tiny Lemon is a Shopify app that turns flat-lay and supplier photos into AI model photos and short product videos for fashion product listings.";
+    `Tiny Lemon turns flat-lay and supplier photos into AI model photos for Shopify fashion listings. Beta merchants can get up to ${BETA_LAUNCH_GENERATION_CAP} free generations.`;
   const origin = data?.origin ?? "https://tinylemon.xyz";
   const installUrl = data?.installUrl ?? SHOPIFY_APP_STORE_URL;
   return buildSeoMeta({
@@ -146,7 +152,7 @@ export default function LandingPage() {
                   )
                 }
               >
-                Install app
+                Claim {BETA_LAUNCH_GENERATION_CAP} free
               </a>
             )}
             <Link
@@ -162,7 +168,7 @@ export default function LandingPage() {
 
       <main>
         <section className={styles.hero}>
-          <p className={styles.heroLabel}>For indie fashion brands on Shopify</p>
+          <p className={styles.heroLabel}>Beta launch for Shopify fashion brands</p>
           <h1 className={styles.heroHeadline}>
             Studio shots in 60 seconds. No shoot.
           </h1>
@@ -171,8 +177,11 @@ export default function LandingPage() {
             professional on-model photos, ready to publish on Shopify. No
             photographer, no shoot budget.
           </p>
+          <p className={styles.heroOffer}>
+            Get up to <strong>{BETA_LAUNCH_GENERATION_CAP} free outfit generations</strong> during beta.
+          </p>
           <p className={styles.heroAppStoreNote}>
-            Tiny Lemon is available on the Shopify App Store.
+            No credit card. Test with real products before choosing a paid plan.
           </p>
           <div className={styles.heroCtas}>
             {hasInstallUrl && (
@@ -188,7 +197,7 @@ export default function LandingPage() {
                   )
                 }
               >
-                Install from Shopify App Store
+                Claim {BETA_LAUNCH_GENERATION_CAP} free generations
               </a>
             )}
             <Link
@@ -329,8 +338,9 @@ export default function LandingPage() {
           {hasInstallUrl ? (
             <>
               <p className={styles.loginSubtext}>
-                Install Tiny Lemon from the Shopify App Store to generate AI
-                model photos and product videos directly inside Shopify.
+                Install Tiny Lemon from the Shopify App Store to claim up to{" "}
+                {BETA_LAUNCH_GENERATION_CAP} free beta generations and create AI
+                model photos directly inside Shopify.
               </p>
               <a
                 href={installUrl}
@@ -344,7 +354,7 @@ export default function LandingPage() {
                   )
                 }
               >
-                Install from Shopify App Store
+                Claim {BETA_LAUNCH_GENERATION_CAP} free generations
               </a>
               <p className={styles.loginDivider}>
                 Already installed? Open Tiny Lemon from your Shopify admin under Apps.
