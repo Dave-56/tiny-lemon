@@ -168,7 +168,6 @@ export default function LandingPage() {
 
       <main>
         <section className={styles.hero}>
-          <p className={styles.heroLabel}>Beta launch for Shopify fashion brands</p>
           <h1 className={styles.heroHeadline}>
             Studio shots in 60 seconds. No shoot.
           </h1>
@@ -177,8 +176,13 @@ export default function LandingPage() {
             professional on-model photos, ready to publish on Shopify. No
             photographer, no shoot budget.
           </p>
-          <p className={styles.heroOffer}>
-            Get up to <strong>{BETA_LAUNCH_GENERATION_CAP} free outfit generations</strong> during beta.
+          <p
+            className={styles.heroOffer}
+            aria-label={`Get up to ${BETA_LAUNCH_GENERATION_CAP} free outfit generations during beta.`}
+          >
+            <span>Get up to </span>
+            <strong>{BETA_LAUNCH_GENERATION_CAP} free outfit generations</strong>
+            <span> during beta.</span>
           </p>
           <p className={styles.heroAppStoreNote}>
             No credit card. Test with real products before choosing a paid plan.
