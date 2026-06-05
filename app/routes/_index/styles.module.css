@@ -145,6 +145,26 @@
   margin-right: auto;
 }
 
+.heroOffer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  padding: 0.625rem 0.875rem;
+  margin: 0 auto 0.875rem;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 0.5rem;
+  background: #fff;
+  color: var(--krea-text, #111);
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.heroOffer strong {
+  font-weight: 700;
+}
+
 .heroAppStoreNote {
   font-size: 0.9375rem;
   line-height: 1.5;
@@ -614,6 +634,15 @@
     order: 3;
     width: 100%;
     gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .hero {
+    padding-top: 3rem;
+  }
+
+  .heroOffer {
+    display: flex;
     flex-wrap: wrap;
   }
 

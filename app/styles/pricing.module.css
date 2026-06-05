@@ -19,8 +19,64 @@
   font-size: 1rem;
   line-height: 1.6;
   color: var(--krea-muted, #555);
-  margin: 0 auto 3rem;
+  margin: 0 auto 2.5rem;
   max-width: 40rem;
+  text-align: center;
+}
+
+.launchBanner {
+  max-width: 52rem;
+  margin: 0 auto 3rem;
+  padding: 2.5rem 2rem;
+  text-align: center;
+  background: var(--krea-card, #fff);
+  border: 1px solid var(--krea-border, rgba(0, 0, 0, 0.08));
+  border-radius: 1rem;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+}
+
+.launchEyebrow {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--krea-text, #111);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 0.75rem;
+}
+
+.launchCta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  padding: 0.75rem 1.5rem;
+  color: #fff;
+  background: var(--krea-accent, #111);
+  border-radius: 0.5rem;
+  text-decoration: none;
+  font-size: 1rem;
+  font-weight: 600;
+  transition: opacity 0.15s ease;
+}
+
+.launchCta:hover {
+  opacity: 0.9;
+}
+
+.launchFinePrint {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--krea-muted, #666);
+  max-width: 34rem;
+  margin: 1rem auto 0;
+}
+
+.planSectionTitle {
+  font-size: clamp(1.5rem, 3vw, 1.875rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin: 0 0 0.5rem;
+  font-family: "Space Grotesk", sans-serif;
   text-align: center;
 }
 
@@ -276,6 +332,10 @@
 @media (max-width: 640px) {
   .section {
     padding: 0 1.25rem 2rem;
+  }
+
+  .launchBanner {
+    padding: 2rem 1.25rem;
   }
 
   .tierCard {

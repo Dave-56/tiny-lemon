@@ -1,15 +1,19 @@
 import { Prisma } from "@prisma/client";
 import prisma from "../db.server";
 import type { RegeneratePose } from "./regeneratePoses";
+import {
+  BETA_LAUNCH_GENERATION_CAP,
+  FREE_PLAN_GENERATION_LIMIT,
+} from "./planConstants";
 
 /** Demo shop id for public /try free tool. No credits; rate limit only. */
 export const DEMO_SHOP_ID = process.env.DEMO_SHOP_ID ?? "__demo__";
-export const BETA_DEFAULT_CAP = 100;
+export const BETA_DEFAULT_CAP = BETA_LAUNCH_GENERATION_CAP;
 export const FULL_GENERATION_ANGLES = ["front", "three-quarter", "back"] as const;
 export const BETA_FULL_ANGLES = FULL_GENERATION_ANGLES;
 
 export const PLAN_LIMITS: Record<string, number> = {
-  free: 50,
+  free: FREE_PLAN_GENERATION_LIMIT,
   Starter: 30,
   Growth: 100,
   Scale: 300,
