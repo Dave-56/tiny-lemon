@@ -1,7 +1,6 @@
 import type { LoaderFunctionArgs, MetaFunction } from "react-router";
 import { Link, useLoaderData } from "react-router";
 
-import { login } from "../shopify.server";
 import { getBlogPosts } from "../lib/blog.server";
 import { SHOPIFY_APP_STORE_URL } from "../lib/shopifyAppStoreUrl";
 import { buildSeoMeta } from "../lib/seo";
@@ -22,7 +21,7 @@ export const meta: MetaFunction = () => {
 
 export const loader = async (_args: LoaderFunctionArgs) => {
   const posts = getBlogPosts();
-  return { posts, showForm: Boolean(login) };
+  return { posts, showForm: Boolean(SHOPIFY_APP_STORE_URL) };
 };
 
 function formatGuideDate(date: string): string {

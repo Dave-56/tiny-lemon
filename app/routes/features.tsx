@@ -1,7 +1,6 @@
 import type { LoaderFunctionArgs, MetaFunction } from "react-router";
 import { Link, useLoaderData } from "react-router";
 
-import { login } from "../shopify.server";
 import { SHOPIFY_APP_STORE_URL } from "../lib/shopifyAppStoreUrl";
 import { buildSeoMeta } from "../lib/seo";
 import {
@@ -20,7 +19,7 @@ export const meta: MetaFunction = () => {
 };
 
 export const loader = async (_args: LoaderFunctionArgs) => {
-  return { showForm: Boolean(login) };
+  return { showForm: Boolean(SHOPIFY_APP_STORE_URL) };
 };
 
 export default function FeaturesPage() {

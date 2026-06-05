@@ -1,7 +1,6 @@
 import type { LoaderFunctionArgs, MetaFunction } from "react-router";
 import { Link, useLoaderData } from "react-router";
 
-import { login } from "../shopify.server";
 import { getBlogPost, getSiteBaseUrl } from "../lib/blog.server";
 import { SHOPIFY_APP_STORE_URL } from "../lib/shopifyAppStoreUrl";
 import { buildSeoMeta } from "../lib/seo";
@@ -56,7 +55,7 @@ export const loader = async ({
   if (!post) return Response.redirect(new URL("/blog", request.url), 302);
   const siteBaseUrl = getSiteBaseUrl(request);
   const postUrl = `${siteBaseUrl}/blog/${encodeURIComponent(post.slug)}`;
-  return { post, postUrl, showForm: Boolean(login) };
+  return { post, postUrl, showForm: Boolean(SHOPIFY_APP_STORE_URL) };
 };
 
 export default function BlogPostPage() {

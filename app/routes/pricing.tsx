@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import type { LoaderFunctionArgs, MetaFunction } from "react-router";
 import { Link, useLoaderData } from "react-router";
 
-import { login } from "../shopify.server";
 import { SHOPIFY_APP_STORE_URL } from "../lib/shopifyAppStoreUrl";
 import {
   BETA_LAUNCH_GENERATION_CAP,
@@ -26,7 +25,7 @@ export const meta: MetaFunction = () => {
 };
 
 export const loader = async (_args: LoaderFunctionArgs) => {
-  return { showForm: Boolean(login) };
+  return { showForm: Boolean(SHOPIFY_APP_STORE_URL) };
 };
 
 export default function PricingPage() {

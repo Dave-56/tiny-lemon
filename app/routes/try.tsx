@@ -4,7 +4,6 @@ import { Link, useFetcher, useLoaderData } from "react-router";
 import { readFileSync } from "fs";
 import { join } from "path";
 
-import { login } from "../shopify.server";
 import { ensureShop } from "../db.server";
 import { handleTriggerGeneration } from "../lib/triggerGeneration.server";
 import { DEMO_SHOP_ID } from "../lib/billing.server";
@@ -71,7 +70,7 @@ export const loader = async (_args: LoaderFunctionArgs) => {
     // ignore
   }
   const installUrl = process.env.SHOPIFY_APP_INSTALL_URL || SHOPIFY_APP_STORE_URL;
-  return { presets, showForm: Boolean(login), installUrl };
+  return { presets, showForm: Boolean(installUrl), installUrl };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
