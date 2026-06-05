@@ -9,7 +9,9 @@ type GenerateOutfitTriggerPayload = {
   frontMime?: string;
   backMime?: string;
   primaryImageSide?: "front" | "back";
+  secondaryImageSide?: "front" | "back";
   frontDescription?: string;
+  backDescription?: string;
   modelImageUrl: string;
   modelHeight?: string;
   modelGender?: string;

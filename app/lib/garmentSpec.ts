@@ -14,6 +14,14 @@ export interface GarmentSpec {
   graphicFidelity?: {
     critical: boolean;
     description?: string;
+    references?: Array<{
+      sourceSide: 'front' | 'back';
+      rawReferenceUrl?: string;
+      referenceCropUrl?: string;
+      description?: string;
+    }>;
+    /** Legacy single-reference fields. Prefer references[]. */
+    rawReferenceUrl?: string;
     referenceCropUrl?: string;
   };
 }

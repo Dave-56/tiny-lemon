@@ -34,6 +34,7 @@ export type TriggerGenerationBody = {
   brandStyleId?: string;
   primaryImageSide?: "front" | "back";
   frontDescription?: string | null;
+  backDescription?: string | null;
   frontB64: string;
   frontMime?: string;
   backB64?: string | null;
@@ -129,6 +130,7 @@ function buildGenerateRequestKey(body: {
   brandStyleId?: string;
   primaryImageSide?: "front" | "back";
   frontDescription?: string | null;
+  backDescription?: string | null;
   frontB64: string;
   frontMime?: string;
   backB64?: string | null;
@@ -144,6 +146,7 @@ function buildGenerateRequestKey(body: {
         brandStyleId: normalizeOptionalInput(body.brandStyleId) ?? "minimal",
         primaryImageSide: body.primaryImageSide ?? "front",
         frontDescription: normalizeOptionalInput(body.frontDescription),
+        backDescription: normalizeOptionalInput(body.backDescription),
         frontMime: normalizeOptionalInput(body.frontMime) ?? "image/png",
         backMime: normalizeOptionalInput(body.backMime),
         frontDigest: digestBase64Payload(body.frontB64),
@@ -212,16 +215,20 @@ export async function handleTriggerGeneration(
   const brandStyleId = body.brandStyleId ?? "minimal";
   const primaryImageSide = body.primaryImageSide === "back" ? "back" : "front";
   const frontDescription = normalizeOptionalInput(body.frontDescription);
-  if (primaryImageSide === "back" && !frontDescription) {
-    return Response.json(
-      { error: "Describe the front before generating from a back photo." },
-      { status: 400 }
-    );
-  }
+  const backDescription = normalizeOptionalInput(body.backDescription);
   const frontB64 = body.frontB64;
   const frontMime = body.frontMime ?? "image/png";
   const backB64 = body.backB64 ?? null;
   const backMime = body.backMime ?? null;
+  const secondaryImageSide = backB64 && backMime
+    ? primaryImageSide === "front" ? "back" : "front"
+    : undefined;
+  if (primaryImageSide === "back" && !frontDescription && !backB64) {
+    return Response.json(
+      { error: "Add a front photo or describe the front before generating from a back photo." },
+      { status: 400 }
+    );
+  }
   const rawShopifyProductId = normalizeOptionalInput(body.shopifyProductId);
   if (rawShopifyProductId && !rawShopifyProductId.startsWith("gid://shopify/Product/")) {
     return Response.json({ error: "Invalid shopifyProductId" }, { status: 400 });
@@ -246,6 +253,7 @@ export async function handleTriggerGeneration(
       brandStyleId,
       primaryImageSide,
       frontDescription,
+      backDescription,
       frontB64,
       frontMime,
       backB64,
@@ -339,16 +347,16 @@ export async function handleTriggerGeneration(
     const frontExt = frontMime === "image/jpeg" ? "jpg" : "png";
     const rawFrontUrl = await uploadBufferToBlob(
       Buffer.from(frontB64, "base64"),
-      `outfits/${shopId}/${outfit.id}/raw-front.${frontExt}`,
+      `outfits/${shopId}/${outfit.id}/raw-${primaryImageSide}.${frontExt}`,
       frontMime,
       { allowOverwrite: true },
     );
     let rawBackUrl: string | undefined;
-    if (backB64 && backMime) {
+    if (backB64 && backMime && secondaryImageSide) {
       const backExt = backMime === "image/jpeg" ? "jpg" : "png";
       rawBackUrl = await uploadBufferToBlob(
         Buffer.from(backB64, "base64"),
-        `outfits/${shopId}/${outfit.id}/raw-back.${backExt}`,
+        `outfits/${shopId}/${outfit.id}/raw-${secondaryImageSide}.${backExt}`,
         backMime,
         { allowOverwrite: true },
       );
@@ -362,7 +370,9 @@ export async function handleTriggerGeneration(
       frontMime,
       backMime: backB64 && backMime ? backMime : undefined,
       primaryImageSide,
+      secondaryImageSide,
       frontDescription: frontDescription ?? undefined,
+      backDescription: backDescription ?? undefined,
       modelImageUrl: resolvedModel.modelImageUrl,
       modelHeight: resolvedModel.modelHeight,
       modelGender: resolvedModel.modelGender,

@@ -40,6 +40,12 @@ vi.mock('../lib/observability.server', () => ({
 
 vi.mock('../lib/flatLayCleanup', () => ({
   IMAGE_SERVICE_CAPACITY_MESSAGE: mocks.capacityMessage,
+  IMAGE_SERVICE_BILLING_CONFIGURATION_MESSAGE:
+    'AI image generation is currently unavailable. Our team has been alerted. Please try again later.',
+  IMAGE_SERVICE_QUOTA_OR_RATE_LIMIT_MESSAGE:
+    'AI image generation is busy right now. Please try again in a few minutes.',
+  IMAGE_SERVICE_UNAVAILABLE_MESSAGE:
+    'AI image generation provider is temporarily unavailable. Please try again shortly.',
   cleanFlatLay: vi.fn(),
   cleanFlatLayForDemo: vi.fn(),
   createUserFacingImageProviderError: vi.fn(),
@@ -112,6 +118,7 @@ vi.mock('../lib/geminiModels', () => ({
 
 import { generateOutfitTask as _generateOutfitTask } from '../../trigger/generate-outfit.task';
 import { regenerateOutfitTask as _regenerateOutfitTask } from '../../trigger/regenerate-outfit.task';
+import { GraphicFidelityGenerationError } from '../lib/generationErrors.server';
 
 type TaskWithFailureHook = {
   onFailure: (args: {
@@ -159,7 +166,8 @@ describe('generation task capacity refunds', () => {
       where: { id: 'outfit-1' },
       data: {
         status: 'failed',
-        errorMessage: IMAGE_SERVICE_CAPACITY_MESSAGE,
+        errorMessage:
+          'AI image generation provider is temporarily unavailable. This attempt was not counted. Please try again shortly.',
       },
     });
   });
@@ -186,6 +194,42 @@ describe('generation task capacity refunds', () => {
       'shop-a.myshopify.com',
       creditReservation,
     );
+    expect(mocks.outfitUpdate).toHaveBeenCalledWith({
+      where: { id: 'outfit-1' },
+      data: {
+        status: 'failed',
+        errorMessage:
+          'AI image generation provider is temporarily unavailable. This attempt was not counted. Please try again shortly.',
+      },
+    });
+  });
+
+  it('shows billing configuration copy when a refunded provider billing failure reaches the customer', async () => {
+    const error = new Error('AI image generation is currently unavailable. Our team has been alerted. Please try again later.');
+    Object.assign(error, { providerErrorKind: 'provider_billing' });
+
+    await generateOutfitTask.onFailure({
+      payload: {
+        outfitId: 'outfit-1',
+        shopId: 'shop-a.myshopify.com',
+        rawFrontUrl: 'https://blob.example/front.png',
+        modelImageUrl: 'https://blob.example/model.png',
+        styleId: 'white-studio',
+        brandStyleId: 'minimal',
+        allowedPoses: ['front'],
+        creditReservation,
+      },
+      error,
+    });
+
+    expect(mocks.outfitUpdate).toHaveBeenCalledWith({
+      where: { id: 'outfit-1' },
+      data: {
+        status: 'failed',
+        errorMessage:
+          'AI image generation is currently unavailable. This attempt was not counted. Our team has been alerted. Please try again later.',
+      },
+    });
   });
 
   it('does not refund generate credits for non-capacity failures', async () => {
@@ -237,6 +281,35 @@ describe('generation task capacity refunds', () => {
     });
   });
 
+  it('refunds and sanitizes generate failures when graphic fidelity validation fails', async () => {
+    await generateOutfitTask.onFailure({
+      payload: {
+        outfitId: 'outfit-1',
+        shopId: 'shop-a.myshopify.com',
+        rawFrontUrl: 'https://blob.example/front.png',
+        modelImageUrl: 'https://blob.example/model.png',
+        styleId: 'white-studio',
+        brandStyleId: 'minimal',
+        allowedPoses: ['front'],
+        creditReservation,
+      },
+      error: new GraphicFidelityGenerationError(),
+    });
+
+    expect(mocks.refundReservedGeneration).toHaveBeenCalledWith(
+      'shop-a.myshopify.com',
+      creditReservation,
+    );
+    expect(mocks.outfitUpdate).toHaveBeenCalledWith({
+      where: { id: 'outfit-1' },
+      data: {
+        status: 'failed',
+        errorMessage:
+          'Image generation failed to preserve the product graphic. This attempt was not counted. Please try again.',
+      },
+    });
+  });
+
   it('refunds regenerate credits when final failure is provider capacity', async () => {
     const regenerateReservation = {
       reservationDescription: 'generation reservation:regenerate:outfit-1:op-1',
@@ -253,6 +326,30 @@ describe('generation task capacity refunds', () => {
         creditReservation: regenerateReservation,
       },
       error: new Error(IMAGE_SERVICE_CAPACITY_MESSAGE),
+    });
+
+    expect(mocks.refundReservedGeneration).toHaveBeenCalledWith(
+      'shop-a.myshopify.com',
+      regenerateReservation,
+    );
+  });
+
+  it('refunds regenerate credits when graphic fidelity validation fails', async () => {
+    const regenerateReservation = {
+      reservationDescription: 'generation reservation:regenerate:outfit-1:op-1',
+      refundDescription: 'generation refund:regenerate:outfit-1:op-1:graphic_fidelity_failure',
+    };
+
+    await regenerateOutfitTask.onFailure({
+      payload: {
+        outfitId: 'outfit-1',
+        shopId: 'shop-a.myshopify.com',
+        modelImageUrl: 'https://blob.example/model.png',
+        styleId: 'white-studio',
+        allowedPoses: ['front'],
+        creditReservation: regenerateReservation,
+      },
+      error: new GraphicFidelityGenerationError(),
     });
 
     expect(mocks.refundReservedGeneration).toHaveBeenCalledWith(

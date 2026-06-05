@@ -54,9 +54,9 @@ Error: AI image generation is temporarily at capacity. Please try again in a few
 
 ## 5. Customer-Facing Error Experience
 
-- [ ] Improve customer-facing error copy so one generic "temporarily at capacity" message is not used for every Gemini failure.
-- [ ] For refunded provider failures, show a message like: "This attempt failed and was not counted."
-- [ ] Alert internally if the provider error is caused by app billing/API quota configuration.
+- [x] Improve customer-facing error copy so one generic "temporarily at capacity" message is not used for every Gemini failure.
+- [x] For refunded provider failures, show a message like: "This attempt failed and was not counted."
+- [x] Alert internally if the provider error is caused by app billing/API quota configuration.
 
 ## 6. Product Graphic and Logo Fidelity
 
@@ -154,6 +154,7 @@ Context:
 Tasks:
 
 - [ ] Add an optional pre-generation direction field on Dress Model for outfit/styling instructions, separate from SKU name.
+- [x] Make front/back reference input symmetric: Front-first can add or describe Back, and Back-first can add or describe Front.
 - [ ] Make the UI clear that the pre-generation direction applies across the full generated set so front, three-quarter, and back stay consistent.
 - [ ] Pass pre-generation user direction through `handleTriggerGeneration`, `generate-outfit`, and prompt construction.
 - [ ] Add focused tests proving pre-generation direction is persisted in the outfit and reaches the generation task payload.

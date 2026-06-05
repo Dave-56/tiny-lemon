@@ -23,10 +23,11 @@ import { GEMINI_IMAGE_MODEL, GEMINI_TEXT_MODEL } from '../app/lib/geminiModels';
 import type { GarmentSpec } from '../app/lib/garmentSpec';
 import type { PoseImageAssetManifest } from '../app/lib/imageAssetManifest';
 import {
-  getGraphicPromptContext,
+  getGraphicPromptContextForPose,
   validateGeneratedGraphicFidelity,
 } from '../app/lib/graphicFidelity';
 import {
+  GraphicFidelityGenerationError,
   getUserFacingGenerationError,
   maybeRefundFailedGeneration,
 } from '../app/lib/generationErrors.server';
@@ -35,6 +36,7 @@ type StoredGarmentSpec = GarmentSpec & {
   referenceContext?: {
     primaryImageSide?: 'front' | 'back';
     frontDescription?: string | null;
+    backDescription?: string | null;
   };
 };
 
@@ -91,10 +93,15 @@ async function fetchAsBuffer(url: string): Promise<Buffer> {
   return Buffer.from(await res.arrayBuffer());
 }
 
+function inferImageMimeFromUrl(url: string): 'image/png' | 'image/jpeg' {
+  const pathname = new URL(url).pathname.toLowerCase();
+  return pathname.endsWith('.jpg') || pathname.endsWith('.jpeg') ? 'image/jpeg' : 'image/png';
+}
+
 type GenerateContentRequest = Parameters<GoogleGenAI['models']['generateContent']>[0];
 type GenerateContentPart =
   | { text: string }
-  | { inlineData: { data: string; mimeType: 'image/png' } };
+  | { inlineData: { data: string; mimeType: 'image/png' | 'image/jpeg' } };
 
 function buildGenerationParts(args: {
   instruction?: string;
@@ -102,6 +109,8 @@ function buildGenerationParts(args: {
   garmentMime: 'image/png';
   modelB64: string;
   prompt: string;
+  rawGraphicReferenceB64?: string;
+  rawGraphicReferenceMime?: 'image/png' | 'image/jpeg';
   graphicReferenceCropB64?: string;
   frontAnchorB64?: string;
 }): GenerateContentPart[] {
@@ -112,12 +121,19 @@ function buildGenerationParts(args: {
     { inlineData: { data: args.garmentB64, mimeType: args.garmentMime } },
   );
   let nextImage = 2;
-  if (args.graphicReferenceCropB64) {
+  if (args.rawGraphicReferenceB64) {
     parts.push(
-      { text: 'IMAGE 2: Close-up reference crop for the garment graphic, logo, print, or typography.' },
-      { inlineData: { data: args.graphicReferenceCropB64, mimeType: 'image/png' } },
+      { text: 'IMAGE 2: Original merchant upload reference for raw garment graphic, logo, print, or typography details.' },
+      { inlineData: { data: args.rawGraphicReferenceB64, mimeType: args.rawGraphicReferenceMime ?? 'image/png' } },
     );
     nextImage = 3;
+  }
+  if (args.graphicReferenceCropB64) {
+    parts.push(
+      { text: `IMAGE ${nextImage}: Close-up reference crop for the garment graphic, logo, print, or typography.` },
+      { inlineData: { data: args.graphicReferenceCropB64, mimeType: 'image/png' } },
+    );
+    nextImage += 1;
   }
   parts.push(
     { text: `IMAGE ${nextImage}: Model reference image.` },
@@ -173,7 +189,7 @@ async function retryIfGraphicFidelityFailed(args: {
     stage: `${args.stage}_graphic_retry`,
   });
   if (retryVerdict === 'failed') {
-    throw new Error('Generated image failed graphic fidelity validation.');
+    throw new GraphicFidelityGenerationError();
   }
   return retryB64;
 }
@@ -285,14 +301,18 @@ export const regenerateOutfitTask = task({
     });
     if (existing?.errorMessage === 'Cancelled by user') return;
     const rawErrorMessage = error instanceof Error ? error.message : String(error ?? 'Regeneration failed.');
-    const errorMessage = getUserFacingGenerationError(error, 'Regeneration failed. Please try again.');
     logTaskLifecycle('task.failed_final', payload, { error: rawErrorMessage });
-    await maybeRefundFailedGeneration({
+    const refunded = await maybeRefundFailedGeneration({
       taskId: 'regenerate-outfit',
       payload,
       error,
       refundReservedGeneration,
     });
+    const errorMessage = getUserFacingGenerationError(
+      error,
+      'Regeneration failed. Please try again.',
+      { refunded },
+    );
     await prisma.outfit
       .update({ where: { id: payload.outfitId }, data: { status: 'failed', errorMessage } })
       .catch(() => {});
@@ -335,6 +355,7 @@ export const regenerateOutfitTask = task({
       ? {
           primaryImageSide: garmentSpec.referenceContext.primaryImageSide,
           frontDescription: garmentSpec.referenceContext.frontDescription ?? undefined,
+          backDescription: garmentSpec.referenceContext.backDescription ?? undefined,
         }
       : undefined;
 
@@ -348,13 +369,40 @@ export const regenerateOutfitTask = task({
       ? await fetchAsBase64(outfit.cleanBackFlatLayUrl).catch(() => null)
       : null;
     const hasBack = referenceContext?.primaryImageSide === 'back' || !!cleanBackFlatLayB64;
-    const graphicPromptContext = getGraphicPromptContext(garmentSpec);
-    const graphicReferenceCropB64 = garmentSpec.graphicFidelity?.referenceCropUrl
-      ? await fetchAsBase64(garmentSpec.graphicFidelity.referenceCropUrl).catch(() => undefined)
-      : undefined;
-    if (graphicPromptContext && graphicReferenceCropB64) {
-      graphicPromptContext.hasReferenceCrop = true;
-    }
+    const graphicFetchCache = new Map<string, Promise<string | undefined>>();
+    const fetchGraphicReference = (url: string) => {
+      if (!graphicFetchCache.has(url)) {
+        graphicFetchCache.set(url, fetchAsBase64(url).catch(() => undefined));
+      }
+      return graphicFetchCache.get(url)!;
+    };
+    const getGraphicAssetsForPose = async (pose: 'front' | 'three-quarter' | 'back') => {
+      const graphicPromptContext = getGraphicPromptContextForPose(garmentSpec, pose);
+      const rawReferenceUrl = graphicPromptContext?.critical
+        ? graphicPromptContext.rawReferenceUrl
+        : undefined;
+      const referenceCropUrl = graphicPromptContext?.critical
+        ? graphicPromptContext.referenceCropUrl
+        : undefined;
+      const [rawGraphicReferenceB64, graphicReferenceCropB64] = await Promise.all([
+        rawReferenceUrl ? fetchGraphicReference(rawReferenceUrl) : Promise.resolve(undefined),
+        referenceCropUrl ? fetchGraphicReference(referenceCropUrl) : Promise.resolve(undefined),
+      ]);
+      const resolvedGraphicPromptContext = graphicPromptContext
+        ? {
+            ...graphicPromptContext,
+            hasRawReference: Boolean(rawGraphicReferenceB64),
+            hasReferenceCrop: Boolean(graphicReferenceCropB64),
+          }
+        : undefined;
+
+      return {
+        graphicPromptContext: resolvedGraphicPromptContext,
+        rawGraphicReferenceB64,
+        rawGraphicReferenceMime: rawReferenceUrl ? inferImageMimeFromUrl(rawReferenceUrl) : undefined,
+        graphicReferenceCropB64,
+      };
+    };
 
     const modelBuffer = await fetchAsBuffer(modelImageUrl);
     const normalizedModelBuffer = await normalizeReferenceImageServer(modelBuffer);
@@ -384,6 +432,7 @@ export const regenerateOutfitTask = task({
 
     // ── Front ─────────────────────────────────────────────────────────────────
     await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_front' } });
+    const frontGraphicAssets = await getGraphicAssetsForPose('front');
     const frontPrompt = appendUserDirection(
       buildPromptFromSpec(
         garmentSpec,
@@ -398,7 +447,7 @@ export const regenerateOutfitTask = task({
         brandEnergy,
         primaryCategory,
         referenceContext,
-        graphicPromptContext,
+        frontGraphicAssets.graphicPromptContext,
       ),
       userDirection,
     );
@@ -407,7 +456,9 @@ export const regenerateOutfitTask = task({
       garmentMime: 'image/png',
       modelB64: normalizedModelB64,
       prompt: frontPrompt,
-      graphicReferenceCropB64,
+      rawGraphicReferenceB64: frontGraphicAssets.rawGraphicReferenceB64,
+      rawGraphicReferenceMime: frontGraphicAssets.rawGraphicReferenceMime,
+      graphicReferenceCropB64: frontGraphicAssets.graphicReferenceCropB64,
     });
     const frontResp = await generateImageContent(ai, {
       model: MODEL,
@@ -423,8 +474,8 @@ export const regenerateOutfitTask = task({
       b64: frontB64,
       contents: [{ role: 'user' as const, parts: frontParts }],
       config: { ...frontGenConfig, temperature: 0.15 },
-      graphicReferenceCropB64,
-      description: graphicPromptContext?.description,
+      graphicReferenceCropB64: frontGraphicAssets.graphicReferenceCropB64,
+      description: frontGraphicAssets.graphicPromptContext?.description,
       outfitId,
       shopId,
       stage: 'front',
@@ -460,6 +511,7 @@ export const regenerateOutfitTask = task({
 
     const generateThreeQuarter = async () => {
       if (!needsTq) return;
+      const tqGraphicAssets = await getGraphicAssetsForPose('three-quarter');
       const tqPrompt = appendUserDirection(
         buildPromptFromSpec(
           garmentSpec,
@@ -474,7 +526,7 @@ export const regenerateOutfitTask = task({
           brandEnergy,
           primaryCategory,
           referenceContext,
-          graphicPromptContext,
+          tqGraphicAssets.graphicPromptContext,
         ),
         userDirection,
       );
@@ -487,7 +539,9 @@ export const regenerateOutfitTask = task({
           modelB64: normalizedModelB64,
           frontAnchorB64: frontB64,
           prompt: tqPrompt,
-          graphicReferenceCropB64,
+          rawGraphicReferenceB64: tqGraphicAssets.rawGraphicReferenceB64,
+          rawGraphicReferenceMime: tqGraphicAssets.rawGraphicReferenceMime,
+          graphicReferenceCropB64: tqGraphicAssets.graphicReferenceCropB64,
         }),
       }];
       const tqResp = await generateImageContent(ai, {
@@ -510,8 +564,8 @@ export const regenerateOutfitTask = task({
         b64: tqB64,
         contents: tqContents,
         config: { ...threeQuarterGenConfig, temperature: 0.25 },
-        graphicReferenceCropB64,
-        description: graphicPromptContext?.description,
+        graphicReferenceCropB64: tqGraphicAssets.graphicReferenceCropB64,
+        description: tqGraphicAssets.graphicPromptContext?.description,
         outfitId,
         shopId,
         stage: 'three-quarter',
@@ -534,6 +588,7 @@ export const regenerateOutfitTask = task({
 
     const generateBack = async () => {
       if (!needsBack) return;
+      const backGraphicAssets = await getGraphicAssetsForPose('back');
       const backPrompt = appendUserDirection(
         buildPromptFromSpec(
           garmentSpec,
@@ -548,7 +603,7 @@ export const regenerateOutfitTask = task({
           brandEnergy,
           primaryCategory,
           referenceContext,
-          graphicPromptContext,
+          backGraphicAssets.graphicPromptContext,
         ),
         userDirection,
       );
@@ -561,7 +616,9 @@ export const regenerateOutfitTask = task({
           modelB64: normalizedModelB64,
           frontAnchorB64: frontB64,
           prompt: backPrompt,
-          graphicReferenceCropB64,
+          rawGraphicReferenceB64: backGraphicAssets.rawGraphicReferenceB64,
+          rawGraphicReferenceMime: backGraphicAssets.rawGraphicReferenceMime,
+          graphicReferenceCropB64: backGraphicAssets.graphicReferenceCropB64,
         }),
       }];
       const backResp = await generateImageContent(ai, {
@@ -584,8 +641,8 @@ export const regenerateOutfitTask = task({
         b64: backB64,
         contents: backContents,
         config: { ...backGenConfig, temperature: 0.25 },
-        graphicReferenceCropB64,
-        description: graphicPromptContext?.description,
+        graphicReferenceCropB64: backGraphicAssets.graphicReferenceCropB64,
+        description: backGraphicAssets.graphicPromptContext?.description,
         outfitId,
         shopId,
         stage: 'back',

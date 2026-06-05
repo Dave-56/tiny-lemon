@@ -14,7 +14,7 @@ import { extractGarmentSpec } from '../app/lib/garmentSpec';
 import { buildPromptFromSpec } from '../app/lib/garmentFidelityPrompt';
 import {
   extractGraphicReferenceCrop,
-  getGraphicPromptContext,
+  getGraphicPromptContextForPose,
   isGraphicCriticalSpec,
   mergeGraphicFidelityIntoSpec,
   validateGeneratedGraphicFidelity,
@@ -28,6 +28,7 @@ import { createPoseAssetManifest } from '../app/lib/imageAssetManifest.server';
 import { logServerEvent } from '../app/lib/observability.server';
 import { GEMINI_IMAGE_MODEL, GEMINI_TEXT_MODEL } from '../app/lib/geminiModels';
 import {
+  GraphicFidelityGenerationError,
   getUserFacingGenerationError,
   maybeRefundFailedGeneration,
 } from '../app/lib/generationErrors.server';
@@ -44,8 +45,12 @@ interface GenerateOutfitPayload {
   backMime?: string;
   /** Whether rawFrontUrl is actually a front or back-facing product photo. */
   primaryImageSide?: 'front' | 'back';
+  /** Whether rawBackUrl is the opposite-side front or back photo. */
+  secondaryImageSide?: 'front' | 'back';
   /** Merchant-provided details for the missing front when only a back photo was uploaded. */
   frontDescription?: string;
+  /** Merchant-provided details for the missing back when no back photo was uploaded. */
+  backDescription?: string;
   modelImageUrl: string;
   modelHeight?: string;
   /** Model gender (e.g. Male, Female) — used to pick male/neutral pose snippets when present. */
@@ -103,14 +108,18 @@ export const generateOutfitTask = task({
     });
     if (existing?.errorMessage === 'Cancelled by user') return;
     const rawErrorMessage = error instanceof Error ? error.message : String(error ?? 'Generation failed.');
-    const errorMessage = getUserFacingGenerationError(error, 'Generation failed. Please try again.');
     logTaskLifecycle('task.failed_final', payload, { error: rawErrorMessage });
-    await maybeRefundFailedGeneration({
+    const refunded = await maybeRefundFailedGeneration({
       taskId: 'generate-outfit',
       payload,
       error,
       refundReservedGeneration,
     });
+    const errorMessage = getUserFacingGenerationError(
+      error,
+      'Generation failed. Please try again.',
+      { refunded },
+    );
     await prisma.outfit
       .update({ where: { id: payload.outfitId }, data: { status: 'failed', errorMessage } })
       .catch(() => {});
@@ -125,7 +134,9 @@ export const generateOutfitTask = task({
       frontMime = 'image/png',
       backMime = 'image/png',
       primaryImageSide = 'front',
+      secondaryImageSide,
       frontDescription,
+      backDescription,
       modelImageUrl,
       modelHeight,
       modelGender,
@@ -153,13 +164,41 @@ export const generateOutfitTask = task({
     await prisma.outfit.update({ where: { id: outfitId, shopId }, data: { status: 'pending' } });
 
     // ── 0. Fetch raw images ───────────────────────────────────────────────────
-    const rawFrontB64 = await fetchAsBase64(rawFrontUrl);
-    const rawBackB64 = rawBackUrl ? await fetchAsBase64(rawBackUrl).catch(() => null) : null;
+    const rawPrimaryB64 = await fetchAsBase64(rawFrontUrl);
+    const rawSecondaryB64 = rawBackUrl ? await fetchAsBase64(rawBackUrl).catch(() => null) : null;
+    const resolvedSecondaryImageSide = rawSecondaryB64
+      ? secondaryImageSide ?? (primaryImageSide === 'front' ? 'back' : 'front')
+      : undefined;
+    const rawFrontB64 = primaryImageSide === 'front'
+      ? rawPrimaryB64
+      : resolvedSecondaryImageSide === 'front'
+      ? rawSecondaryB64
+      : null;
+    const rawFrontMime = primaryImageSide === 'front'
+      ? frontMime
+      : resolvedSecondaryImageSide === 'front'
+      ? backMime
+      : undefined;
+    const rawFrontUrlForReference = primaryImageSide === 'front'
+      ? rawFrontUrl
+      : resolvedSecondaryImageSide === 'front'
+      ? rawBackUrl
+      : undefined;
+    const rawBackB64 = primaryImageSide === 'back'
+      ? rawPrimaryB64
+      : resolvedSecondaryImageSide === 'back'
+      ? rawSecondaryB64
+      : null;
+    const rawBackMime = primaryImageSide === 'back'
+      ? frontMime
+      : resolvedSecondaryImageSide === 'back'
+      ? backMime
+      : undefined;
     const rawFrontSpec = await extractGarmentSpec(
-      rawFrontB64,
-      frontMime,
+      rawFrontB64 ?? rawPrimaryB64,
+      rawFrontMime ?? frontMime,
       apiKey,
-      primaryImageSide,
+      rawFrontB64 ? 'front' : primaryImageSide,
       frontDescription,
     );
     const rawGraphicCritical = isGraphicCriticalSpec(rawFrontSpec);
@@ -167,7 +206,7 @@ export const generateOutfitTask = task({
     let graphicReferenceCropUrl: string | undefined;
 
     if (rawGraphicCritical) {
-      const cropBuffer = await extractGraphicReferenceCrop(rawFrontB64);
+      const cropBuffer = await extractGraphicReferenceCrop(rawFrontB64 ?? rawPrimaryB64);
       graphicReferenceCropB64 = cropBuffer.toString('base64');
       graphicReferenceCropUrl = await uploadImageToBlob(
         cropBuffer,
@@ -189,25 +228,25 @@ export const generateOutfitTask = task({
     if (isDemo) {
       // Run aggressive cleanup for quality unless the merchant already supplied a clean white flat lay.
       cleanFlatLayB64 = await prepareCleanFlatLay({
-        rawImageBase64: rawFrontB64,
-        mimeType: frontMime,
+        rawImageBase64: rawFrontB64 ?? rawPrimaryB64,
+        mimeType: rawFrontMime ?? frontMime,
         apiKey,
         isDemo,
         shopId,
         outfitId,
-        side: primaryImageSide,
+        side: rawFrontB64 ? 'front' : primaryImageSide,
       });
       cleanBackFlatLayB64 = rawBackB64;
-      cleanFlatLayUrl = rawFrontUrl;
+      cleanFlatLayUrl = rawFrontUrlForReference ?? rawFrontUrl;
     } else {
       cleanFlatLayB64 = await prepareCleanFlatLay({
-        rawImageBase64: rawFrontB64,
-        mimeType: frontMime,
+        rawImageBase64: rawFrontB64 ?? rawPrimaryB64,
+        mimeType: rawFrontMime ?? frontMime,
         apiKey,
         isDemo,
         shopId,
         outfitId,
-        side: primaryImageSide,
+        side: rawFrontB64 ? 'front' : primaryImageSide,
       });
       const [uploadedUrl, cleanedBack] = await Promise.all([
         uploadImageToBlob(
@@ -221,7 +260,7 @@ export const generateOutfitTask = task({
         rawBackB64
           ? prepareCleanFlatLay({
               rawImageBase64: rawBackB64,
-              mimeType: backMime,
+              mimeType: rawBackMime ?? backMime,
               apiKey,
               isDemo,
               shopId,
@@ -245,12 +284,13 @@ export const generateOutfitTask = task({
     }
 
     // ── 2. Spec extraction + model normalisation in parallel ──────────────────
+    const productReferencePrimarySide = rawFrontB64 ? 'front' : primaryImageSide;
     const [cleanedGarmentSpec, normalizedModelB64] = await Promise.all([
       extractGarmentSpec(
         cleanFlatLayB64,
         cleanMime,
         apiKey,
-        primaryImageSide,
+        productReferencePrimarySide,
         frontDescription,
       ),
       fetchAsBuffer(modelImageUrl)
@@ -261,8 +301,11 @@ export const generateOutfitTask = task({
       cleanedGarmentSpec,
       rawFrontSpec,
       graphicReferenceCropUrl,
+      rawFrontUrlForReference ?? rawFrontUrl,
+      productReferencePrimarySide,
     );
-    const graphicPromptContext = getGraphicPromptContext(garmentSpec);
+    const rawGraphicReferenceMime: 'image/png' | 'image/jpeg' =
+      (rawFrontMime ?? frontMime) === 'image/jpeg' ? 'image/jpeg' : 'image/png';
 
     await prisma.outfit.update({
       where: { id: outfitId, shopId },
@@ -273,8 +316,9 @@ export const generateOutfitTask = task({
         garmentSpec: JSON.parse(JSON.stringify({
           ...garmentSpec,
           referenceContext: {
-            primaryImageSide,
+            primaryImageSide: productReferencePrimarySide,
             frontDescription: frontDescription ?? null,
+            backDescription: backDescription ?? null,
           },
         })),
       },
@@ -312,8 +356,30 @@ export const generateOutfitTask = task({
 
     const hasBack = primaryImageSide === 'back' || !!cleanBackFlatLayB64;
     const promptContext = {
-      primaryImageSide,
+      primaryImageSide: productReferencePrimarySide,
       frontDescription,
+      backDescription,
+    };
+    const getGraphicAssetsForPose = (pose: 'front' | 'three-quarter' | 'back') => {
+      const graphicPromptContext = getGraphicPromptContextForPose(garmentSpec, pose);
+      const hasMatchingVisualReference =
+        graphicPromptContext?.critical &&
+        graphicPromptContext.sourceSide === productReferencePrimarySide;
+      return {
+        graphicPromptContext,
+        rawGraphicReferenceB64:
+          hasMatchingVisualReference && graphicPromptContext.rawReferenceUrl
+            ? rawFrontB64 ?? rawPrimaryB64
+            : undefined,
+        rawGraphicReferenceMime:
+          hasMatchingVisualReference && graphicPromptContext.rawReferenceUrl
+            ? rawGraphicReferenceMime
+            : undefined,
+        graphicReferenceCropB64:
+          hasMatchingVisualReference && graphicPromptContext.referenceCropUrl
+            ? graphicReferenceCropB64
+            : undefined,
+      };
     };
 
     // ── 6. Front pose ─────────────────────────────────────────────────────────
@@ -323,8 +389,9 @@ export const generateOutfitTask = task({
       frontB64 = await fetchAsBase64(frontRecord.imageUrl);
     } else {
       await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_front' } });
+      const frontGraphicAssets = getGraphicAssetsForPose('front');
       const frontPrompt = isDemo
-        ? buildTryDemoPrompt(garmentSpec, modelGender, modelHeight, graphicPromptContext)
+        ? buildTryDemoPrompt(garmentSpec, modelGender, modelHeight, frontGraphicAssets.graphicPromptContext)
         : buildPromptFromSpec(
             garmentSpec,
             'front',
@@ -338,14 +405,16 @@ export const generateOutfitTask = task({
             brandEnergy,
             primaryCategory,
             promptContext,
-            graphicPromptContext,
+            frontGraphicAssets.graphicPromptContext,
           );
       const frontParts = buildGenerationParts({
         garmentB64: cleanFlatLayB64,
         garmentMime: cleanMime,
         modelB64: normalizedModelB64,
         prompt: frontPrompt,
-        graphicReferenceCropB64,
+        rawGraphicReferenceB64: frontGraphicAssets.rawGraphicReferenceB64,
+        rawGraphicReferenceMime: frontGraphicAssets.rawGraphicReferenceMime,
+        graphicReferenceCropB64: frontGraphicAssets.graphicReferenceCropB64,
       });
       const frontResp = await generateImageContent(ai, {
         model: MODEL,
@@ -361,8 +430,8 @@ export const generateOutfitTask = task({
         b64: frontB64,
         contents: [{ role: 'user' as const, parts: frontParts }],
         config: { ...frontGenConfig, temperature: 0.15 },
-        graphicReferenceCropB64,
-        description: graphicPromptContext?.description,
+        graphicReferenceCropB64: frontGraphicAssets.graphicReferenceCropB64,
+        description: frontGraphicAssets.graphicPromptContext?.description,
         outfitId,
         shopId,
         stage: 'front',
@@ -407,8 +476,9 @@ export const generateOutfitTask = task({
 
     const generateThreeQuarter = async () => {
       if (!needsTq) return;
+      const tqGraphicAssets = getGraphicAssetsForPose('three-quarter');
       const tqPrompt = buildPromptFromSpec(
-        garmentSpec, 'three-quarter', backdropSnippet, hasBack, true, modelHeight, stylingDir, modelGender, pricePoint, brandEnergy, primaryCategory, promptContext, graphicPromptContext,
+        garmentSpec, 'three-quarter', backdropSnippet, hasBack, true, modelHeight, stylingDir, modelGender, pricePoint, brandEnergy, primaryCategory, promptContext, tqGraphicAssets.graphicPromptContext,
       );
       const tqContents = [{
         role: 'user' as const,
@@ -419,7 +489,9 @@ export const generateOutfitTask = task({
           modelB64: normalizedModelB64,
           frontAnchorB64: frontB64,
           prompt: tqPrompt,
-          graphicReferenceCropB64,
+          rawGraphicReferenceB64: tqGraphicAssets.rawGraphicReferenceB64,
+          rawGraphicReferenceMime: tqGraphicAssets.rawGraphicReferenceMime,
+          graphicReferenceCropB64: tqGraphicAssets.graphicReferenceCropB64,
         }),
       }];
       const tqResp = await generateImageContent(ai, {
@@ -443,8 +515,8 @@ export const generateOutfitTask = task({
         b64: tqB64,
         contents: tqContents,
         config: { ...threeQuarterGenConfig, temperature: 0.25 },
-        graphicReferenceCropB64,
-        description: graphicPromptContext?.description,
+        graphicReferenceCropB64: tqGraphicAssets.graphicReferenceCropB64,
+        description: tqGraphicAssets.graphicPromptContext?.description,
         outfitId,
         shopId,
         stage: 'three-quarter',
@@ -479,8 +551,9 @@ export const generateOutfitTask = task({
 
     const generateBack = async () => {
       if (!needsBack) return;
+      const backGraphicAssets = getGraphicAssetsForPose('back');
       const backPrompt = buildPromptFromSpec(
-        garmentSpec, 'back', backdropSnippet, hasBack, true, modelHeight, stylingDir, modelGender, pricePoint, brandEnergy, primaryCategory, promptContext, graphicPromptContext,
+        garmentSpec, 'back', backdropSnippet, hasBack, true, modelHeight, stylingDir, modelGender, pricePoint, brandEnergy, primaryCategory, promptContext, backGraphicAssets.graphicPromptContext,
       );
       const backContents = [{
         role: 'user' as const,
@@ -491,7 +564,9 @@ export const generateOutfitTask = task({
           modelB64: normalizedModelB64,
           frontAnchorB64: frontB64,
           prompt: backPrompt,
-          graphicReferenceCropB64,
+          rawGraphicReferenceB64: backGraphicAssets.rawGraphicReferenceB64,
+          rawGraphicReferenceMime: backGraphicAssets.rawGraphicReferenceMime,
+          graphicReferenceCropB64: backGraphicAssets.graphicReferenceCropB64,
         }),
       }];
       const backResp = await generateImageContent(ai, {
@@ -515,8 +590,8 @@ export const generateOutfitTask = task({
         b64: backB64,
         contents: backContents,
         config: { ...backGenConfig, temperature: 0.25 },
-        graphicReferenceCropB64,
-        description: graphicPromptContext?.description,
+        graphicReferenceCropB64: backGraphicAssets.graphicReferenceCropB64,
+        description: backGraphicAssets.graphicPromptContext?.description,
         outfitId,
         shopId,
         stage: 'back',
@@ -620,7 +695,7 @@ async function prepareCleanFlatLay(args: {
 type GenerateContentRequest = Parameters<GoogleGenAI['models']['generateContent']>[0];
 type GenerateContentPart =
   | { text: string }
-  | { inlineData: { data: string; mimeType: 'image/png' } };
+  | { inlineData: { data: string; mimeType: 'image/png' | 'image/jpeg' } };
 
 function buildGenerationParts(args: {
   instruction?: string;
@@ -628,6 +703,8 @@ function buildGenerationParts(args: {
   garmentMime: 'image/png';
   modelB64: string;
   prompt: string;
+  rawGraphicReferenceB64?: string;
+  rawGraphicReferenceMime?: 'image/png' | 'image/jpeg';
   graphicReferenceCropB64?: string;
   frontAnchorB64?: string;
 }): GenerateContentPart[] {
@@ -638,12 +715,19 @@ function buildGenerationParts(args: {
     { inlineData: { data: args.garmentB64, mimeType: args.garmentMime } },
   );
   let nextImage = 2;
-  if (args.graphicReferenceCropB64) {
+  if (args.rawGraphicReferenceB64) {
     parts.push(
-      { text: 'IMAGE 2: Close-up reference crop for the garment graphic, logo, print, or typography.' },
-      { inlineData: { data: args.graphicReferenceCropB64, mimeType: 'image/png' } },
+      { text: 'IMAGE 2: Original merchant upload reference for raw garment graphic, logo, print, or typography details.' },
+      { inlineData: { data: args.rawGraphicReferenceB64, mimeType: args.rawGraphicReferenceMime ?? 'image/png' } },
     );
     nextImage = 3;
+  }
+  if (args.graphicReferenceCropB64) {
+    parts.push(
+      { text: `IMAGE ${nextImage}: Close-up reference crop for the garment graphic, logo, print, or typography.` },
+      { inlineData: { data: args.graphicReferenceCropB64, mimeType: 'image/png' } },
+    );
+    nextImage += 1;
   }
   parts.push(
     { text: `IMAGE ${nextImage}: Model reference image.` },
@@ -699,7 +783,7 @@ async function retryIfGraphicFidelityFailed(args: {
     stage: `${args.stage}_graphic_retry`,
   });
   if (retryVerdict === 'failed') {
-    throw new Error('Generated image failed graphic fidelity validation.');
+    throw new GraphicFidelityGenerationError();
   }
   return retryB64;
 }

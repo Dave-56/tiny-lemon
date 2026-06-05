@@ -177,6 +177,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       brandStyleId: (body.brandStyleId as string) ?? "minimal",
       primaryImageSide: body.primaryImageSide as "front" | "back" | undefined,
       frontDescription: body.frontDescription as string | null | undefined,
+      backDescription: body.backDescription as string | null | undefined,
       frontB64: body.frontB64 as string,
       frontMime: (body.frontMime as string) ?? "image/png",
       backB64: body.backB64 as string | null,
@@ -490,6 +491,7 @@ interface BatchItem {
   backPreview: string | null;
   primaryImageSide: "front" | "back";
   frontDescription: string;
+  backDescription: string;
   skuName: string;
   status: ItemStatus;
   cleanPreview: string | null;
@@ -510,7 +512,9 @@ type PersistedItem = Omit<
 
 function requiresFrontDescription(item: BatchItem) {
   return (
-    item.primaryImageSide === "back" && item.frontDescription.trim().length === 0
+    item.primaryImageSide === "back" &&
+    !item.backFile &&
+    item.frontDescription.trim().length === 0
   );
 }
 
@@ -763,6 +767,7 @@ export default function DressModel() {
           : null,
         primaryImageSide: entry.primaryImageSide ?? "front",
         frontDescription: entry.frontDescription ?? "",
+        backDescription: entry.backDescription ?? "",
         skuName: entry.skuName,
         status: "pending",
         cleanPreview: null,
@@ -789,6 +794,7 @@ export default function DressModel() {
             backPreview: null,
             primaryImageSide: stored.primaryImageSide ?? "front",
             frontDescription: stored.frontDescription ?? "",
+            backDescription: stored.backDescription ?? "",
           });
         }
       }
@@ -824,6 +830,7 @@ export default function DressModel() {
         backFile: item.backFile,
         primaryImageSide: item.primaryImageSide,
         frontDescription: item.frontDescription,
+        backDescription: item.backDescription,
         skuName: item.skuName,
         quality: item.quality,
       }),
@@ -891,6 +898,7 @@ export default function DressModel() {
         backPreview: null,
         primaryImageSide: "front",
         frontDescription: "",
+        backDescription: "",
         skuName: file.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " "),
         status: "pending",
         cleanPreview: null,
@@ -1162,7 +1170,7 @@ export default function DressModel() {
       missingFrontDescriptions.forEach((item) => {
         updateItem(item.id, {
           status: "error",
-          error: "Describe the front before generating from a back photo.",
+          error: "Add a front photo or describe the front before generating from a back photo.",
         });
       });
       return;
@@ -1216,6 +1224,7 @@ export default function DressModel() {
             brandStyleId,
             primaryImageSide: item.primaryImageSide,
             frontDescription: item.frontDescription.trim() || null,
+            backDescription: item.backDescription.trim() || null,
             frontB64,
             frontMime,
             backB64,
@@ -1494,89 +1503,116 @@ export default function DressModel() {
                         )}
                       </div>
 
-                      <input
-                        type="text"
-                        value={item.skuName}
-                        onChange={(e) => updateSkuName(item.id, e.target.value)}
-                        placeholder="SKU name"
-                        disabled={
-                          item.status !== "pending" && item.status !== "error"
-                        }
-                        className="flex-1 text-sm bg-transparent focus:outline-none text-krea-text placeholder:text-krea-muted/50 disabled:opacity-60"
-                      />
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <input
+                          type="text"
+                          value={item.skuName}
+                          onChange={(e) =>
+                            updateSkuName(item.id, e.target.value)
+                          }
+                          placeholder="SKU name"
+                          disabled={
+                            item.status !== "pending" &&
+                            item.status !== "error"
+                          }
+                          className="block w-full min-w-0 truncate text-sm bg-transparent focus:outline-none text-krea-text placeholder:text-krea-muted/50 disabled:opacity-60"
+                        />
 
-                      {(item.status === "pending" || item.status === "error") && (
-                        <div className="flex flex-shrink-0 rounded-md border border-krea-border bg-krea-bg/60 p-0.5">
-                          {(["front", "back"] as const).map((side) => (
-                            <button
-                              key={side}
-                              type="button"
-                              onClick={() =>
-                                updateItem(item.id, {
-                                  primaryImageSide: side,
-                                  backFile:
-                                    side === "back" ? null : item.backFile,
-                                  backPreview:
-                                    side === "back" ? null : item.backPreview,
-                                  error: null,
-                                  status: "pending",
-                                })
-                              }
-                              className={`px-2 py-1 text-[11px] font-medium rounded transition-colors ${
-                                item.primaryImageSide === side
-                                  ? "bg-white text-krea-text shadow-sm"
-                                  : "text-krea-muted hover:text-krea-text"
-                              }`}
-                              aria-pressed={item.primaryImageSide === side}
-                            >
-                              {side === "front" ? "Front" : "Back"}
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                        {(item.status === "pending" ||
+                          item.status === "error") && (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-[10px] font-medium uppercase tracking-wide text-krea-muted/70">
+                              Uploaded side
+                            </span>
+                            <div className="flex rounded-md border border-krea-border bg-krea-bg/60 p-0.5">
+                              {(["front", "back"] as const).map((side) => (
+                                <button
+                                  key={side}
+                                  type="button"
+                                  onClick={() =>
+                                    updateItem(item.id, {
+                                      primaryImageSide: side,
+                                      backFile:
+                                        side === item.primaryImageSide
+                                          ? item.backFile
+                                          : null,
+                                      backPreview:
+                                        side === item.primaryImageSide
+                                          ? item.backPreview
+                                          : null,
+                                      error: null,
+                                      status: "pending",
+                                    })
+                                  }
+                                  className={`px-2 py-1 text-[11px] font-medium rounded transition-colors ${
+                                    item.primaryImageSide === side
+                                      ? "bg-white text-krea-text shadow-sm"
+                                      : "text-krea-muted hover:text-krea-text"
+                                  }`}
+                                  aria-pressed={item.primaryImageSide === side}
+                                >
+                                  {side === "front" ? "Front" : "Back"}
+                                </button>
+                              ))}
+                            </div>
 
-                      {(item.status === "pending" || item.status === "error") &&
-                        item.primaryImageSide === "front" &&
-                        (item.backPreview ? (
-                          <div className="relative group w-8 h-8 rounded-md overflow-hidden flex-shrink-0">
-                            <img
-                              src={item.backPreview}
-                              alt="back"
-                              className="block w-full h-full object-cover"
-                              loading="lazy"
-                              decoding="async"
-                            />
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setItems((prev) =>
-                                  prev.map((i) =>
-                                    i.id === item.id
-                                      ? {
-                                          ...i,
-                                          backFile: null,
-                                          backPreview: null,
-                                        }
-                                      : i,
-                                  ),
-                                )
-                              }
-                              className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                              <X className="w-3 h-3 text-white" />
-                            </button>
+                            {item.backPreview ? (
+                              <div className="flex items-center gap-1.5 rounded-md border border-krea-border bg-white px-1.5 py-1 text-[11px] text-krea-muted">
+                                <span>
+                                  {item.primaryImageSide === "front"
+                                    ? "Back photo"
+                                    : "Front photo"}
+                                </span>
+                                <div className="relative group w-6 h-6 rounded overflow-hidden flex-shrink-0">
+                                  <img
+                                    src={item.backPreview}
+                                    alt={
+                                      item.primaryImageSide === "front"
+                                        ? "back"
+                                        : "front"
+                                    }
+                                    className="block w-full h-full object-cover"
+                                    loading="lazy"
+                                    decoding="async"
+                                  />
+                                  <button
+                                    type="button"
+                                    aria-label="Remove opposite-side photo"
+                                    onClick={() =>
+                                      setItems((prev) =>
+                                        prev.map((i) =>
+                                          i.id === item.id
+                                            ? {
+                                                ...i,
+                                                backFile: null,
+                                                backPreview: null,
+                                              }
+                                            : i,
+                                        ),
+                                      )
+                                    }
+                                    className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                  >
+                                    <X className="w-3 h-3 text-white" />
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  backInputRefs.current[item.id]?.click()
+                                }
+                                className="text-[11px] font-medium text-krea-muted border border-krea-border rounded-md px-2 py-1 hover:border-krea-accent/40 hover:text-krea-text transition-colors"
+                              >
+                                {item.primaryImageSide === "front"
+                                  ? "Add back photo"
+                                  : "Add front photo"}
+                              </button>
+                            )}
                           </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              backInputRefs.current[item.id]?.click()
-                            }
-                            className="flex-shrink-0 text-xs text-krea-muted border border-krea-border rounded-md px-2 py-1 hover:border-krea-accent/40 hover:text-krea-text transition-colors"
-                          >
-                            + Back
-                          </button>
-                        ))}
+                        )}
+                      </div>
                       <input
                         type="file"
                         accept="image/*"
@@ -1619,18 +1655,28 @@ export default function DressModel() {
                       )}
                     </div>
                     {(item.status === "pending" || item.status === "error") &&
-                      item.primaryImageSide === "back" && (
+                      !item.backFile && (
                         <div className="px-1">
                           <textarea
-                            value={item.frontDescription}
+                            value={
+                              item.primaryImageSide === "back"
+                                ? item.frontDescription
+                                : item.backDescription
+                            }
                             onChange={(e) =>
                               updateItem(item.id, {
-                                frontDescription: e.target.value,
+                                ...(item.primaryImageSide === "back"
+                                  ? { frontDescription: e.target.value }
+                                  : { backDescription: e.target.value }),
                                 error: null,
                                 status: "pending",
                               })
                             }
-                            placeholder="Describe the front: graphics, neckline, buttons, pockets, logo placement..."
+                            placeholder={
+                              item.primaryImageSide === "back"
+                                ? "Describe the front: graphics, neckline, buttons, pockets, logo placement..."
+                                : "Describe the back: neckline, zipper, label, graphics, pockets..."
+                            }
                             rows={2}
                             className={`w-full resize-none rounded-lg border bg-white px-3 py-2 text-xs text-krea-text placeholder:text-krea-muted/50 focus:outline-none focus:ring-2 focus:ring-krea-accent/20 ${
                               requiresFrontDescription(item)
@@ -1640,7 +1686,12 @@ export default function DressModel() {
                           />
                           {requiresFrontDescription(item) && (
                             <p className="mt-1 text-[10px] text-red-500">
-                              Required when the uploaded photo is the back.
+                              Add a front photo or describe the front before generating.
+                            </p>
+                          )}
+                          {item.primaryImageSide === "front" && (
+                            <p className="mt-1 text-[10px] text-krea-muted">
+                              Optional if you do not have a back photo.
                             </p>
                           )}
                         </div>

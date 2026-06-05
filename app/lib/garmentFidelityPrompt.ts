@@ -250,6 +250,7 @@ export type SpecPose = 'front' | 'three-quarter' | 'back';
 export type GarmentReferenceContext = {
   primaryImageSide?: 'front' | 'back';
   frontDescription?: string;
+  backDescription?: string;
 };
 
 /**
@@ -285,7 +286,7 @@ function buildGraphicFidelityCue(
   spec: GarmentSpec,
   graphicFidelity?: GraphicFidelityPromptContext,
 ): string {
-  const isCritical = graphicFidelity?.critical || spec.has_logo_or_text;
+  const isCritical = graphicFidelity ? graphicFidelity.critical : spec.has_logo_or_text;
   if (!isCritical) return '';
   const detail = graphicFidelity?.description ?? spec.notable_details;
   const detailText = detail
@@ -294,7 +295,10 @@ function buildGraphicFidelityCue(
   const referenceText = graphicFidelity?.hasReferenceCrop
     ? ' A close-up reference crop of the graphic/print is provided as an additional image. Use that crop as the exact visual source for the graphic details.'
     : '';
-  return ` Graphic/text fidelity is critical.${detailText}${referenceText} Preserve the exact placement, scale, color, spacing, and legibility of every printed graphic, logo, label, letter, number, and word from the flat lay. Do not redraw, paraphrase, mirror, scramble, stylize, replace, or invent any graphics or text.`;
+  const rawReferenceText = graphicFidelity?.hasRawReference
+    ? ' The original merchant upload is also provided as an additional reference; use it to recover graphic details that cleanup may have softened.'
+    : '';
+  return ` Graphic/text fidelity is critical.${detailText}${rawReferenceText}${referenceText} Preserve the exact placement, scale, color, spacing, and legibility of every printed graphic, logo, label, letter, number, and word from the flat lay. Do not redraw, paraphrase, mirror, scramble, stylize, replace, or invent any graphics or text.`;
 }
 
 const STYLE_DIRECTION_CUES: Record<string, string> = {
@@ -313,6 +317,27 @@ const STYLE_DIRECTION_CUES: Record<string, string> = {
 function buildStyleDirectionBlock(brandStyle?: BrandStylePreset): string {
   if (!brandStyle) return '';
   return STYLE_DIRECTION_CUES[brandStyle.id] ?? '';
+}
+
+function getNotableDetailsForPose(
+  spec: GarmentSpec,
+  pose: SpecPose,
+  referenceContext?: GarmentReferenceContext,
+): string {
+  const frontDescription = referenceContext?.frontDescription?.trim();
+  const backDescription = referenceContext?.backDescription?.trim();
+  const details = spec.notable_details?.trim();
+
+  if (pose === 'back') {
+    if (referenceContext?.primaryImageSide === 'front' && backDescription) return backDescription;
+    return details ?? '';
+  }
+
+  if (referenceContext?.primaryImageSide === 'back') {
+    return frontDescription ?? '';
+  }
+
+  return details ?? '';
 }
 
 /** Length + lighting rules: front flat lay is source of truth for hem; match reference lighting. */
@@ -364,7 +389,8 @@ export function buildPromptFromSpec(
   const colors = spec.primary_colors.length ? spec.primary_colors.join(' ') : 'neutral';
   const heightNote = modelHeight ? ` The model is ${modelHeight} tall.` : '';
   const graphicFidelityCue = buildGraphicFidelityCue(spec, graphicFidelity);
-  const base = `${RELAXED_QUALITY_CUE}\n\nPhoto of the person in the reference image wearing a ${colors} ${spec.fit}-fit ${spec.silhouette} ${spec.garment_type}, ${spec.sleeve_length} sleeves, hem ${spec.hem_length}${spec.notable_details ? `, ${spec.notable_details}` : ''}.${heightNote}${graphicFidelityCue}`;
+  const poseDetails = getNotableDetailsForPose(spec, pose, referenceContext);
+  const base = `${RELAXED_QUALITY_CUE}\n\nPhoto of the person in the reference image wearing a ${colors} ${spec.fit}-fit ${spec.silhouette} ${spec.garment_type}, ${spec.sleeve_length} sleeves, hem ${spec.hem_length}${poseDetails ? `, ${poseDetails}` : ''}.${heightNote}${graphicFidelityCue}`;
   const effectiveBackdrop = brandStyle?.backdropSnippet ?? styleSnippet;
   const styleDirection = buildStyleDirectionBlock(brandStyle);
   const tail = lengthAndLightingBlock(spec, hasBackFlatLay, pose, effectiveBackdrop, referenceContext);
@@ -373,7 +399,11 @@ export function buildPromptFromSpec(
   const genderLock = getGenderLock(modelGender);
   const missingFrontBlock =
     referenceContext?.primaryImageSide === 'back' && referenceContext.frontDescription
-      ? `\n\nMISSING FRONT REFERENCE (merchant supplied): The uploaded product photo is the BACK of the garment, not the front. Generate the front-facing view using this front description as the source of truth for visible front details: ${referenceContext.frontDescription}. Keep any shared material, color, fit, sleeve length, and hem consistent with the uploaded back photo. Do not copy back-only graphics, labels, or closures onto the front unless the description says they also appear on the front.`
+      ? `\n\nMISSING FRONT REFERENCE (merchant supplied): The uploaded product photo is the BACK of the garment, not the front. Generate the front-facing view using this front description as the source of truth for visible front details: ${referenceContext.frontDescription}. Keep any shared material, color, fit, sleeve length, and hem consistent with the uploaded back photo. Do not copy back-only graphics, labels, or closures onto the front unless the description says they also appear on the front. If a back graphic reference exists, treat it as back-only and do not place it on the front.`
+      : '';
+  const missingBackBlock =
+    pose === 'back' && !hasBackFlatLay && referenceContext?.backDescription
+      ? `\n\nMISSING BACK REFERENCE (merchant supplied): No back photo was uploaded. Generate the back-facing view using this back description as the source of truth for visible back details: ${referenceContext.backDescription}. Keep shared material, color, fit, sleeve length, and hem consistent with the front flat lay. Do not copy front-only graphics, labels, or closures onto the back unless the description says they also appear on the back.`
       : '';
 
   if (pose === 'front') {
@@ -392,34 +422,23 @@ export function buildPromptFromSpec(
     : isBackWithBackFlatLay
     ? 'The BACK flat lay garment photo — source for back garment details (neckline, zipper, back design). Do NOT use this for garment length.'
     : 'The FRONT flat lay garment photo — source for garment details.';
-  const hasGraphicReference = Boolean(graphicFidelity?.critical && graphicFidelity.hasReferenceCrop);
-  if (hasLengthAnchor) {
-    if (hasGraphicReference) {
-      imageHeader =
-        `You are given 4 images:\n` +
-        `1) ${img1Desc}\n` +
-        `2) A close-up crop of the garment graphic, logo, print, or typography — source for exact graphic details ONLY.\n` +
-        `3) A reference photo of the model — source for identity ONLY (face, skin tone, hair, body proportions). Do NOT copy the pose, stance, body angle, or arm positions from this image.\n` +
-        `4) A front-view result of this model already wearing this garment — use this STRICTLY as a BACKGROUND, LIGHTING, and OUTFIT CONSISTENCY anchor. Match the exact same backdrop color/gradient, floor tone, contact shadow softness, lighting direction, complementary pieces (trousers, shoes, base layer), garment length, and fit. The garment hem MUST end at the same point on the body. Do NOT copy the pose, body angle, arm positions, or camera angle from this image.\n\n`;
-    } else {
-      imageHeader =
-        `You are given 3 images:\n` +
-        `1) ${img1Desc}\n` +
-        `2) A reference photo of the model — source for identity ONLY (face, skin tone, hair, body proportions). Do NOT copy the pose, stance, body angle, or arm positions from this image.\n` +
-        `3) A front-view result of this model already wearing this garment — use this STRICTLY as a BACKGROUND, LIGHTING, and OUTFIT CONSISTENCY anchor. Match the exact same backdrop color/gradient, floor tone, contact shadow softness, lighting direction, complementary pieces (trousers, shoes, base layer), garment length, and fit. The garment hem MUST end at the same point on the body. Do NOT copy the pose, body angle, arm positions, or camera angle from this image.\n\n`;
-    }
-  } else if (hasGraphicReference) {
-    imageHeader =
-      `You are given 3 images:\n` +
-      `1) ${img1Desc}\n` +
-      `2) A close-up crop of the garment graphic, logo, print, or typography — source for exact graphic details ONLY.\n` +
-      `3) A reference photo of the model — source for identity ONLY (face, skin tone, hair, body proportions). Do NOT copy the pose, stance, body angle, or arm positions from this image.\n\n`;
-  } else {
-    imageHeader =
-      `You are given 2 images:\n` +
-      `1) ${img1Desc}\n` +
-      `2) A reference photo of the model — source for identity ONLY (face, skin tone, hair, body proportions). Do NOT copy the pose, stance, body angle, or arm positions from this image.\n\n`;
+  const hasRawGraphicReference = Boolean(graphicFidelity?.critical && graphicFidelity.hasRawReference);
+  const hasGraphicReferenceCrop = Boolean(graphicFidelity?.critical && graphicFidelity.hasReferenceCrop);
+  const imageDescriptions = [img1Desc];
+  if (hasRawGraphicReference) {
+    imageDescriptions.push('The original merchant upload — source for raw graphic/logo/text details if cleanup softened them. Use only garment details from this image, not its background, hanger, mannequin, or body pose.');
   }
+  if (hasGraphicReferenceCrop) {
+    imageDescriptions.push('A close-up crop of the garment graphic, logo, print, or typography — source for exact graphic details ONLY.');
+  }
+  imageDescriptions.push('A reference photo of the model — source for identity ONLY (face, skin tone, hair, body proportions). Do NOT copy the pose, stance, body angle, or arm positions from this image.');
+  if (hasLengthAnchor) {
+    imageDescriptions.push('A front-view result of this model already wearing this garment — use this STRICTLY as a BACKGROUND, LIGHTING, and OUTFIT CONSISTENCY anchor. Match the exact same backdrop color/gradient, floor tone, contact shadow softness, lighting direction, complementary pieces (trousers, shoes, base layer), garment length, and fit. The garment hem MUST end at the same point on the body. Do NOT copy the pose, body angle, arm positions, or camera angle from this image.');
+  }
+  imageHeader =
+    `You are given ${imageDescriptions.length} images:\n` +
+    imageDescriptions.map((description, index) => `${index + 1}) ${description}`).join('\n') +
+    '\n\n';
 
   const outfitBlock = buildOutfitConsistencyBlock(styling);
 
@@ -431,5 +450,5 @@ export function buildPromptFromSpec(
   }
   const bodyLanguage = DEFAULT_POSE_INSTRUCTIONS.back;
   const headerWithLock = genderLock ? `${imageHeader}${genderLock}\n` : imageHeader;
-  return `${headerWithLock}${styleDirection ? `${styleDirection}\n` : ''}${missingFrontBlock}${graphicFidelityCue}\nSame person, same garment. ${POSE_GEOMETRY.back} ${bodyLanguage} ${HAND_SAFETY_BLOCK} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
+  return `${headerWithLock}${styleDirection ? `${styleDirection}\n` : ''}${missingFrontBlock}${missingBackBlock}${graphicFidelityCue}\nSame person, same garment. ${POSE_GEOMETRY.back} ${bodyLanguage} ${HAND_SAFETY_BLOCK} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
 }

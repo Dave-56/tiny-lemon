@@ -6,15 +6,32 @@ import { logImageProviderError } from './flatLayCleanup';
 const GRAPHIC_DETAIL_RE =
   /\b(logo|text|lettering|word|words|typography|type|print|printed|graphic|number|numbers|slogan|chest|back graphic|emblem|badge|label)\b/i;
 
+export type GraphicSourceSide = 'front' | 'back';
+export type GraphicPose = 'front' | 'three-quarter' | 'back';
+
+export interface GraphicFidelityReference {
+  sourceSide: GraphicSourceSide;
+  rawReferenceUrl?: string;
+  referenceCropUrl?: string;
+  description?: string;
+}
+
 export interface GraphicFidelityMetadata {
   critical: boolean;
   description?: string;
+  references?: GraphicFidelityReference[];
+  /** Legacy single-reference fields. Prefer references[]. */
+  rawReferenceUrl?: string;
   referenceCropUrl?: string;
 }
 
 export interface GraphicFidelityPromptContext {
   critical: boolean;
+  sourceSide?: GraphicSourceSide;
   description?: string;
+  rawReferenceUrl?: string;
+  referenceCropUrl?: string;
+  hasRawReference?: boolean;
   hasReferenceCrop?: boolean;
 }
 
@@ -33,6 +50,8 @@ export function mergeGraphicFidelityIntoSpec(
   cleanedSpec: GarmentSpec,
   rawSpec: GarmentSpec,
   referenceCropUrl?: string,
+  rawReferenceUrl?: string,
+  sourceSide: GraphicSourceSide = 'front',
 ): GarmentSpec {
   const rawCritical = isGraphicCriticalSpec(rawSpec);
   const cleanCritical = isGraphicCriticalSpec(cleanedSpec);
@@ -49,21 +68,91 @@ export function mergeGraphicFidelityIntoSpec(
       ? {
           critical: true,
           description,
-          referenceCropUrl,
+          references: [
+            {
+              sourceSide,
+              ...(description ? { description } : {}),
+              ...(rawReferenceUrl ? { rawReferenceUrl } : {}),
+              ...(referenceCropUrl ? { referenceCropUrl } : {}),
+            },
+          ],
+          ...(rawReferenceUrl ? { rawReferenceUrl } : {}),
+          ...(referenceCropUrl ? { referenceCropUrl } : {}),
         }
       : undefined,
   };
+}
+
+function graphicSideForPose(pose: GraphicPose): GraphicSourceSide {
+  return pose === 'back' ? 'back' : 'front';
+}
+
+function getLegacyGraphicReference(metadata: GraphicFidelityMetadata, spec: GarmentSpec): GraphicFidelityReference | undefined {
+  if (!metadata.rawReferenceUrl && !metadata.referenceCropUrl) return undefined;
+  const referenceContext = (spec as { referenceContext?: { primaryImageSide?: GraphicSourceSide } }).referenceContext;
+  return {
+    sourceSide: referenceContext?.primaryImageSide ?? 'front',
+    description: metadata.description,
+    ...(metadata.rawReferenceUrl ? { rawReferenceUrl: metadata.rawReferenceUrl } : {}),
+    ...(metadata.referenceCropUrl ? { referenceCropUrl: metadata.referenceCropUrl } : {}),
+  };
+}
+
+export function getGraphicReferenceForPose(
+  spec: GarmentSpec,
+  pose: GraphicPose,
+): GraphicFidelityReference | undefined {
+  const metadata = spec.graphicFidelity;
+  if (!metadata?.critical) return undefined;
+  const targetSide = graphicSideForPose(pose);
+  const references = metadata.references?.length
+    ? metadata.references
+    : [getLegacyGraphicReference(metadata, spec)].filter(Boolean) as GraphicFidelityReference[];
+
+  return references.find((reference) => {
+    if (reference.sourceSide !== targetSide) return false;
+    return Boolean(reference.rawReferenceUrl || reference.referenceCropUrl);
+  });
+}
+
+export function getGraphicPromptContextForPose(
+  spec: GarmentSpec,
+  pose: GraphicPose,
+): GraphicFidelityPromptContext | undefined {
+  const reference = getGraphicReferenceForPose(spec, pose);
+  if (reference) {
+    return {
+      critical: true,
+      sourceSide: reference.sourceSide,
+      description: reference.description ?? spec.graphicFidelity?.description ?? getGraphicDescription(spec),
+      rawReferenceUrl: reference.rawReferenceUrl,
+      referenceCropUrl: reference.referenceCropUrl,
+      hasRawReference: Boolean(reference.rawReferenceUrl),
+      hasReferenceCrop: Boolean(reference.referenceCropUrl),
+    };
+  }
+
+  if (spec.graphicFidelity?.critical) {
+    return { critical: false };
+  }
+
+  return undefined;
 }
 
 export function getGraphicPromptContext(spec: GarmentSpec): GraphicFidelityPromptContext | undefined {
   const metadata = spec.graphicFidelity;
   const critical = Boolean(metadata?.critical) || isGraphicCriticalSpec(spec);
   if (!critical) return undefined;
+  const reference = metadata?.references?.find((entry) => entry.rawReferenceUrl || entry.referenceCropUrl);
 
   return {
     critical: true,
-    description: metadata?.description ?? getGraphicDescription(spec),
-    hasReferenceCrop: Boolean(metadata?.referenceCropUrl),
+    sourceSide: reference?.sourceSide,
+    description: reference?.description ?? metadata?.description ?? getGraphicDescription(spec),
+    rawReferenceUrl: reference?.rawReferenceUrl ?? metadata?.rawReferenceUrl,
+    referenceCropUrl: reference?.referenceCropUrl ?? metadata?.referenceCropUrl,
+    hasRawReference: Boolean(reference?.rawReferenceUrl ?? metadata?.rawReferenceUrl),
+    hasReferenceCrop: Boolean(reference?.referenceCropUrl ?? metadata?.referenceCropUrl),
   };
 }
 

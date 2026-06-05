@@ -92,12 +92,15 @@ describe('buildPromptFromSpec hand-safety prompts', () => {
       {
         critical: true,
         description: 'red cherry graphic and red "another." text',
+        hasRawReference: true,
         hasReferenceCrop: true,
       },
     );
 
-    expect(prompt).toContain('You are given 4 images:');
+    expect(prompt).toContain('You are given 5 images:');
+    expect(prompt).toContain('The original merchant upload');
     expect(prompt).toContain('A close-up crop of the garment graphic, logo, print, or typography');
+    expect(prompt).toContain('use it to recover graphic details that cleanup may have softened');
     expect(prompt).toContain('Use that crop as the exact visual source for the graphic details.');
     expect(prompt).toContain('red cherry graphic and red "another." text');
   });
@@ -341,5 +344,66 @@ describe('buildPromptFromSpec hand-safety prompts', () => {
     expect(prompt).toContain('uploaded product photo is the BACK');
     expect(prompt).toContain('large red cherry graphic centered on the chest');
     expect(prompt).toContain('Do not copy back-only graphics');
+  });
+
+  it('does not require a back-only graphic on a merchant-described plain front', () => {
+    const prompt = buildPromptFromSpec(
+      {
+        ...spec,
+        garment_type: 't-shirt',
+        has_logo_or_text: true,
+        notable_details: 'large red cherry graphic with red brand text on the back',
+      },
+      'front',
+      backdropSnippet,
+      true,
+      false,
+      undefined,
+      getBrandStyle('minimal'),
+      'Male',
+      undefined,
+      undefined,
+      undefined,
+      {
+        primaryImageSide: 'back',
+        frontDescription: 'plain front with a small pocket on the right side',
+      },
+      { critical: false },
+    );
+
+    expect(prompt).toContain('plain front with a small pocket on the right side');
+    expect(prompt).toContain('If a back graphic reference exists, treat it as back-only');
+    expect(prompt).not.toContain('large red cherry graphic with red brand text on the back');
+    expect(prompt).not.toContain('Graphic/text fidelity is critical.');
+    expect(prompt).not.toContain('Use that crop as the exact visual source');
+  });
+
+  it('uses merchant back details when no back photo is uploaded', () => {
+    const prompt = buildPromptFromSpec(
+      {
+        ...spec,
+        garment_type: 't-shirt',
+        notable_details: 'large red chest graphic',
+      },
+      'back',
+      backdropSnippet,
+      false,
+      true,
+      undefined,
+      getBrandStyle('minimal'),
+      'Male',
+      undefined,
+      undefined,
+      undefined,
+      {
+        primaryImageSide: 'front',
+        backDescription: 'plain back with a small woven neck label',
+      },
+    );
+
+    expect(prompt).toContain('MISSING BACK REFERENCE');
+    expect(prompt).toContain('No back photo was uploaded');
+    expect(prompt).toContain('plain back with a small woven neck label');
+    expect(prompt).toContain('Do not copy front-only graphics');
   });
 });

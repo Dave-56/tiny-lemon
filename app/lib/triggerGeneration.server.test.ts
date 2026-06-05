@@ -181,7 +181,7 @@ describe("handleTriggerGeneration", () => {
     expect(mocks.enqueueGenerateOutfit).not.toHaveBeenCalled();
   });
 
-  it("requires a front description when the uploaded primary image is the back", async () => {
+  it("requires a front photo or description when the uploaded primary image is the back", async () => {
     const res = await handleTriggerGeneration("shop-a.myshopify.com", {
       modelId: "model-01",
       frontB64: "ZmFrZQ==",
@@ -191,11 +191,35 @@ describe("handleTriggerGeneration", () => {
 
     expect(res.status).toBe(400);
     await expect(res.json()).resolves.toEqual({
-      error: "Describe the front before generating from a back photo.",
+      error: "Add a front photo or describe the front before generating from a back photo.",
     });
     expect(mocks.claimGenerateRequestIdempotency).not.toHaveBeenCalled();
     expect(mocks.reserveGenerations).not.toHaveBeenCalled();
     expect(mocks.enqueueGenerateOutfit).not.toHaveBeenCalled();
+  });
+
+  it("allows a back-primary upload when a front image is provided as the secondary side", async () => {
+    mocks.modelFindFirst.mockResolvedValue(null);
+
+    const res = await handleTriggerGeneration("shop-a.myshopify.com", {
+      modelId: "model-01",
+      frontB64: "YmFjaw==",
+      frontMime: "image/png",
+      primaryImageSide: "back",
+      backB64: "ZnJvbnQ=",
+      backMime: "image/jpeg",
+      frontDescription: "   ",
+    });
+
+    expect(res.status).toBe(200);
+    expect(mocks.enqueueGenerateOutfit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        primaryImageSide: "back",
+        secondaryImageSide: "front",
+        frontDescription: undefined,
+        backMime: "image/jpeg",
+      }),
+    );
   });
 
   it("uses the server-resolved preset model instead of client-supplied model data", async () => {
@@ -244,6 +268,25 @@ describe("handleTriggerGeneration", () => {
       expect.objectContaining({
         primaryImageSide: "back",
         frontDescription: "red cherry graphic on front chest",
+      }),
+    );
+  });
+
+  it("forwards optional back description for front-primary uploads", async () => {
+    mocks.modelFindFirst.mockResolvedValue(null);
+
+    const res = await handleTriggerGeneration("shop-a.myshopify.com", {
+      modelId: "model-01",
+      frontB64: "ZmFrZQ==",
+      primaryImageSide: "front",
+      backDescription: "plain back with a small woven neck label",
+    });
+
+    expect(res.status).toBe(200);
+    expect(mocks.enqueueGenerateOutfit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        primaryImageSide: "front",
+        backDescription: "plain back with a small woven neck label",
       }),
     );
   });

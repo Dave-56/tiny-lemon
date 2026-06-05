@@ -6,6 +6,12 @@ const LIGHT_BACKGROUND_THRESHOLD = 238;
 const MAX_CHANNEL_SPREAD = 18;
 export const IMAGE_SERVICE_CAPACITY_MESSAGE =
   'AI image generation is temporarily at capacity. Please try again in a few minutes.';
+export const IMAGE_SERVICE_QUOTA_OR_RATE_LIMIT_MESSAGE =
+  'AI image generation is busy right now. Please try again in a few minutes.';
+export const IMAGE_SERVICE_BILLING_CONFIGURATION_MESSAGE =
+  'AI image generation is currently unavailable. Our team has been alerted. Please try again later.';
+export const IMAGE_SERVICE_UNAVAILABLE_MESSAGE =
+  'AI image generation provider is temporarily unavailable. Please try again shortly.';
 
 export type ImageProviderErrorKind =
   | 'quota_or_rate_limit'
@@ -155,38 +161,24 @@ export async function cleanFlatLayForDemo(
 }
 
 export function getUserFacingImageServiceError(error: unknown, fallback: string): string {
-  const msg = error instanceof Error ? error.message : String(error ?? '');
+  const providerErrorKind = classifyImageProviderError(error);
+  const msg = getImageProviderErrorMessage(error);
   const lower = msg.toLowerCase();
 
-  if (
-    lower.includes('safety') ||
-    lower.includes('blocked') ||
-    lower.includes('prohibited')
-  ) {
+  if (providerErrorKind === 'safety') {
     return 'Image was flagged by the safety filter. Try a different garment photo.';
   }
 
-  if (
-    lower.includes('invalid_argument') ||
-    lower.includes('invalid image') ||
-    lower.includes('unsupported image') ||
-    lower.includes('unsupported mime') ||
-    lower.includes('400')
-  ) {
+  if (providerErrorKind === 'invalid_input') {
     return 'Invalid image format. Please use a JPEG or PNG.';
   }
 
-  if (
-    lower.includes('resource_exhausted') ||
-    lower.includes('quota') ||
-    lower.includes('rate limit') ||
-    lower.includes('rate_limit') ||
-    lower.includes('too many requests') ||
-    lower.includes('429') ||
-    lower.includes('credit') ||
-    lower.includes('billing')
-  ) {
-    return IMAGE_SERVICE_CAPACITY_MESSAGE;
+  if (providerErrorKind === 'provider_billing') {
+    return IMAGE_SERVICE_BILLING_CONFIGURATION_MESSAGE;
+  }
+
+  if (providerErrorKind === 'quota_or_rate_limit') {
+    return IMAGE_SERVICE_QUOTA_OR_RATE_LIMIT_MESSAGE;
   }
 
   if (
@@ -198,9 +190,10 @@ export function getUserFacingImageServiceError(error: unknown, fallback: string)
     lower.includes('unauthorized') ||
     lower.includes('api key') ||
     lower.includes('403') ||
-    lower.includes('404')
+    lower.includes('404') ||
+    providerErrorKind === 'provider_unavailable'
   ) {
-    return 'AI image service is temporarily unavailable. Please try again shortly.';
+    return IMAGE_SERVICE_UNAVAILABLE_MESSAGE;
   }
 
   return fallback;
@@ -235,6 +228,14 @@ export function classifyImageProviderError(error: unknown): ImageProviderErrorKi
   }
 
   if (
+    msg.includes('billing') ||
+    msg.includes('payment') ||
+    msg.includes('credit')
+  ) {
+    return 'provider_billing';
+  }
+
+  if (
     msg.includes('resource_exhausted') ||
     msg.includes('quota') ||
     msg.includes('rate limit') ||
@@ -243,14 +244,6 @@ export function classifyImageProviderError(error: unknown): ImageProviderErrorKi
     msg.includes('429')
   ) {
     return 'quota_or_rate_limit';
-  }
-
-  if (
-    msg.includes('billing') ||
-    msg.includes('payment') ||
-    msg.includes('credit')
-  ) {
-    return 'provider_billing';
   }
 
   if (
@@ -281,6 +274,19 @@ function getImageProviderErrorField(error: unknown, field: 'status' | 'code') {
   return undefined;
 }
 
+function shouldAlertForProviderConfiguration(error: unknown, providerErrorKind: ImageProviderErrorKind) {
+  if (providerErrorKind === 'provider_billing') return true;
+  if (providerErrorKind !== 'quota_or_rate_limit') return false;
+
+  const message = getImageProviderErrorMessage(error).toLowerCase();
+  return (
+    message.includes('resource_exhausted') ||
+    message.includes('quota') ||
+    message.includes('billing') ||
+    message.includes('credit')
+  );
+}
+
 export function logImageProviderError(
   error: unknown,
   context: {
@@ -290,13 +296,28 @@ export function logImageProviderError(
     shopId?: string;
   },
 ) {
+  const providerErrorKind = classifyImageProviderError(error);
+  const providerStatus = getImageProviderErrorField(error, 'status');
+  const providerCode = getImageProviderErrorField(error, 'code');
+  const rawMessage = getImageProviderErrorMessage(error);
+
   logServerEvent('error', 'image_provider.gemini_failed', {
     ...context,
-    providerErrorKind: classifyImageProviderError(error),
-    providerStatus: getImageProviderErrorField(error, 'status'),
-    providerCode: getImageProviderErrorField(error, 'code'),
-    rawMessage: getImageProviderErrorMessage(error),
+    providerErrorKind,
+    providerStatus,
+    providerCode,
+    rawMessage,
   });
+
+  if (shouldAlertForProviderConfiguration(error, providerErrorKind)) {
+    logServerEvent('error', 'image_provider.gemini_configuration_alert', {
+      ...context,
+      providerErrorKind,
+      providerStatus,
+      providerCode,
+      rawMessage,
+    });
+  }
 }
 
 export function isImageServiceCapacityErrorMessage(message: string): boolean {

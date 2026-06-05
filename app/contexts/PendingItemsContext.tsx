@@ -14,6 +14,7 @@ export interface PendingEntry {
   backFile: File | null;
   primaryImageSide: 'front' | 'back';
   frontDescription: string;
+  backDescription: string;
   skuName: string;
   quality: FlatLayQuality | null;
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import sharp from "sharp";
 import {
   classifyImageProviderError,
@@ -8,6 +8,14 @@ import {
   isRefundableImageProviderFailure,
   normalizeFlatLayToPng,
 } from "./flatLayCleanup";
+
+const mocks = vi.hoisted(() => ({
+  logServerEvent: vi.fn(),
+}));
+
+vi.mock("./observability.server", () => ({
+  logServerEvent: mocks.logServerEvent,
+}));
 
 async function makeTestImage(background: string) {
   const base = sharp({
@@ -66,7 +74,7 @@ describe("flat lay cleanup helpers", () => {
         "Failed to process image. Please try again.",
       ),
     ).toBe(
-      "AI image generation is temporarily at capacity. Please try again in a few minutes.",
+      "AI image generation is currently unavailable. Our team has been alerted. Please try again later.",
     );
   });
 
@@ -126,5 +134,26 @@ describe("flat lay cleanup helpers", () => {
 
     expect(isRefundableImageProviderFailure(safetyError)).toBe(false);
     expect(isRefundableImageProviderFailure(invalidInputError)).toBe(false);
+  });
+
+  it("alerts internally for Gemini billing or quota configuration failures", async () => {
+    const { logImageProviderError } = await import("./flatLayCleanup");
+
+    logImageProviderError(
+      new Error("429 RESOURCE_EXHAUSTED: quota exceeded"),
+      { taskId: "generate-outfit", stage: "front", outfitId: "outfit-1", shopId: "shop-1" },
+    );
+
+    expect(mocks.logServerEvent).toHaveBeenCalledWith(
+      "error",
+      "image_provider.gemini_configuration_alert",
+      expect.objectContaining({
+        taskId: "generate-outfit",
+        stage: "front",
+        outfitId: "outfit-1",
+        shopId: "shop-1",
+        providerErrorKind: "quota_or_rate_limit",
+      }),
+    );
   });
 });

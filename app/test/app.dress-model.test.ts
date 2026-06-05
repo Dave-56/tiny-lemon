@@ -116,6 +116,28 @@ describe("app.dress-model action trigger_generation", () => {
       }),
     );
   });
+
+  it("forwards back description", async () => {
+    await action({
+      request: makeRequest({
+        intent: "trigger_generation",
+        modelId: "model-01",
+        frontB64: "ZmFrZQ==",
+        primaryImageSide: "front",
+        backDescription: "plain back with a small neck label",
+      }),
+      params: {},
+      context: {},
+    } as any);
+
+    expect(mocks.handleTriggerGeneration).toHaveBeenCalledWith(
+      "shop-a.myshopify.com",
+      expect.objectContaining({
+        primaryImageSide: "front",
+        backDescription: "plain back with a small neck label",
+      }),
+    );
+  });
 });
 
 describe("shouldRefreshUsageAfterGenerationFailure", () => {
