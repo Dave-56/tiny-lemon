@@ -57,6 +57,8 @@ interface GenerateOutfitPayload {
   modelGender?: string;
   styleId: string;
   brandStyleId: string;
+  /** Optional merchant shoot direction, e.g. styling, shoes, background, or mood. */
+  generationDirection?: string;
   /** Brand price point (value | mid-market | premium | luxury) — shapes production quality cue in prompt. */
   pricePoint?: string;
   /** Brand energy (minimal | accessible | editorial | premium | street | athletic) — shapes mood/tone cue in prompt. */
@@ -142,6 +144,7 @@ export const generateOutfitTask = task({
       modelGender,
       styleId,
       brandStyleId,
+      generationDirection,
       pricePoint,
       brandEnergy,
       primaryCategory,
@@ -319,6 +322,7 @@ export const generateOutfitTask = task({
             primaryImageSide: productReferencePrimarySide,
             frontDescription: frontDescription ?? null,
             backDescription: backDescription ?? null,
+            generationDirection: generationDirection ?? null,
           },
         })),
       },
@@ -359,6 +363,7 @@ export const generateOutfitTask = task({
       primaryImageSide: productReferencePrimarySide,
       frontDescription,
       backDescription,
+      generationDirection,
     };
     const getGraphicAssetsForPose = (pose: 'front' | 'three-quarter' | 'back') => {
       const graphicPromptContext = getGraphicPromptContextForPose(garmentSpec, pose);

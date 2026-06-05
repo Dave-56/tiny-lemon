@@ -1,5 +1,6 @@
 import { runs, tasks } from "../trigger.server";
 import { logServerEvent } from "./observability.server";
+import type { RegeneratePose } from "./regeneratePoses";
 
 type GenerateOutfitTriggerPayload = {
   outfitId: string;
@@ -17,6 +18,7 @@ type GenerateOutfitTriggerPayload = {
   modelGender?: string;
   styleId: string;
   brandStyleId: string;
+  generationDirection?: string;
   pricePoint?: string;
   brandEnergy?: string;
   primaryCategory?: string;
@@ -31,6 +33,7 @@ type RegenerateOutfitTriggerPayload = {
   outfitId: string;
   shopId: string;
   userDirection?: string;
+  targetPoses?: RegeneratePose[];
   modelImageUrl: string;
   modelHeight?: string;
   modelGender?: string;
@@ -42,6 +45,9 @@ type RegenerateOutfitTriggerPayload = {
   creditReservation?: {
     reservationDescription: string;
     refundDescription: string;
+  };
+  freeRegenerationAllowance?: {
+    pose: RegeneratePose;
   };
 };
 

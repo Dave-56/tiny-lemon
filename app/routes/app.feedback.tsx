@@ -151,13 +151,10 @@ export default function Feedback() {
           <p className="mt-4 text-sm text-green-700">Thanks. Your feedback was saved.</p>
         ) : null}
 
-        <a
-          href={`mailto:${supportEmail}?subject=${encodeURIComponent("TinyLemon support")}`}
-          onClick={() => posthog.capture("beta_support_clicked", { shop, location: "feedback_page" })}
-          className="mt-5 inline-flex text-sm text-krea-accent underline underline-offset-2"
-        >
-          Prefer email? Contact support.
-        </a>
+        <p className="mt-5 text-sm text-krea-muted">
+          Prefer email? Contact{" "}
+          <span className="font-medium text-krea-text">{supportEmail}</span>.
+        </p>
       </div>
     </div>
   );

@@ -58,6 +58,7 @@ model Shop {
   creditBalance CreditBalance?
   transactions  CreditTransaction[]
   requestIdempotencies RequestIdempotency[]
+  singleImageRegenerationAllowances SingleImageRegenerationAllowance[]
 }
 
 model BrandStyle {
@@ -106,6 +107,7 @@ model Outfit {
   garmentSpec          Json?
   modelId              String    // preset model ID or batchId of user-generated model
   brandStyleId         String    @default("minimal") @map("stylingDirectionId") // preset id from BRAND_STYLE_PRESETS (body language/backdrop)
+  generationDirection  String?   // optional merchant shoot-level styling/background/mood direction
   status               String    @default("pending") // pending | processing | completed | failed
   jobId                String?   // Trigger.dev runId
   errorMessage         String?   // failure reason, set on task failure
@@ -127,8 +129,26 @@ model Outfit {
 
   shop   Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
   images GeneratedImage[]
+  singleImageRegenerationAllowances SingleImageRegenerationAllowance[]
 
   @@index([shopId, deletedAt, createdAt])
+}
+
+model SingleImageRegenerationAllowance {
+  id          String    @id @default(cuid())
+  shopId      String
+  outfitId    String
+  pose        String
+  status      String    @default("pending") // pending | completed | failed
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  outfit Outfit @relation(fields: [outfitId], references: [id], onDelete: Cascade)
+
+  @@unique([outfitId, pose])
+  @@index([shopId, status])
 }
 
 model GeneratedImage {

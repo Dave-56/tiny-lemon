@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import prisma from "../db.server";
+import type { RegeneratePose } from "./regeneratePoses";
 
 /** Demo shop id for public /try free tool. No credits; rate limit only. */
 export const DEMO_SHOP_ID = process.env.DEMO_SHOP_ID ?? "__demo__";
@@ -38,6 +39,12 @@ type RefundReservationArgs = {
   count?: number;
   reservationDescription: string;
   refundDescription: string;
+};
+
+type SingleImageRegenerationAllowanceArgs = {
+  shopId: string;
+  outfitId: string;
+  pose: RegeneratePose;
 };
 
 export type EffectiveEntitlements = {
@@ -243,4 +250,65 @@ export async function refundReservedGeneration(
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
   );
+}
+
+export async function reserveFreeSingleImageRegeneration({
+  shopId,
+  outfitId,
+  pose,
+}: SingleImageRegenerationAllowanceArgs): Promise<boolean> {
+  if (shopId === DEMO_SHOP_ID) return true;
+
+  return prisma.$transaction(
+    async (tx) => {
+      const existing = await tx.singleImageRegenerationAllowance.findUnique({
+        where: { outfitId_pose: { outfitId, pose } },
+        select: { id: true, status: true },
+      });
+
+      if (!existing) {
+        await tx.singleImageRegenerationAllowance.create({
+          data: { shopId, outfitId, pose, status: "pending" },
+        });
+        return true;
+      }
+
+      if (existing.status === "failed") {
+        await tx.singleImageRegenerationAllowance.update({
+          where: { id: existing.id },
+          data: { status: "pending", completedAt: null },
+        });
+        return true;
+      }
+
+      return false;
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+  );
+}
+
+export async function markFreeSingleImageRegenerationCompleted({
+  shopId,
+  outfitId,
+  pose,
+}: SingleImageRegenerationAllowanceArgs): Promise<void> {
+  if (shopId === DEMO_SHOP_ID) return;
+
+  await prisma.singleImageRegenerationAllowance.updateMany({
+    where: { shopId, outfitId, pose, status: "pending" },
+    data: { status: "completed", completedAt: new Date() },
+  });
+}
+
+export async function markFreeSingleImageRegenerationFailed({
+  shopId,
+  outfitId,
+  pose,
+}: SingleImageRegenerationAllowanceArgs): Promise<void> {
+  if (shopId === DEMO_SHOP_ID) return;
+
+  await prisma.singleImageRegenerationAllowance.updateMany({
+    where: { shopId, outfitId, pose, status: "pending" },
+    data: { status: "failed", completedAt: null },
+  });
 }

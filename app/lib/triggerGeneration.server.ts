@@ -7,6 +7,8 @@ import {
   getMonthlyUsage,
   getEffectiveEntitlements,
   reserveGenerations,
+  reserveFreeSingleImageRegeneration,
+  markFreeSingleImageRegenerationFailed,
   refundReservedGeneration,
   DEMO_SHOP_ID,
 } from "./billing.server";
@@ -23,6 +25,7 @@ import {
   enqueueRegenerateOutfit,
 } from "./triggerJobs.server";
 import { getUserFacingGenerationError } from "./generationErrors.server";
+import type { RegeneratePose } from "./regeneratePoses";
 
 export type TriggerGenerationBody = {
   skuName?: string;
@@ -32,6 +35,7 @@ export type TriggerGenerationBody = {
   modelGender?: string;
   styleId?: string;
   brandStyleId?: string;
+  generationDirection?: string | null;
   primaryImageSide?: "front" | "back";
   frontDescription?: string | null;
   backDescription?: string | null;
@@ -128,6 +132,7 @@ function buildGenerateRequestKey(body: {
   modelId: string;
   styleId?: string;
   brandStyleId?: string;
+  generationDirection?: string | null;
   primaryImageSide?: "front" | "back";
   frontDescription?: string | null;
   backDescription?: string | null;
@@ -144,6 +149,7 @@ function buildGenerateRequestKey(body: {
         modelId: body.modelId,
         styleId: normalizeOptionalInput(body.styleId) ?? "white-studio",
         brandStyleId: normalizeOptionalInput(body.brandStyleId) ?? "minimal",
+        generationDirection: normalizeOptionalInput(body.generationDirection),
         primaryImageSide: body.primaryImageSide ?? "front",
         frontDescription: normalizeOptionalInput(body.frontDescription),
         backDescription: normalizeOptionalInput(body.backDescription),
@@ -160,12 +166,14 @@ function buildGenerateRequestKey(body: {
 function buildRegenerateRequestKey(args: {
   outfitId: string;
   userDirection?: string | null;
+  targetPoses?: RegeneratePose[] | null;
 }) {
   return createHash("sha256")
     .update(
       JSON.stringify({
         outfitId: args.outfitId,
         userDirection: normalizeOptionalInput(args.userDirection),
+        targetPoses: args.targetPoses ?? null,
       })
     )
     .digest("hex");
@@ -213,6 +221,7 @@ export async function handleTriggerGeneration(
   const modelId = body.modelId;
   const styleId = body.styleId ?? "white-studio";
   const brandStyleId = body.brandStyleId ?? "minimal";
+  const generationDirection = normalizeOptionalInput(body.generationDirection);
   const primaryImageSide = body.primaryImageSide === "back" ? "back" : "front";
   const frontDescription = normalizeOptionalInput(body.frontDescription);
   const backDescription = normalizeOptionalInput(body.backDescription);
@@ -251,6 +260,7 @@ export async function handleTriggerGeneration(
       modelId: resolvedModel.modelId,
       styleId,
       brandStyleId,
+      generationDirection,
       primaryImageSide,
       frontDescription,
       backDescription,
@@ -328,6 +338,7 @@ export async function handleTriggerGeneration(
         frontFlatLayUrl: "",
         modelId: resolvedModel.modelId,
         brandStyleId,
+        generationDirection,
         status: "pending",
         shopifyProductId: shopifyProductId ?? null,
         shopifyProductCreatedByApp: false,
@@ -337,6 +348,7 @@ export async function handleTriggerGeneration(
         frontFlatLayUrl: "",
         modelId: resolvedModel.modelId,
         brandStyleId,
+        generationDirection,
         status: "pending",
         errorMessage: null,
         shopifyProductId: shopifyProductId ?? null,
@@ -378,6 +390,7 @@ export async function handleTriggerGeneration(
       modelGender: resolvedModel.modelGender,
       styleId,
       brandStyleId,
+      generationDirection: generationDirection ?? undefined,
       pricePoint: brandStyleRecord?.pricePoint ?? undefined,
       brandEnergy: brandStyleRecord?.brandEnergy ?? undefined,
       primaryCategory: brandStyleRecord?.primaryCategory ?? undefined,
@@ -477,7 +490,8 @@ async function resolveModelForRegenerate(
 export async function handleRegenerateOutfit(
   shopId: string,
   outfitId: string,
-  userDirection?: string
+  userDirection?: string,
+  targetPoses?: RegeneratePose[],
 ): Promise<Response> {
   const outfit = await prisma.outfit.findFirst({
     where: { id: outfitId, shopId, deletedAt: null },
@@ -505,9 +519,12 @@ export async function handleRegenerateOutfit(
   }
   const reservation = createReservationContext("regenerate", outfitId);
   const normalizedUserDirection = normalizeOptionalInput(userDirection);
+  const scopedTargetPoses = targetPoses?.length ? targetPoses : undefined;
+  const scopedTargetPose = scopedTargetPoses?.[0];
   let idempotencyClaim: OwnedRequestClaim | null = null;
   let requestKey: string | null = null;
   let reservedCredit = false;
+  let reservedFreeAllowancePose: RegeneratePose | null = null;
   let enqueueSucceeded = false;
 
   try {
@@ -516,9 +533,22 @@ export async function handleRegenerateOutfit(
       return Response.json({ error: "Invalid model image URL" }, { status: 400 });
     }
 
+    let scopedEntitlements: Awaited<ReturnType<typeof getEffectiveEntitlements>> | undefined;
+    if (scopedTargetPose) {
+      scopedEntitlements = await getEffectiveEntitlements(shopId);
+      const allowedPosesForScope = resolveAllowedPoses(scopedEntitlements);
+      if (!allowedPosesForScope.includes(scopedTargetPose)) {
+        return Response.json(
+          { error: "This image angle is not available on your plan." },
+          { status: 400 },
+        );
+      }
+    }
+
     requestKey = buildRegenerateRequestKey({
       outfitId,
       userDirection: normalizedUserDirection,
+      targetPoses: scopedTargetPoses ?? null,
     });
     const claim = await claimRegenerateRequestIdempotency({
       shopId,
@@ -543,10 +573,28 @@ export async function handleRegenerateOutfit(
 
     let entitlements;
     try {
-      entitlements = await reserveGenerations(shopId, 1, {
-        description: reservation.reservationDescription,
-      });
-      reservedCredit = true;
+      if (scopedTargetPose) {
+        entitlements = scopedEntitlements ?? await getEffectiveEntitlements(shopId);
+
+        const freeScopedRegeneration = await reserveFreeSingleImageRegeneration({
+          shopId,
+          outfitId,
+          pose: scopedTargetPose,
+        });
+        if (freeScopedRegeneration) {
+          reservedFreeAllowancePose = scopedTargetPose;
+        } else {
+          entitlements = await reserveGenerations(shopId, 1, {
+            description: reservation.reservationDescription,
+          });
+          reservedCredit = true;
+        }
+      } else {
+        entitlements = await reserveGenerations(shopId, 1, {
+          description: reservation.reservationDescription,
+        });
+        reservedCredit = true;
+      }
     } catch (e) {
       const msg = (e as Error).message;
       if (msg === "insufficient_credits") {
@@ -585,6 +633,7 @@ export async function handleRegenerateOutfit(
       outfitId,
       shopId,
       userDirection: normalizedUserDirection ?? undefined,
+      targetPoses: scopedTargetPoses,
       modelImageUrl: model.modelImageUrl,
       modelHeight: model.modelHeight,
       modelGender: model.modelGender,
@@ -593,10 +642,15 @@ export async function handleRegenerateOutfit(
       brandEnergy: brandStyle?.brandEnergy ?? undefined,
       primaryCategory: brandStyle?.primaryCategory ?? undefined,
       allowedPoses,
-      creditReservation: {
-        reservationDescription: reservation.reservationDescription,
-        refundDescription: reservation.providerCapacityRefundDescription,
-      },
+      creditReservation: reservedCredit
+        ? {
+            reservationDescription: reservation.reservationDescription,
+            refundDescription: reservation.providerCapacityRefundDescription,
+          }
+        : undefined,
+      freeRegenerationAllowance: reservedFreeAllowancePose
+        ? { pose: reservedFreeAllowancePose }
+        : undefined,
     });
     enqueueSucceeded = true;
     const markedEnqueued = await markRequestEnqueued({
@@ -647,6 +701,13 @@ export async function handleRegenerateOutfit(
         outfitId,
         shopId,
       });
+    }
+    if (reservedFreeAllowancePose && !enqueueSucceeded) {
+      await markFreeSingleImageRegenerationFailed({
+        shopId,
+        outfitId,
+        pose: reservedFreeAllowancePose,
+      }).catch(() => undefined);
     }
     if (message === "Model not found. Cannot regenerate.") {
       return Response.json({ error: message }, { status: 400 });

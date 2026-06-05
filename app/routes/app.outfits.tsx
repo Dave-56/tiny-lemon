@@ -51,6 +51,7 @@ import {
   handleBulkUpscaleRequest,
   handleSingleUpscaleRequest,
 } from "../lib/upscaleOrchestration.server";
+import type { RegeneratePose } from "../lib/regeneratePoses";
 
 const SHOPIFY_SYNC_RECENCY_WINDOW_MS = 10 * 60 * 1000;
 
@@ -73,7 +74,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const [outfits, entitlements] = await Promise.all([
     prisma.outfit.findMany({
       where: { shopId: shop, deletedAt: null },
-      include: { images: true },
+      include: {
+        images: true,
+        singleImageRegenerationAllowances: {
+          where: { status: { in: ["pending", "completed"] } },
+          select: { pose: true, status: true },
+        },
+      },
       orderBy: { createdAt: "desc" },
     }),
     getEffectiveEntitlements(shop),
@@ -360,6 +367,7 @@ function ImageTile({
   isLcp = false,
   upscaleStatus,
   onUpscale,
+  onRegenerate,
 }: {
   url: string;
   asset?: unknown;
@@ -370,6 +378,7 @@ function ImageTile({
   isLcp?: boolean;
   upscaleStatus?: string | null;
   onUpscale?: () => void;
+  onRegenerate?: () => void;
 }) {
   const [error, setError] = useState(false);
   const [optimisticUpscaling, setOptimisticUpscaling] = useState(false);
@@ -471,6 +480,19 @@ function ImageTile({
                 HD
               </button>
             )}
+          {onRegenerate && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRegenerate();
+              }}
+              title={`Regenerate ${label} only`}
+              className="p-1 rounded hover:bg-krea-border/40 transition-colors"
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-krea-muted" />
+            </button>
+          )}
           <button
             type="button"
             onClick={(e) => {
@@ -667,10 +689,14 @@ const CUSTOM_DIRECTION_MAX = 300;
 
 function RegenerateModal({
   outfitName,
+  targetLabel,
+  isFreeFix,
   onClose,
   onSubmit,
 }: {
   outfitName: string;
+  targetLabel?: string;
+  isFreeFix?: boolean;
   onClose: () => void;
   onSubmit: (
     userDirection?: string,
@@ -680,6 +706,7 @@ function RegenerateModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const firstInputRef = useRef<HTMLTextAreaElement>(null);
+  const isScoped = Boolean(targetLabel);
 
   useEffect(() => {
     firstInputRef.current?.focus();
@@ -715,11 +742,20 @@ function RegenerateModal({
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-lg font-semibold text-krea-text">
-          Regenerate outfit
+          {isScoped ? `Regenerate ${targetLabel} only` : "Regenerate full set"}
         </h3>
         <p className="text-sm text-krea-muted">
-          Run generation again for{" "}
-          <span className="font-medium text-krea-text">{outfitName}</span>.
+          {isScoped ? (
+            <>
+              Only the {targetLabel} image will change for{" "}
+              <span className="font-medium text-krea-text">{outfitName}</span>.
+            </>
+          ) : (
+            <>
+              Regenerate Front, Three-quarter, and Back for{" "}
+              <span className="font-medium text-krea-text">{outfitName}</span>.
+            </>
+          )}
         </p>
         <div>
           <label
@@ -746,8 +782,17 @@ function RegenerateModal({
           </p>
         </div>
         <p className="text-xs text-krea-muted">
-          This uses 1 generation from your plan.
+          {isScoped
+            ? isFreeFix
+              ? "First fix for this image is free."
+              : "Uses 1 generation credit."
+            : "Uses 1 generation credit."}
         </p>
+        {isScoped && (
+          <p className="text-xs text-krea-muted">
+            Product details are preserved by default.
+          </p>
+        )}
         {error && <p className="text-xs text-red-500">{error}</p>}
         <div className="flex justify-end gap-2">
           <button
@@ -1171,7 +1216,12 @@ function OutfitCard({
   ) => Promise<{ ok: boolean; error?: string }>;
   onToggleSelect: (id: string) => void;
   onLightbox: (outfitId: string, index: number) => void;
-  onRegenerate?: (outfitId: string) => void;
+  onRegenerate?: (
+    outfitId: string,
+    targetPose?: RegeneratePose,
+    targetLabel?: string,
+    isFreeFix?: boolean,
+  ) => void;
   onCancel?: (outfitId: string) => void;
   onPublish?: (outfitId: string) => void;
   onCancelSync?: (outfitId: string) => void;
@@ -1263,6 +1313,7 @@ function OutfitCard({
         generatedImageId?: string;
         upscaleStatus?: string | null;
         hasVariants: boolean;
+        pose?: RegeneratePose;
       }
     | {
         kind: "video";
@@ -1288,6 +1339,7 @@ function OutfitCard({
             key: front.id,
             size: "hero" as const,
             hasVariants: true,
+            pose: "front" as const,
             generatedImageId: front.id,
             upscaleStatus: front.upscaleStatus,
           },
@@ -1303,6 +1355,7 @@ function OutfitCard({
             key: tq.id,
             size: "normal" as const,
             hasVariants: true,
+            pose: "three-quarter" as const,
             generatedImageId: tq.id,
             upscaleStatus: tq.upscaleStatus,
           },
@@ -1318,6 +1371,7 @@ function OutfitCard({
             key: back.id,
             size: "normal" as const,
             hasVariants: true,
+            pose: "back" as const,
             generatedImageId: back.id,
             upscaleStatus: back.upscaleStatus,
           },
@@ -1417,6 +1471,12 @@ function OutfitCard({
     } finally {
       setDownloading(false);
     }
+  }
+
+  function isFreeSingleImageFixAvailable(pose: RegeneratePose): boolean {
+    return !outfit.singleImageRegenerationAllowances.some(
+      (allowance) => allowance.pose === pose,
+    );
   }
 
   return (
@@ -1621,7 +1681,7 @@ function OutfitCard({
                       <RefreshCw className="w-3 h-3" />
                       {status === OUTFIT_STATUS.failed
                         ? "Try again"
-                        : "Regenerate"}
+                        : "Regenerate full set"}
                     </button>
                     <div className="h-px bg-krea-border my-1" />
                   </>
@@ -1765,6 +1825,17 @@ function OutfitCard({
                   ? () => onUpscaleImage(shot.generatedImageId!)
                   : undefined
               }
+              onRegenerate={
+                shot.pose && !isInProgress && onRegenerate
+                  ? () =>
+                      onRegenerate(
+                        outfit.id,
+                        shot.pose!,
+                        shot.label,
+                        isFreeSingleImageFixAvailable(shot.pose!),
+                      )
+                  : undefined
+              }
             />
           ),
         )}
@@ -1851,6 +1922,9 @@ export default function Outfits() {
   const [regenerateModal, setRegenerateModal] = useState<{
     outfitId: string;
     outfitName: string;
+    targetPose?: RegeneratePose;
+    targetLabel?: string;
+    isFreeFix?: boolean;
   } | null>(null);
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [optimisticBulkUpscalingIds, setOptimisticBulkUpscalingIds] = useState<
@@ -2043,6 +2117,9 @@ export default function Outfits() {
       body: JSON.stringify({
         outfitId: regenerateModal.outfitId,
         userDirection: userDirection || undefined,
+        targetPoses: regenerateModal.targetPose
+          ? [regenerateModal.targetPose]
+          : undefined,
       }),
     });
     const data = (await res.json().catch(() => ({}))) as {
@@ -2337,10 +2414,18 @@ export default function Outfits() {
                   onLightbox={(id, idx) =>
                     setLightbox({ outfitId: id, index: idx })
                   }
-                  onRegenerate={() =>
+                  onRegenerate={(
+                    _outfitId,
+                    targetPose,
+                    targetLabel,
+                    isFreeFix,
+                  ) =>
                     setRegenerateModal({
                       outfitId: outfit.id,
                       outfitName: outfit.name || "Untitled",
+                      targetPose,
+                      targetLabel,
+                      isFreeFix,
                     })
                   }
                   onCancel={cancelGeneration}
@@ -2368,6 +2453,8 @@ export default function Outfits() {
       {regenerateModal && (
         <RegenerateModal
           outfitName={regenerateModal.outfitName}
+          targetLabel={regenerateModal.targetLabel}
+          isFreeFix={regenerateModal.isFreeFix}
           onClose={() => setRegenerateModal(null)}
           onSubmit={(userDirection) => submitRegenerate(userDirection)}
         />

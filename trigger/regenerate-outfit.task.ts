@@ -18,7 +18,10 @@ import {
   createUserFacingImageProviderError,
   logImageProviderError,
 } from '../app/lib/flatLayCleanup';
-import { refundReservedGeneration } from '../app/lib/billing.server';
+import {
+  markFreeSingleImageRegenerationFailed,
+  refundReservedGeneration,
+} from '../app/lib/billing.server';
 import { GEMINI_IMAGE_MODEL, GEMINI_TEXT_MODEL } from '../app/lib/geminiModels';
 import type { GarmentSpec } from '../app/lib/garmentSpec';
 import type { PoseImageAssetManifest } from '../app/lib/imageAssetManifest';
@@ -31,6 +34,7 @@ import {
   getUserFacingGenerationError,
   maybeRefundFailedGeneration,
 } from '../app/lib/generationErrors.server';
+import type { RegeneratePose } from '../app/lib/regeneratePoses';
 
 type StoredGarmentSpec = GarmentSpec & {
   referenceContext?: {
@@ -47,6 +51,7 @@ interface RegenerateOutfitPayload {
   shopId: string;
   /** Optional user direction merged into each pose prompt (e.g. "Warmer lighting, less shadow"). */
   userDirection?: string;
+  targetPoses?: RegeneratePose[];
   modelImageUrl: string;
   modelHeight?: string;
   modelGender?: string;
@@ -61,6 +66,9 @@ interface RegenerateOutfitPayload {
   creditReservation?: {
     reservationDescription: string;
     refundDescription: string;
+  };
+  freeRegenerationAllowance?: {
+    pose: RegeneratePose;
   };
 }
 
@@ -280,6 +288,20 @@ function appendUserDirection(prompt: string, userDirection: string | undefined):
   return `${prompt}\n\nUser direction: ${userDirection.trim()}`;
 }
 
+function appendScopedRegenerationDirection(
+  prompt: string,
+  targetPose: RegeneratePose | null,
+  userDirection: string | undefined,
+): string {
+  if (!targetPose) return appendUserDirection(prompt, userDirection);
+
+  const scopeInstruction =
+    `Scoped regeneration: replace only the ${targetPose} image. ` +
+    'Preserve garment color, graphics, text, fit, model identity, styling continuity, lighting, and all non-target images unless the user explicitly asks for a safe visual adjustment.';
+
+  return appendUserDirection(`${prompt}\n\n${scopeInstruction}`, userDirection);
+}
+
 // ── Task ──────────────────────────────────────────────────────────────────────
 
 export const regenerateOutfitTask = task({
@@ -300,6 +322,7 @@ export const regenerateOutfitTask = task({
       select: { errorMessage: true },
     });
     if (existing?.errorMessage === 'Cancelled by user') return;
+    const isScopedRegeneration = Boolean(payload.targetPoses?.length);
     const rawErrorMessage = error instanceof Error ? error.message : String(error ?? 'Regeneration failed.');
     logTaskLifecycle('task.failed_final', payload, { error: rawErrorMessage });
     const refunded = await maybeRefundFailedGeneration({
@@ -313,8 +336,23 @@ export const regenerateOutfitTask = task({
       'Regeneration failed. Please try again.',
       { refunded },
     );
+    if (payload.freeRegenerationAllowance?.pose) {
+      await markFreeSingleImageRegenerationFailed({
+        shopId: payload.shopId,
+        outfitId: payload.outfitId,
+        pose: payload.freeRegenerationAllowance.pose,
+      }).catch(() => undefined);
+    }
     await prisma.outfit
-      .update({ where: { id: payload.outfitId }, data: { status: 'failed', errorMessage } })
+      .update({
+        where: { id: payload.outfitId },
+        data: {
+          status: isScopedRegeneration ? 'completed' : 'failed',
+          errorMessage: isScopedRegeneration
+            ? `${errorMessage} Previous images are still available.`
+            : errorMessage,
+        },
+      })
       .catch(() => {});
   },
 
@@ -331,9 +369,20 @@ export const regenerateOutfitTask = task({
       brandEnergy,
       primaryCategory,
       allowedPoses,
+      targetPoses,
     } = payload;
     logTaskLifecycle('task.started', payload);
     const poses = allowedPoses?.length ? allowedPoses : ['front'];
+    const requestedPoses = targetPoses?.length ? targetPoses : poses;
+    const isScopedRegeneration = Boolean(targetPoses?.length);
+    const invalidTargetPose = requestedPoses.find((pose) => !poses.includes(pose));
+    if (invalidTargetPose) {
+      throw new Error(`Pose ${invalidTargetPose} is not available for this outfit.`);
+    }
+    const scopedTargetPose = isScopedRegeneration ? requestedPoses[0] as RegeneratePose : null;
+    const needsFront = requestedPoses.includes('front');
+    const needsTq = requestedPoses.includes('three-quarter');
+    const needsBack = requestedPoses.includes('back');
 
     const outfit = await prisma.outfit.findFirst({
       where: { id: outfitId, shopId },
@@ -344,6 +393,11 @@ export const regenerateOutfitTask = task({
         brandStyleId: true,
         videoStatus: true,
         videoJobId: true,
+        images: {
+          where: { pose: 'front' },
+          select: { imageUrl: true },
+          take: 1,
+        },
       },
     });
     if (!outfit?.cleanFlatLayUrl) {
@@ -431,69 +485,82 @@ export const regenerateOutfitTask = task({
     const blobPrefix = `outfits/${shopId}/${outfitId}/regenerate`;
 
     // ── Front ─────────────────────────────────────────────────────────────────
-    await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_front' } });
-    const frontGraphicAssets = await getGraphicAssetsForPose('front');
-    const frontPrompt = appendUserDirection(
-      buildPromptFromSpec(
-        garmentSpec,
-        'front',
-        backdropSnippet,
-        hasBack,
-        false,
-        modelHeight,
-        stylingDir,
-        modelGender,
-        pricePoint,
-        brandEnergy,
-        primaryCategory,
-        referenceContext,
-        frontGraphicAssets.graphicPromptContext,
-      ),
-      userDirection,
-    );
-    const frontParts = buildGenerationParts({
-      garmentB64: cleanFlatLayB64,
-      garmentMime: 'image/png',
-      modelB64: normalizedModelB64,
-      prompt: frontPrompt,
-      rawGraphicReferenceB64: frontGraphicAssets.rawGraphicReferenceB64,
-      rawGraphicReferenceMime: frontGraphicAssets.rawGraphicReferenceMime,
-      graphicReferenceCropB64: frontGraphicAssets.graphicReferenceCropB64,
-    });
-    const frontResp = await generateImageContent(ai, {
-      model: MODEL,
-      contents: [{
-        role: 'user',
-        parts: frontParts,
-      }],
-      config: frontGenConfig,
-    }, { outfitId, shopId, stage: 'front' });
-    let frontB64 = extractBase64(frontResp);
-    frontB64 = await retryIfGraphicFidelityFailed({
-      ai,
-      b64: frontB64,
-      contents: [{ role: 'user' as const, parts: frontParts }],
-      config: { ...frontGenConfig, temperature: 0.15 },
-      graphicReferenceCropB64: frontGraphicAssets.graphicReferenceCropB64,
-      description: frontGraphicAssets.graphicPromptContext?.description,
-      outfitId,
-      shopId,
-      stage: 'front',
-    });
-    const frontPng = await sharp(Buffer.from(frontB64, 'base64'))
-      .resize({ width: 800, height: 1200, fit: 'cover', position: 'top' })
-      .png({ progressive: true })
-      .toBuffer();
-    const crypto = await import('crypto');
-    const hashFront = crypto.createHash('sha256').update(frontPng).digest('hex').slice(0, 8);
-    const baseFront = `${blobPrefix}-front.${hashFront}`;
-    const frontAssetManifest = await createPoseAssetManifest({
-      pngBuffer: frontPng,
-      pathnameStem: baseFront,
-      width: 800,
-      height: 1200,
-    });
-    const frontUrl = frontAssetManifest.original.url;
+    let frontB64: string | null = null;
+    let frontUrl: string | null = null;
+    let frontAssetManifest: PoseImageAssetManifest | null = null;
+
+    if (needsFront) {
+      await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_front' } });
+      const frontGraphicAssets = await getGraphicAssetsForPose('front');
+      const frontPrompt = appendScopedRegenerationDirection(
+        buildPromptFromSpec(
+          garmentSpec,
+          'front',
+          backdropSnippet,
+          hasBack,
+          false,
+          modelHeight,
+          stylingDir,
+          modelGender,
+          pricePoint,
+          brandEnergy,
+          primaryCategory,
+          referenceContext,
+          frontGraphicAssets.graphicPromptContext,
+        ),
+        scopedTargetPose,
+        userDirection,
+      );
+      const frontParts = buildGenerationParts({
+        garmentB64: cleanFlatLayB64,
+        garmentMime: 'image/png',
+        modelB64: normalizedModelB64,
+        prompt: frontPrompt,
+        rawGraphicReferenceB64: frontGraphicAssets.rawGraphicReferenceB64,
+        rawGraphicReferenceMime: frontGraphicAssets.rawGraphicReferenceMime,
+        graphicReferenceCropB64: frontGraphicAssets.graphicReferenceCropB64,
+      });
+      const frontResp = await generateImageContent(ai, {
+        model: MODEL,
+        contents: [{
+          role: 'user',
+          parts: frontParts,
+        }],
+        config: frontGenConfig,
+      }, { outfitId, shopId, stage: 'front' });
+      frontB64 = extractBase64(frontResp);
+      frontB64 = await retryIfGraphicFidelityFailed({
+        ai,
+        b64: frontB64,
+        contents: [{ role: 'user' as const, parts: frontParts }],
+        config: { ...frontGenConfig, temperature: 0.15 },
+        graphicReferenceCropB64: frontGraphicAssets.graphicReferenceCropB64,
+        description: frontGraphicAssets.graphicPromptContext?.description,
+        outfitId,
+        shopId,
+        stage: 'front',
+      });
+      const frontPng = await sharp(Buffer.from(frontB64, 'base64'))
+        .resize({ width: 800, height: 1200, fit: 'cover', position: 'top' })
+        .png({ progressive: true })
+        .toBuffer();
+      const crypto = await import('crypto');
+      const hashFront = crypto.createHash('sha256').update(frontPng).digest('hex').slice(0, 8);
+      const baseFront = `${blobPrefix}-front.${hashFront}`;
+      frontAssetManifest = await createPoseAssetManifest({
+        pngBuffer: frontPng,
+        pathnameStem: baseFront,
+        width: 800,
+        height: 1200,
+      });
+      frontUrl = frontAssetManifest.original.url;
+    } else if (needsTq || needsBack) {
+      const existingFrontUrl = outfit.images[0]?.imageUrl;
+      if (!existingFrontUrl) {
+        throw new Error('Front image missing. Regenerate the full outfit first.');
+      }
+      frontB64 = await fetchAsBase64(existingFrontUrl);
+    }
 
     // ── Three-quarter + back (parallel) ───────────────────────────────────────
     // Non-front poses receive the generated front only as a background/lighting
@@ -502,8 +569,6 @@ export const regenerateOutfitTask = task({
     let backUrl: string | null = null;
     let tqAssetManifest: PoseImageAssetManifest | null = null;
     let backAssetManifest: PoseImageAssetManifest | null = null;
-    const needsTq = poses.includes('three-quarter');
-    const needsBack = poses.includes('back');
 
     if (needsTq || needsBack) {
       await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'generating_poses' } });
@@ -511,8 +576,9 @@ export const regenerateOutfitTask = task({
 
     const generateThreeQuarter = async () => {
       if (!needsTq) return;
+      if (!frontB64) throw new Error('Front image missing. Regenerate the full outfit first.');
       const tqGraphicAssets = await getGraphicAssetsForPose('three-quarter');
-      const tqPrompt = appendUserDirection(
+      const tqPrompt = appendScopedRegenerationDirection(
         buildPromptFromSpec(
           garmentSpec,
           'three-quarter',
@@ -528,6 +594,7 @@ export const regenerateOutfitTask = task({
           referenceContext,
           tqGraphicAssets.graphicPromptContext,
         ),
+        scopedTargetPose,
         userDirection,
       );
       const tqContents = [{
@@ -588,8 +655,9 @@ export const regenerateOutfitTask = task({
 
     const generateBack = async () => {
       if (!needsBack) return;
+      if (!frontB64) throw new Error('Front image missing. Regenerate the full outfit first.');
       const backGraphicAssets = await getGraphicAssetsForPose('back');
-      const backPrompt = appendUserDirection(
+      const backPrompt = appendScopedRegenerationDirection(
         buildPromptFromSpec(
           garmentSpec,
           'back',
@@ -605,6 +673,7 @@ export const regenerateOutfitTask = task({
           referenceContext,
           backGraphicAssets.graphicPromptContext,
         ),
+        scopedTargetPose,
         userDirection,
       );
       const backContents = [{
@@ -673,16 +742,17 @@ export const regenerateOutfitTask = task({
       assetManifest?: PoseImageAssetManifest | null;
       pose: string;
       styleId: string;
-    }> = [
-      {
+    }> = [];
+    if (frontUrl) {
+      newImages.push({
         shopId,
         outfitId,
         imageUrl: frontUrl,
         assetManifest: frontAssetManifest,
         pose: 'front',
         styleId,
-      },
-    ];
+      });
+    }
     if (tqUrl) {
       newImages.push({
         shopId,
@@ -703,6 +773,9 @@ export const regenerateOutfitTask = task({
         styleId,
       });
     }
+    if (newImages.length === 0) {
+      throw new Error('No replacement image was generated.');
+    }
 
     // Cancel any in-flight video run before replacing images.
     // The DB invalidation itself happens inside the transaction below so we
@@ -721,11 +794,25 @@ export const regenerateOutfitTask = task({
         await upsertGeneratedImageByPose(tx.generatedImage, image, 'regenerate-outfit');
       }
 
-      await deleteGeneratedImagesNotInPoses(
-        tx.generatedImage,
-        outfitId,
-        newImages.map((image) => image.pose),
-      );
+      if (!isScopedRegeneration) {
+        await deleteGeneratedImagesNotInPoses(
+          tx.generatedImage,
+          outfitId,
+          newImages.map((image) => image.pose),
+        );
+      }
+
+      if (payload.freeRegenerationAllowance?.pose) {
+        await tx.singleImageRegenerationAllowance.updateMany({
+          where: {
+            shopId,
+            outfitId,
+            pose: payload.freeRegenerationAllowance.pose,
+            status: 'pending',
+          },
+          data: { status: 'completed', completedAt: new Date() },
+        });
+      }
 
       await tx.outfit.update({
         where: { id: outfitId, shopId },

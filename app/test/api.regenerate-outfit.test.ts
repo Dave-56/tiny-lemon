@@ -72,6 +72,58 @@ describe("api.regenerate-outfit action", () => {
       "shop-a.myshopify.com",
       "outfit-1",
       "Warmer lighting",
+      undefined,
     );
+  });
+
+  it("passes a scoped target pose to regenerate orchestration", async () => {
+    const res = await action({
+      request: makeRequest({
+        outfitId: "outfit-1",
+        userDirection: "Less shadow",
+        targetPoses: ["front"],
+      }),
+      params: {},
+      context: {},
+    } as any);
+
+    expect(res.status).toBe(200);
+    expect(mocks.handleRegenerateOutfit).toHaveBeenCalledWith(
+      "shop-a.myshopify.com",
+      "outfit-1",
+      "Less shadow",
+      ["front"],
+    );
+  });
+
+  it("rejects invalid target poses", async () => {
+    const res = await action({
+      request: makeRequest({
+        outfitId: "outfit-1",
+        targetPoses: ["side"],
+      }),
+      params: {},
+      context: {},
+    } as any);
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({ error: "Invalid target pose" });
+    expect(mocks.handleRegenerateOutfit).not.toHaveBeenCalled();
+  });
+
+  it("rejects multi-pose scoped regeneration for v1", async () => {
+    const res = await action({
+      request: makeRequest({
+        outfitId: "outfit-1",
+        targetPoses: ["front", "back"],
+      }),
+      params: {},
+      context: {},
+    } as any);
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "Regenerate one image at a time",
+    });
   });
 });

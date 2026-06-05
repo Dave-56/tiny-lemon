@@ -16,7 +16,6 @@ import {
   Link,
 } from "react-router";
 import { usePendingItems } from "../contexts/PendingItemsContext";
-import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { GeneratedPoseImage } from "../components/GeneratedPoseImage";
 import { useAuthenticatedFetch } from "../contexts/AuthenticatedFetchContext";
@@ -39,7 +38,6 @@ import {
   getEffectiveEntitlements,
   getMonthlyUsage,
 } from "../lib/billing.server";
-import { getSupportEmail } from "../lib/support.server";
 import { handleTriggerGeneration } from "../lib/triggerGeneration.server";
 import {
   isSessionExpiredResponse,
@@ -50,12 +48,12 @@ import posthog from "posthog-js";
 // ── Loader ────────────────────────────────────────────────────────────────────
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session, admin } = await authenticate.admin(request);
+  const { session } = await authenticate.admin(request);
   const shop = session.shop;
 
   await ensureShop(shop);
 
-  const [brandStyle, entitlements, used, customModels, wouldUseLive, adminProducts] =
+  const [brandStyle, entitlements, used, customModels, wouldUseLive] =
     await Promise.all([
       prisma.brandStyle.findUnique({ where: { shopId: shop } }),
       getEffectiveEntitlements(shop),
@@ -77,10 +75,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         where: { shopId: shop, category: "would_use_live" },
         select: { id: true },
       }),
-      // Admin API: surface existing products needing photos. This is intentionally
-      // loaded on the main screen so reviewers see Shopify API usage immediately —
-      // and so merchants can publish AI photos straight into real products.
-      loadPhotolessProducts(admin),
     ]);
 
   return {
@@ -91,71 +85,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     limit: entitlements.effectiveLimit,
     angles: entitlements.effectiveAngles,
     isBeta: entitlements.isBeta,
-    supportEmail: getSupportEmail(),
     wouldUseLiveCaptured: Boolean(wouldUseLive),
     customModels,
-    productsTotalCount: adminProducts.totalCount,
-    photolessProducts: adminProducts.photoless,
   };
 };
-
-type PhotolessProduct = {
-  id: string;
-  title: string;
-  handle: string;
-  mediaCount: number;
-  imageUrl: string | null;
-};
-
-async function loadPhotolessProducts(
-  admin: { graphql: (query: string) => Promise<globalThis.Response> },
-): Promise<{ totalCount: number; photoless: PhotolessProduct[] }> {
-  try {
-    const res = await admin.graphql(`#graphql
-      query DressModelProducts {
-        productsCount(query: "status:active") { count }
-        products(first: 12, query: "status:active", sortKey: UPDATED_AT, reverse: true) {
-          edges { node {
-            id
-            title
-            handle
-            mediaCount { count }
-            featuredMedia { preview { image { url } } }
-          } }
-        }
-      }
-    `);
-    const body = (await res.json()) as {
-      data?: {
-        productsCount?: { count: number };
-        products?: {
-          edges: Array<{
-            node: {
-              id: string;
-              title: string;
-              handle: string;
-              mediaCount?: { count: number } | null;
-              featuredMedia?: { preview?: { image?: { url?: string } | null } | null } | null;
-            };
-          }>;
-        };
-      };
-    };
-    const totalCount = body.data?.productsCount?.count ?? 0;
-    const photoless = (body.data?.products?.edges ?? [])
-      .map((e) => ({
-        id: e.node.id,
-        title: e.node.title,
-        handle: e.node.handle,
-        mediaCount: e.node.mediaCount?.count ?? 0,
-        imageUrl: e.node.featuredMedia?.preview?.image?.url ?? null,
-      }))
-      .filter((p) => p.mediaCount <= 1);
-    return { totalCount, photoless };
-  } catch {
-    return { totalCount: 0, photoless: [] };
-  }
-}
 
 // ── Action ────────────────────────────────────────────────────────────────────
 
@@ -175,6 +108,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       modelGender: body.modelGender as string | undefined,
       styleId: (body.styleId as string) ?? "white-studio",
       brandStyleId: (body.brandStyleId as string) ?? "minimal",
+      generationDirection: body.generationDirection as string | null | undefined,
       primaryImageSide: body.primaryImageSide as "front" | "back" | undefined,
       frontDescription: body.frontDescription as string | null | undefined,
       backDescription: body.backDescription as string | null | undefined,
@@ -521,6 +455,7 @@ function requiresFrontDescription(item: BatchItem) {
 const SESSION_KEY = (shop: string) => `dress-model-items-${shop}`;
 
 const MAX_BATCH = 10;
+const GENERATION_DIRECTION_MAX = 280;
 
 const STATUS_LABEL: Record<ItemStatus, string> = {
   pending: "Uploaded",
@@ -546,6 +481,36 @@ const UPGRADE_MSG =
 const BETA_LIMIT_MSG =
   "You've used your beta allocation for now. Contact us if you need more access.";
 
+const SHOOT_STYLE_COPY: Record<
+  string,
+  { label: string; description: string }
+> = {
+  minimal: {
+    label: "Neutral studio",
+    description: "Simple catalog pose on a clean studio backdrop.",
+  },
+  accessible: {
+    label: "Warm catalog",
+    description: "Approachable retail feel with natural hand placement.",
+  },
+  editorial: {
+    label: "Subtle angled pose",
+    description: "A gentle turn with a more fashion-led feel.",
+  },
+  premium: {
+    label: "Premium catalog",
+    description: "Polished, quiet, and refined.",
+  },
+  street: {
+    label: "Cool editorial",
+    description: "Cooler styling with understated attitude.",
+  },
+  athletic: {
+    label: "Athletic catalog",
+    description: "Bright activewear polish with a steady pose.",
+  },
+};
+
 export function shouldRefreshUsageAfterGenerationFailure(
   errorMessage: string | null | undefined,
 ) {
@@ -555,11 +520,9 @@ export function shouldRefreshUsageAfterGenerationFailure(
 function ErrorMsg({
   msg,
   isBeta,
-  supportEmail,
 }: {
   msg: string;
   isBeta: boolean;
-  supportEmail: string;
 }) {
   if (msg === UPGRADE_MSG) {
     return (
@@ -576,12 +539,12 @@ function ErrorMsg({
     return (
       <span>
         You&apos;ve used your beta allocation for now.{" "}
-        <a
-          href={`mailto:${supportEmail}?subject=${encodeURIComponent("TinyLemon beta access")}`}
+        <Link
+          to="/app/feedback"
           className="underline font-medium"
         >
           Contact us
-        </a>{" "}
+        </Link>{" "}
         if you need more access.
       </span>
     );
@@ -608,40 +571,14 @@ export default function DressModel() {
     brandStyleId,
     customModels,
     isBeta,
-    supportEmail,
     wouldUseLiveCaptured,
-    productsTotalCount,
-    photolessProducts,
   } = useLoaderData<typeof loader>();
   const authenticatedFetch = useAuthenticatedFetch();
-  const shopify = useAppBridge();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
   const { revalidate } = useRevalidator();
   const pendingItemsCtx = usePendingItems();
-
-  const [pickedProduct, setPickedProduct] = useState<{
-    id: string;
-    title: string;
-    imageUrl: string | null;
-  } | null>(null);
-
-  const openProductPicker = useCallback(async () => {
-    const selection = await shopify.resourcePicker({
-      type: "product",
-      multiple: false,
-      action: "select",
-    });
-    const first = selection?.[0];
-    if (!first) return;
-    setPickedProduct({
-      id: first.id,
-      title: (first as { title?: string }).title ?? "Selected product",
-      imageUrl:
-        (first as { images?: Array<{ originalSrc?: string }> }).images?.[0]?.originalSrc ?? null,
-    });
-  }, [shopify]);
 
   const [presetModels, setPresetModels] = useState<PresetModelEntry[]>([]);
   // Priority: URL param > router state (passed from brand-style) > context (survived nav) > first custom model
@@ -655,6 +592,8 @@ export default function DressModel() {
   const [modelTab, setModelTab] = useState<"mine" | "presets">(
     customModels.length > 0 ? "mine" : "presets",
   );
+  const [shootStyleId, setShootStyleId] = useState(brandStyleId);
+  const [generationDirection, setGenerationDirection] = useState("");
 
   // Updates React state, URL param, and layout-level context so selection survives navigation
   const selectModel = useCallback(
@@ -1221,7 +1160,8 @@ export default function DressModel() {
             modelHeight: selectedModel.height,
             modelGender: selectedModel.gender,
             styleId: "white-studio",
-            brandStyleId,
+            brandStyleId: shootStyleId,
+            generationDirection: generationDirection.trim() || null,
             primaryImageSide: item.primaryImageSide,
             frontDescription: item.frontDescription.trim() || null,
             backDescription: item.backDescription.trim() || null,
@@ -1229,7 +1169,6 @@ export default function DressModel() {
             frontMime,
             backB64,
             backMime,
-            shopifyProductId: pickedProduct?.id ?? null,
           });
 
           posthog.capture("generation_triggered", {
@@ -1332,8 +1271,13 @@ export default function DressModel() {
     ? (STATUS_LABEL[activeItem.status as ItemStatus] ?? "Generating…")
     : null;
   const activeStyle =
-    BRAND_STYLE_PRESETS.find((p) => p.id === brandStyleId) ??
+    BRAND_STYLE_PRESETS.find((p) => p.id === shootStyleId) ??
     BRAND_STYLE_PRESETS[0];
+  const activeStyleCopy =
+    SHOOT_STYLE_COPY[activeStyle.id] ?? {
+      label: activeStyle.label,
+      description: activeStyle.description,
+    };
 
   return (
     <>
@@ -1341,24 +1285,21 @@ export default function DressModel() {
         {/* ── Left column ── */}
         <div className="w-[420px] flex-shrink-0 space-y-6">
           {isBeta && (
-            <div className="rounded-xl border border-krea-accent/20 bg-krea-accent/5 px-4 py-3 text-sm text-krea-text">
-              <p className="font-medium">You&apos;re in beta.</p>
-              <p className="mt-1 text-xs text-krea-muted">
-                Best results come from one clean garment per image.
-              </p>
-              <div className="mt-2 flex gap-3 text-xs">
-                <a
-                  href={`mailto:${supportEmail}?subject=${encodeURIComponent("TinyLemon beta support")}`}
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-krea-border bg-white px-3 py-2 text-xs">
+              <span className="font-medium text-krea-muted">Beta feedback</span>
+              <div className="flex items-center gap-3">
+                <Link
+                  to="/app/feedback"
                   onClick={() =>
                     posthog.capture("beta_support_clicked", {
                       shop,
-                      location: "dress_model_banner",
+                      location: "dress_model_help_row",
                     })
                   }
                   className="font-medium text-krea-accent underline underline-offset-2"
                 >
                   Need help?
-                </a>
+                </Link>
                 <Link
                   to="/app/feedback"
                   className="font-medium text-krea-accent underline underline-offset-2"
@@ -1368,53 +1309,6 @@ export default function DressModel() {
               </div>
             </div>
           )}
-
-          {/* ── Publish target (optional) ── */}
-          <div className="space-y-2">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-krea-muted">
-              Publish to (optional)
-            </p>
-            {pickedProduct ? (
-              <div className="flex items-center gap-3 rounded-xl border border-krea-border bg-white px-3 py-2">
-                {pickedProduct.imageUrl ? (
-                  <img
-                    src={pickedProduct.imageUrl}
-                    alt=""
-                    className="w-10 h-10 rounded-md object-cover"
-                  />
-                ) : (
-                  <div className="w-10 h-10 rounded-md bg-krea-border/40" />
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm truncate">{pickedProduct.title}</p>
-                  <p className="text-xs text-krea-muted">We'll publish photos to this product</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setPickedProduct(null)}
-                  className="p-1 text-krea-muted hover:text-krea-text"
-                  aria-label="Clear selected product"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={openProductPicker}
-                className="w-full rounded-xl border border-krea-border bg-white px-3 py-2 text-left text-sm hover:border-krea-accent/40"
-              >
-                <span className="font-medium">Publish these photos to an existing product</span>
-                <span className="block text-xs text-krea-muted mt-0.5">
-                  {productsTotalCount > 0
-                    ? photolessProducts.length > 0
-                      ? `${photolessProducts.length} ${photolessProducts.length === 1 ? "product is" : "products are"} missing photos — pick one or create a new draft`
-                      : `Pick from ${productsTotalCount} existing ${productsTotalCount === 1 ? "product" : "products"} — or we'll create a new draft`
-                    : "We'll create a new draft product"}
-                </span>
-              </button>
-            )}
-          </div>
 
           {/* ── Flat lay upload ── */}
           <div className="space-y-4">
@@ -1716,7 +1610,6 @@ export default function DressModel() {
                         <ErrorMsg
                           msg={item.error}
                           isBeta={isBeta}
-                          supportEmail={supportEmail}
                         />
                       </p>
                     )}
@@ -1737,20 +1630,74 @@ export default function DressModel() {
             )}
           </div>
 
-          {/* ── Style summary + Generate ── */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 text-sm text-krea-muted">
-              <span>Style:</span>
-              <span className="font-medium text-krea-text">
-                {activeStyle.label}
-              </span>
-              <Link
-                to="/app/brand-style"
-                state={{ model: selectedModelId }}
-                className="text-xs text-krea-accent underline underline-offset-2"
+          {/* ── Shoot direction + Generate ── */}
+          <div className="space-y-3">
+            <div className="space-y-3 rounded-xl border border-krea-border bg-white p-3">
+              <div className="flex items-center justify-between gap-3">
+                <label
+                  htmlFor="shoot-style"
+                  className="text-[11px] font-semibold uppercase tracking-widest text-krea-muted"
+                >
+                  Shoot direction
+                </label>
+                <Link
+                  to="/app/brand-style"
+                  state={{ model: selectedModelId }}
+                  className="text-xs font-medium text-krea-accent underline underline-offset-2"
+                >
+                  Brand default
+                </Link>
+              </div>
+
+              <select
+                id="shoot-style"
+                value={shootStyleId}
+                onChange={(e) => setShootStyleId(e.target.value)}
+                className="h-10 w-full rounded-lg border border-krea-border bg-krea-bg/40 px-3 text-sm font-medium text-krea-text focus:outline-none focus:ring-2 focus:ring-krea-accent/30"
               >
-                Edit
-              </Link>
+                {BRAND_STYLE_PRESETS.map((style) => {
+                  const copy =
+                    SHOOT_STYLE_COPY[style.id] ?? {
+                      label: style.label,
+                      description: style.description,
+                    };
+
+                  return (
+                    <option key={style.id} value={style.id}>
+                      {copy.label}
+                    </option>
+                  );
+                })}
+              </select>
+
+              <p className="text-xs leading-snug text-krea-muted">
+                {activeStyleCopy.description}
+              </p>
+
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="generation-direction"
+                  className="block text-[11px] font-semibold uppercase tracking-widest text-krea-muted"
+                >
+                  Styling notes
+                </label>
+                <textarea
+                  id="generation-direction"
+                  value={generationDirection}
+                  onChange={(e) =>
+                    setGenerationDirection(
+                      e.target.value.slice(0, GENERATION_DIRECTION_MAX),
+                    )
+                  }
+                  maxLength={GENERATION_DIRECTION_MAX}
+                  rows={2}
+                  placeholder="Jeans, white sneakers, studio background..."
+                  className="w-full resize-none rounded-lg border border-krea-border bg-krea-bg/40 px-3 py-2 text-sm text-krea-text placeholder:text-krea-muted/60 focus:outline-none focus:ring-2 focus:ring-krea-accent/30"
+                />
+                <p className="text-[10px] leading-snug text-krea-muted">
+                  Applies to all images. Product details stay preserved.
+                </p>
+              </div>
             </div>
 
             <button
@@ -1776,22 +1723,6 @@ export default function DressModel() {
               )}
             </button>
           </div>
-
-          {/* ── Output empty state: previous generations live in Outfits ── */}
-          {!items.some((i) => i.results.length > 0 || i.cleanPreview) && (
-            <div className="rounded-xl border border-krea-border bg-krea-bg/50 p-4 text-center">
-              <p className="text-sm text-krea-muted">
-                Output from this page is only shown until you leave or reload.
-                Your previous generations are saved in Outfits.
-              </p>
-              <Link
-                to="/app/outfits"
-                className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-krea-accent hover:text-krea-text underline underline-offset-2"
-              >
-                View Outfits →
-              </Link>
-            </div>
-          )}
 
           {/* ── Active results ── */}
           {items.some((i) => i.results.length > 0 || i.cleanPreview) && (
@@ -1903,7 +1834,6 @@ export default function DressModel() {
                         <ErrorMsg
                           msg={item.error}
                           isBeta={isBeta}
-                          supportEmail={supportEmail}
                         />
                       </p>
                     )}
@@ -1927,7 +1857,7 @@ export default function DressModel() {
                           View in Outfits →
                         </Link>
                         <span className="text-krea-muted ml-1">
-                          — full view, download & regenerate
+                          — publish, download & regenerate
                         </span>
                       </p>
                     )}
@@ -1963,7 +1893,7 @@ export default function DressModel() {
                         : "text-krea-muted hover:text-krea-text"
                     }`}
                   >
-                    Mine
+                    My custom models
                     {selectedInMine && modelTab !== "mine" && (
                       <span className="w-1.5 h-1.5 rounded-full bg-krea-accent" />
                     )}

@@ -105,6 +105,30 @@ describe('buildPromptFromSpec hand-safety prompts', () => {
     expect(prompt).toContain('red cherry graphic and red "another." text');
   });
 
+  it('adds merchant shoot direction while preserving product details', () => {
+    const prompt = buildPromptFromSpec(
+      spec,
+      'front',
+      backdropSnippet,
+      false,
+      false,
+      undefined,
+      getBrandStyle('minimal'),
+      'Female',
+      undefined,
+      undefined,
+      undefined,
+      {
+        generationDirection: 'Style with jeans, white sneakers, and a clean studio background',
+      },
+    );
+
+    expect(prompt).toContain('MERCHANT SHOOT DIRECTION (styling/background/mood only):');
+    expect(prompt).toContain('Style with jeans, white sneakers, and a clean studio background');
+    expect(prompt).toContain('Apply this direction consistently across the full generated image set.');
+    expect(prompt).toContain('Preserve the actual garment color, graphics, text, fit, silhouette, and product details');
+  });
+
   it('does not let the minimal preset override the relaxed catalog stance', () => {
     const prompt = buildPromptFromSpec(
       spec,
@@ -238,6 +262,65 @@ describe('buildPromptFromSpec hand-safety prompts', () => {
     expect(prompt).toContain(cue);
     expect(prompt).toContain('Simple natural catalog stance.');
     expect(prompt).toContain('Keep hands fully visible and clearly shaped.');
+  });
+
+  it('changes style text without changing required front, three-quarter, and back camera geometry', () => {
+    const neutralFront = buildPromptFromSpec(
+      spec,
+      'front',
+      backdropSnippet,
+      false,
+      false,
+      undefined,
+      getBrandStyle('minimal'),
+      'Female',
+    );
+    const angledFront = buildPromptFromSpec(
+      spec,
+      'front',
+      backdropSnippet,
+      false,
+      false,
+      undefined,
+      getBrandStyle('editorial'),
+      'Female',
+    );
+    const angledThreeQuarter = buildPromptFromSpec(
+      spec,
+      'three-quarter',
+      backdropSnippet,
+      false,
+      false,
+      undefined,
+      getBrandStyle('editorial'),
+      'Female',
+    );
+    const angledBack = buildPromptFromSpec(
+      spec,
+      'back',
+      backdropSnippet,
+      false,
+      false,
+      undefined,
+      getBrandStyle('editorial'),
+      'Female',
+    );
+
+    expect(neutralFront).toContain('neutral light grey seamless studio sweep');
+    expect(angledFront).toContain('cool grey seamless studio sweep');
+    expect(angledFront).not.toEqual(neutralFront);
+
+    expect(angledFront).toContain('Camera directly in front of the model');
+    expect(angledFront).not.toContain("Camera positioned 45° to the model's right");
+    expect(angledFront).not.toContain('Camera positioned directly behind the model');
+
+    expect(angledThreeQuarter).toContain("Camera positioned 45° to the model's right");
+    expect(angledThreeQuarter).not.toContain('Camera directly in front of the model');
+    expect(angledThreeQuarter).not.toContain('Camera positioned directly behind the model');
+
+    expect(angledBack).toContain('Camera positioned directly behind the model');
+    expect(angledBack).not.toContain('Camera directly in front of the model');
+    expect(angledBack).not.toContain("Camera positioned 45° to the model's right");
   });
 
   it('keeps non-editorial legacy preset snippets inside the safe pose envelope', () => {

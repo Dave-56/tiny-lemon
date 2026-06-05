@@ -138,6 +138,26 @@ describe("app.dress-model action trigger_generation", () => {
       }),
     );
   });
+
+  it("forwards pre-generation styling notes", async () => {
+    await action({
+      request: makeRequest({
+        intent: "trigger_generation",
+        modelId: "model-01",
+        frontB64: "ZmFrZQ==",
+        generationDirection: "Style with jeans and white sneakers.",
+      }),
+      params: {},
+      context: {},
+    } as any);
+
+    expect(mocks.handleTriggerGeneration).toHaveBeenCalledWith(
+      "shop-a.myshopify.com",
+      expect.objectContaining({
+        generationDirection: "Style with jeans and white sneakers.",
+      }),
+    );
+  });
 });
 
 describe("shouldRefreshUsageAfterGenerationFailure", () => {

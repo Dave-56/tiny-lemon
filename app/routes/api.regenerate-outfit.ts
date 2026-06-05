@@ -1,12 +1,14 @@
 import type { ActionFunctionArgs } from "react-router";
 import { getShopFromSessionToken } from "../lib/sessionToken.server";
 import { handleRegenerateOutfit } from "../lib/triggerGeneration.server";
+import { parseTargetPoses } from "../lib/regeneratePoses";
 
 export const config = { maxDuration: 30 };
 
 interface RegenerateOutfitRequestBody {
   outfitId: string;
   userDirection?: string;
+  targetPoses?: unknown;
 }
 
 /**
@@ -50,9 +52,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     );
   }
 
+  const parsedTargetPoses = parseTargetPoses(body.targetPoses);
+  if (parsedTargetPoses.error) {
+    return Response.json({ error: parsedTargetPoses.error }, { status: 400 });
+  }
+
   return handleRegenerateOutfit(
     shopId,
     body.outfitId,
     body.userDirection || undefined,
+    parsedTargetPoses.poses,
   );
 };

@@ -251,6 +251,7 @@ export type GarmentReferenceContext = {
   primaryImageSide?: 'front' | 'back';
   frontDescription?: string;
   backDescription?: string;
+  generationDirection?: string;
 };
 
 /**
@@ -317,6 +318,12 @@ const STYLE_DIRECTION_CUES: Record<string, string> = {
 function buildStyleDirectionBlock(brandStyle?: BrandStylePreset): string {
   if (!brandStyle) return '';
   return STYLE_DIRECTION_CUES[brandStyle.id] ?? '';
+}
+
+function buildGenerationDirectionBlock(referenceContext?: GarmentReferenceContext): string {
+  const direction = referenceContext?.generationDirection?.trim();
+  if (!direction) return '';
+  return `MERCHANT SHOOT DIRECTION (styling/background/mood only): ${direction}. Apply this direction consistently across the full generated image set. Preserve the actual garment color, graphics, text, fit, silhouette, and product details from the uploaded product reference. Do not alter the product unless the direction explicitly describes safe surrounding styling.`;
 }
 
 function getNotableDetailsForPose(
@@ -393,6 +400,7 @@ export function buildPromptFromSpec(
   const base = `${RELAXED_QUALITY_CUE}\n\nPhoto of the person in the reference image wearing a ${colors} ${spec.fit}-fit ${spec.silhouette} ${spec.garment_type}, ${spec.sleeve_length} sleeves, hem ${spec.hem_length}${poseDetails ? `, ${poseDetails}` : ''}.${heightNote}${graphicFidelityCue}`;
   const effectiveBackdrop = brandStyle?.backdropSnippet ?? styleSnippet;
   const styleDirection = buildStyleDirectionBlock(brandStyle);
+  const generationDirection = buildGenerationDirectionBlock(referenceContext);
   const tail = lengthAndLightingBlock(spec, hasBackFlatLay, pose, effectiveBackdrop, referenceContext);
 
   const styling = resolveStyling(spec, modelGender);
@@ -409,7 +417,7 @@ export function buildPromptFromSpec(
   if (pose === 'front') {
     const poseInstruction = DEFAULT_POSE_INSTRUCTIONS.front;
     // Inject gender lock after base and before camera geometry.
-    return `${base}${missingFrontBlock} ${genderLock}${styleDirection ? `${styleDirection} ` : ''}${POSE_GEOMETRY.front} ${poseInstruction} ${HAND_SAFETY_BLOCK} Full body, ${effectiveBackdrop}. ${FRAMING_BLOCK} ${tail}\n\n${buildStylingBlock(styling)}`;
+    return `${base}${missingFrontBlock} ${genderLock}${styleDirection ? `${styleDirection} ` : ''}${generationDirection ? `${generationDirection} ` : ''}${POSE_GEOMETRY.front} ${poseInstruction} ${HAND_SAFETY_BLOCK} Full body, ${effectiveBackdrop}. ${FRAMING_BLOCK} ${tail}\n\n${buildStylingBlock(styling)}`;
   }
 
   // For non-front poses, prepend an image enumeration header. The relaxed prompt
@@ -446,9 +454,9 @@ export function buildPromptFromSpec(
     const bodyLanguage = DEFAULT_POSE_INSTRUCTIONS['three-quarter'];
     // Insert gender lock immediately after imageHeader so it scopes turns 2/3.
     const headerWithLock = genderLock ? `${imageHeader}${genderLock}\n` : imageHeader;
-    return `${headerWithLock}${styleDirection ? `${styleDirection}\n` : ''}${missingFrontBlock}${graphicFidelityCue}\nSame person, same garment. ${POSE_GEOMETRY['three-quarter']} ${bodyLanguage} ${HAND_SAFETY_BLOCK} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
+    return `${headerWithLock}${styleDirection ? `${styleDirection}\n` : ''}${generationDirection ? `${generationDirection}\n` : ''}${missingFrontBlock}${graphicFidelityCue}\nSame person, same garment. ${POSE_GEOMETRY['three-quarter']} ${bodyLanguage} ${HAND_SAFETY_BLOCK} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
   }
   const bodyLanguage = DEFAULT_POSE_INSTRUCTIONS.back;
   const headerWithLock = genderLock ? `${imageHeader}${genderLock}\n` : imageHeader;
-  return `${headerWithLock}${styleDirection ? `${styleDirection}\n` : ''}${missingFrontBlock}${missingBackBlock}${graphicFidelityCue}\nSame person, same garment. ${POSE_GEOMETRY.back} ${bodyLanguage} ${HAND_SAFETY_BLOCK} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
+  return `${headerWithLock}${styleDirection ? `${styleDirection}\n` : ''}${generationDirection ? `${generationDirection}\n` : ''}${missingFrontBlock}${missingBackBlock}${graphicFidelityCue}\nSame person, same garment. ${POSE_GEOMETRY.back} ${bodyLanguage} ${HAND_SAFETY_BLOCK} Same length and fit. ${FRAMING_BLOCK} ${tail}${outfitBlock}`;
 }

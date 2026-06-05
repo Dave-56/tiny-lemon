@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   enqueueGenerateOutfit: vi.fn(),
   enqueueRegenerateOutfit: vi.fn(),
   reserveGenerations: vi.fn(),
+  reserveFreeSingleImageRegeneration: vi.fn(),
+  markFreeSingleImageRegenerationFailed: vi.fn(),
   refundReservedGeneration: vi.fn(),
   getMonthlyUsage: vi.fn(),
   getEffectiveEntitlements: vi.fn(),
@@ -57,6 +59,8 @@ vi.mock("./billing.server", () => ({
     Scale: ["front", "three-quarter", "back"],
   },
   reserveGenerations: mocks.reserveGenerations,
+  reserveFreeSingleImageRegeneration: mocks.reserveFreeSingleImageRegeneration,
+  markFreeSingleImageRegenerationFailed: mocks.markFreeSingleImageRegenerationFailed,
   refundReservedGeneration: mocks.refundReservedGeneration,
   getMonthlyUsage: mocks.getMonthlyUsage,
   getEffectiveEntitlements: mocks.getEffectiveEntitlements,
@@ -98,6 +102,8 @@ describe("handleTriggerGeneration", () => {
       showUpgradePrompt: true,
     });
     mocks.refundReservedGeneration.mockResolvedValue(true);
+    mocks.reserveFreeSingleImageRegeneration.mockResolvedValue(true);
+    mocks.markFreeSingleImageRegenerationFailed.mockResolvedValue(undefined);
     mocks.getMonthlyUsage.mockResolvedValue(0);
     mocks.getEffectiveEntitlements.mockResolvedValue({
       publicPlan: "Starter",
@@ -268,6 +274,30 @@ describe("handleTriggerGeneration", () => {
       expect.objectContaining({
         primaryImageSide: "back",
         frontDescription: "red cherry graphic on front chest",
+      }),
+    );
+  });
+
+  it("persists and forwards pre-generation styling notes", async () => {
+    mocks.modelFindFirst.mockResolvedValue(null);
+
+    const res = await handleTriggerGeneration("shop-a.myshopify.com", {
+      modelId: "model-01",
+      frontB64: "ZmFrZQ==",
+      generationDirection: "  Style with jeans and white sneakers.  ",
+    });
+
+    expect(res.status).toBe(200);
+    const upsertCall = mocks.outfitUpsert.mock.calls.at(-1)?.[0];
+    expect(upsertCall.create.generationDirection).toBe(
+      "Style with jeans and white sneakers.",
+    );
+    expect(upsertCall.update.generationDirection).toBe(
+      "Style with jeans and white sneakers.",
+    );
+    expect(mocks.enqueueGenerateOutfit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        generationDirection: "Style with jeans and white sneakers.",
       }),
     );
   });
@@ -537,6 +567,8 @@ describe("handleRegenerateOutfit", () => {
       showUpgradePrompt: true,
     });
     mocks.refundReservedGeneration.mockResolvedValue(true);
+    mocks.reserveFreeSingleImageRegeneration.mockResolvedValue(true);
+    mocks.markFreeSingleImageRegenerationFailed.mockResolvedValue(undefined);
     mocks.getMonthlyUsage.mockResolvedValue(0);
     mocks.getEffectiveEntitlements.mockResolvedValue({
       publicPlan: "Starter",
@@ -581,6 +613,110 @@ describe("handleRegenerateOutfit", () => {
     });
     expect(mocks.reserveGenerations).not.toHaveBeenCalled();
     expect(mocks.enqueueRegenerateOutfit).not.toHaveBeenCalled();
+  });
+
+  it("uses the free single-image allowance for the first scoped regenerate", async () => {
+    mocks.modelFindFirst.mockResolvedValue(null);
+
+    const res = await handleRegenerateOutfit(
+      "shop-a.myshopify.com",
+      "outfit-123",
+      "less shadow",
+      ["front"],
+    );
+
+    expect(res.status).toBe(200);
+    expect(mocks.reserveFreeSingleImageRegeneration).toHaveBeenCalledWith({
+      shopId: "shop-a.myshopify.com",
+      outfitId: "outfit-123",
+      pose: "front",
+    });
+    expect(mocks.reserveGenerations).not.toHaveBeenCalled();
+    expect(mocks.enqueueRegenerateOutfit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outfitId: "outfit-123",
+        targetPoses: ["front"],
+        creditReservation: undefined,
+        freeRegenerationAllowance: { pose: "front" },
+      }),
+    );
+  });
+
+  it("charges one credit after the free scoped regenerate is used", async () => {
+    mocks.modelFindFirst.mockResolvedValue(null);
+    mocks.reserveFreeSingleImageRegeneration.mockResolvedValueOnce(false);
+
+    const res = await handleRegenerateOutfit(
+      "shop-a.myshopify.com",
+      "outfit-123",
+      "less shadow",
+      ["back"],
+    );
+
+    expect(res.status).toBe(200);
+    expect(mocks.reserveGenerations).toHaveBeenCalledWith(
+      "shop-a.myshopify.com",
+      1,
+      expect.objectContaining({
+        description: expect.stringMatching(/^generation reservation:regenerate:outfit-123:/),
+      }),
+    );
+    expect(mocks.enqueueRegenerateOutfit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetPoses: ["back"],
+        creditReservation: expect.objectContaining({
+          reservationDescription: expect.stringMatching(/^generation reservation:regenerate:outfit-123:/),
+        }),
+        freeRegenerationAllowance: undefined,
+      }),
+    );
+  });
+
+  it("rejects scoped regenerate for a pose outside entitlements", async () => {
+    mocks.modelFindFirst.mockResolvedValue(null);
+    mocks.getEffectiveEntitlements.mockResolvedValueOnce({
+      publicPlan: "Starter",
+      isBeta: false,
+      betaStatus: null,
+      effectiveLimit: 30,
+      effectiveAngles: ["front"],
+      showUpgradePrompt: true,
+    });
+
+    const res = await handleRegenerateOutfit(
+      "shop-a.myshopify.com",
+      "outfit-123",
+      "less shadow",
+      ["back"],
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "This image angle is not available on your plan.",
+    });
+    expect(mocks.reserveFreeSingleImageRegeneration).not.toHaveBeenCalled();
+    expect(mocks.reserveGenerations).not.toHaveBeenCalled();
+    expect(mocks.enqueueRegenerateOutfit).not.toHaveBeenCalled();
+  });
+
+  it("releases a free scoped allowance when enqueue fails before the task starts", async () => {
+    mocks.modelFindFirst.mockResolvedValue(null);
+    mocks.enqueueRegenerateOutfit.mockRejectedValueOnce(new Error("Trigger unavailable"));
+
+    const res = await handleRegenerateOutfit(
+      "shop-a.myshopify.com",
+      "outfit-123",
+      "less shadow",
+      ["three-quarter"],
+    );
+
+    expect(res.status).toBe(500);
+    expect(mocks.refundReservedGeneration).not.toHaveBeenCalled();
+    expect(mocks.markFreeSingleImageRegenerationFailed).toHaveBeenCalledWith({
+      shopId: "shop-a.myshopify.com",
+      outfitId: "outfit-123",
+      pose: "three-quarter",
+    });
   });
 
   it("refunds regenerate when enqueue fails after reservation succeeds", async () => {
