@@ -43,40 +43,51 @@ import {
   isSessionExpiredResponse,
   SESSION_EXPIRED_MESSAGE,
 } from "../lib/authenticatedRequest.client";
+import { createLoaderTiming } from "../lib/loaderTiming.server";
 import posthog from "posthog-js";
 
 // ── Loader ────────────────────────────────────────────────────────────────────
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const timing = createLoaderTiming("app.dress-model", request);
+  const { session } = await timing.measure("authenticateAdminMs", () =>
+    authenticate.admin(request),
+  );
   const shop = session.shop;
 
-  await ensureShop(shop);
+  await timing.measure("ensureShopMs", () => ensureShop(shop));
 
   const [brandStyle, entitlements, used, customModels, wouldUseLive] =
     await Promise.all([
-      prisma.brandStyle.findUnique({ where: { shopId: shop } }),
-      getEffectiveEntitlements(shop),
-      getMonthlyUsage(shop),
-      prisma.model.findMany({
-        where: { shopId: shop, isPreset: false },
-        orderBy: { createdAt: "desc" },
-        select: {
-          id: true,
-          name: true,
-          gender: true,
-          ethnicity: true,
-          imageUrl: true,
-          height: true,
-          bodyBuild: true,
-        },
-      }),
-      prisma.betaFeedback.findFirst({
-        where: { shopId: shop, category: "would_use_live" },
-        select: { id: true },
-      }),
+      timing.measure("brandStyleLookupMs", () =>
+        prisma.brandStyle.findUnique({ where: { shopId: shop } }),
+      ),
+      timing.measure("entitlementsMs", () => getEffectiveEntitlements(shop)),
+      timing.measure("monthlyUsageMs", () => getMonthlyUsage(shop)),
+      timing.measure("customModelsLookupMs", () =>
+        prisma.model.findMany({
+          where: { shopId: shop, isPreset: false },
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            name: true,
+            gender: true,
+            ethnicity: true,
+            imageUrl: true,
+            height: true,
+            bodyBuild: true,
+          },
+        }),
+      ),
+      timing.measure("wouldUseLiveLookupMs", () =>
+        prisma.betaFeedback.findFirst({
+          where: { shopId: shop, category: "would_use_live" },
+          select: { id: true },
+        }),
+      ),
     ]);
 
+  timing.log({ customModelCount: customModels.length });
   return {
     shop,
     brandStyleId: brandStyle?.brandStyleId ?? BRAND_STYLE_PRESETS[0].id,

@@ -11,16 +11,23 @@ import { PDP_STYLE_PRESETS, ANGLE_PRESETS } from '../lib/pdpPresets';
 import { OPTIONS, SKIN_TONE_COLORS, ETHNICITY_PRESETS } from '../lib/modelOptions';
 import posthog from 'posthog-js';
 import type { ModelAttributes } from '../lib/types';
+import { createLoaderTiming } from '../lib/loaderTiming.server';
 
 // ── Loader ────────────────────────────────────────────────────────────────────
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
-  const models = await prisma.model.findMany({
-    where: { shopId: session.shop, isPreset: false },
-    orderBy: { createdAt: 'desc' },
-    select: { id: true, name: true, gender: true, ethnicity: true, imageUrl: true },
-  });
+  const timing = createLoaderTiming('app.model-builder', request);
+  const { session } = await timing.measure('authenticateAdminMs', () =>
+    authenticate.admin(request),
+  );
+  const models = await timing.measure('customModelsLookupMs', () =>
+    prisma.model.findMany({
+      where: { shopId: session.shop, isPreset: false },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, name: true, gender: true, ethnicity: true, imageUrl: true },
+    }),
+  );
+  timing.log({ customModelCount: models.length });
   return { shop: session.shop, models };
 };
 

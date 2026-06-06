@@ -9,6 +9,7 @@ import { BRAND_STYLE_PRESETS } from '../lib/pdpPresets';
 import { getEffectiveEntitlements } from '../lib/billing.server';
 import { getRecommendedDirections } from '../lib/brandProfileMapping';
 import posthog from 'posthog-js';
+import { createLoaderTiming } from '../lib/loaderTiming.server';
 
 // ── Shared preset card ────────────────────────────────────────────────────────
 
@@ -78,8 +79,14 @@ function PresetCard({
 // ── Loader ────────────────────────────────────────────────────────────────────
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
-  const brandStyle = await prisma.brandStyle.findUnique({ where: { shopId: session.shop } });
+  const timing = createLoaderTiming('app.brand-style', request);
+  const { session } = await timing.measure('authenticateAdminMs', () =>
+    authenticate.admin(request),
+  );
+  const brandStyle = await timing.measure('brandStyleLookupMs', () =>
+    prisma.brandStyle.findUnique({ where: { shopId: session.shop } }),
+  );
+  timing.log({ hasBrandStyle: Boolean(brandStyle) });
   return {
     shop: session.shop,
     brandStyleId: brandStyle?.brandStyleId ?? BRAND_STYLE_PRESETS[0].id,

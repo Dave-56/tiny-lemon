@@ -6,6 +6,7 @@ import posthog from "posthog-js";
 import { authenticate } from "../shopify.server";
 import prisma, { ensureShop } from "../db.server";
 import { shopifyRedirect } from "../shopify-params";
+import { createLoaderTiming } from "../lib/loaderTiming.server";
 import {
   BETA_BIGGEST_PAINS,
   BETA_CATALOG_TYPES,
@@ -21,34 +22,41 @@ import {
 } from "../lib/beta";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
-  await ensureShop(session.shop);
+  const timing = createLoaderTiming("app.beta-intake", request);
+  const { session } = await timing.measure("authenticateAdminMs", () =>
+    authenticate.admin(request),
+  );
+  await timing.measure("ensureShopMs", () => ensureShop(session.shop));
 
-  const shop = await prisma.shop.findUnique({
-    where: { id: session.shop },
-    select: {
-      betaIntakeCompleted: true,
-      contactEmail: true,
-      storeUrl: true,
-      catalogType: true,
-      skuVolume: true,
-      photoWorkflow: true,
-      biggestPain: true,
-      intendedUseCase: true,
-      launchStage: true,
-      shootGoal: true,
-      heroProductFocus: true,
-      stylingSupport: true,
-      graphicSensitivity: true,
-      outputChannels: true,
-      intakeNotes: true,
-    },
-  });
+  const shop = await timing.measure("shopProfileLookupMs", () =>
+    prisma.shop.findUnique({
+      where: { id: session.shop },
+      select: {
+        betaIntakeCompleted: true,
+        contactEmail: true,
+        storeUrl: true,
+        catalogType: true,
+        skuVolume: true,
+        photoWorkflow: true,
+        biggestPain: true,
+        intendedUseCase: true,
+        launchStage: true,
+        shootGoal: true,
+        heroProductFocus: true,
+        stylingSupport: true,
+        graphicSensitivity: true,
+        outputChannels: true,
+        intakeNotes: true,
+      },
+    }),
+  );
 
   if (!shop) {
+    timing.log({ notFound: true });
     throw new Response("Shop not found", { status: 500 });
   }
 
+  timing.log({ betaIntakeCompleted: shop.betaIntakeCompleted });
   return { shop: session.shop, profile: shop };
 };
 

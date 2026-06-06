@@ -47,6 +47,7 @@ import { markOutfitGenerationRequestFailedByJob } from "../lib/outfitGenerationR
 import { canUpscale, canGenerateVideo } from "../lib/plans";
 import { parsePoseImageAssetManifest } from "../lib/imageAssetManifest";
 import type { PoseImagePresetId } from "../lib/poseImagePolicy";
+import { createLoaderTiming } from "../lib/loaderTiming.server";
 import posthog from "posthog-js";
 import {
   handleBulkUpscaleRequest,
@@ -69,36 +70,50 @@ function isShopifySyncTimedOut(args: {
 // ── Loader ─────────────────────────────────────────────────────────────────────
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const timing = createLoaderTiming("app.outfits", request);
+  const { session } = await timing.measure("authenticateAdminMs", () =>
+    authenticate.admin(request),
+  );
   const shop = session.shop;
 
   const [outfits, entitlements] = await Promise.all([
-    prisma.outfit.findMany({
-      where: { shopId: shop, deletedAt: null },
-      include: {
-        images: true,
-        singleImageRegenerationAllowances: {
-          where: { status: { in: ["pending", "completed"] } },
-          select: { pose: true, status: true },
+    timing.measure("outfitsLookupMs", () =>
+      prisma.outfit.findMany({
+        where: { shopId: shop, deletedAt: null },
+        include: {
+          images: true,
+          singleImageRegenerationAllowances: {
+            where: { status: { in: ["pending", "completed"] } },
+            select: { pose: true, status: true },
+          },
         },
-      },
-      orderBy: { createdAt: "desc" },
-    }),
-    getEffectiveEntitlements(shop),
+        orderBy: { createdAt: "desc" },
+      }),
+    ),
+    timing.measure("entitlementsMs", () => getEffectiveEntitlements(shop)),
   ]);
 
   // Resolve model names: check DB first (custom models), then preset JSON
   const modelIds = [...new Set(outfits.map((o) => o.modelId).filter(Boolean))];
 
   const dbModels = modelIds.length
-    ? await prisma.model.findMany({
-        where: { id: { in: modelIds } },
-        select: { id: true, name: true },
-      })
+    ? await timing.measure("modelNameLookupMs", () =>
+        prisma.model.findMany({
+          where: { id: { in: modelIds } },
+          select: { id: true, name: true },
+        }),
+      )
     : [];
 
-  const presetModels: Array<{ id: string; name: string }> = JSON.parse(
-    readFileSync(join(process.cwd(), "public", "preset-models.json"), "utf-8"),
+  const presetModels: Array<{ id: string; name: string }> = await timing.measure(
+    "presetModelsReadMs",
+    async () =>
+      JSON.parse(
+        readFileSync(
+          join(process.cwd(), "public", "preset-models.json"),
+          "utf-8",
+        ),
+      ),
   );
 
   const modelNameMap: Record<string, string> = {};
@@ -118,6 +133,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     entitlements.publicPlan,
     entitlements.isBeta,
   );
+  timing.log({
+    outfitCount: outfits.length,
+    modelIdCount: modelIds.length,
+  });
   return {
     shop,
     outfits,

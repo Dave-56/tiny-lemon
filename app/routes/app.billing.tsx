@@ -8,6 +8,7 @@ import { BILLING_PLANS } from '../lib/plans';
 import prisma, { ensureShop } from '../db.server';
 import { getMonthlyUsage, getEffectiveEntitlements } from '../lib/billing.server';
 import { getSupportEmail } from '../lib/support.server';
+import { createLoaderTiming } from '../lib/loaderTiming.server';
 
 // ── Loader ────────────────────────────────────────────────────────────────────
 //
@@ -16,13 +17,18 @@ import { getSupportEmail } from '../lib/support.server';
 // the plan to our DB here on every load — no separate return_from_billing intent needed.
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { billing, session } = await authenticate.admin(request);
-  await ensureShop(session.shop);
+  const timing = createLoaderTiming('app.billing', request);
+  const { billing, session } = await timing.measure('authenticateAdminMs', () =>
+    authenticate.admin(request),
+  );
+  await timing.measure('ensureShopMs', () => ensureShop(session.shop));
 
-  const shop = await prisma.shop.findUnique({
-    where: { id: session.shop },
-    select: { betaAccess: true, betaStatus: true },
-  });
+  const shop = await timing.measure('shopStatusLookupMs', () =>
+    prisma.shop.findUnique({
+      where: { id: session.shop },
+      select: { betaAccess: true, betaStatus: true },
+    }),
+  );
   const isBeta =
     shop?.betaAccess === true &&
     shop.betaStatus !== 'paused' &&
@@ -30,30 +36,37 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   let activePlan = 'free';
   if (!isBeta) {
-    const subscription = await billing.check({
-      plans: Object.values(BILLING_PLANS),
-    });
+    const subscription = await timing.measure('billingCheckMs', () =>
+      billing.check({
+        plans: Object.values(BILLING_PLANS),
+      }),
+    );
     activePlan = subscription.hasActivePayment
       ? (subscription.appSubscriptions[0]?.name ?? 'free')
       : 'free';
 
-    await prisma.shop.update({
-      where: { id: session.shop },
-      data: { plan: activePlan },
-    });
+    await timing.measure('planUpdateMs', () =>
+      prisma.shop.update({
+        where: { id: session.shop },
+        data: { plan: activePlan },
+      }),
+    );
   } else {
     activePlan =
-      (await prisma.shop.findUnique({
-        where: { id: session.shop },
-        select: { plan: true },
-      }))?.plan ?? 'free';
+      (await timing.measure('betaPlanLookupMs', () =>
+        prisma.shop.findUnique({
+          where: { id: session.shop },
+          select: { plan: true },
+        }),
+      ))?.plan ?? 'free';
   }
 
   const [used, entitlements] = await Promise.all([
-    getMonthlyUsage(session.shop),
-    getEffectiveEntitlements(session.shop),
+    timing.measure('monthlyUsageMs', () => getMonthlyUsage(session.shop)),
+    timing.measure('entitlementsMs', () => getEffectiveEntitlements(session.shop)),
   ]);
 
+  timing.log({ isBeta, activePlan });
   return {
     shop: session.shop,
     plan: activePlan,
