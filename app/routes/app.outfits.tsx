@@ -435,6 +435,8 @@ function ImageTile({
             height={1200}
             className="block w-full h-full object-contain"
             style={{ aspectRatio: "2 / 3" }}
+            data-ph-no-capture
+            data-sensitive-media="outfit-image"
             loading={isLcp ? undefined : "lazy"}
             decoding={isLcp ? undefined : "async"}
             // @ts-expect-error React types use camelCase but React DOM warns unless lowercase
@@ -571,6 +573,8 @@ function VideoTile({
               muted
               playsInline
               className="block w-full h-full object-contain"
+              data-ph-no-capture
+              data-sensitive-media="outfit-video"
             />
             <div className="absolute inset-0 bg-black/15 flex items-center justify-center transition-opacity opacity-100 md:opacity-0 md:group-hover:opacity-100 pointer-events-none">
               <div className="p-2 rounded-full bg-white/90">
@@ -1016,6 +1020,8 @@ function Lightbox({
               decoding="async"
               className="block max-w-full object-contain rounded-lg"
               style={{ maxHeight: "calc(100vh - 200px)" }}
+              data-ph-no-capture
+              data-sensitive-media="outfit-lightbox-image"
             />
           ) : (
             <div className="relative w-full max-w-4xl">
@@ -1029,6 +1035,8 @@ function Lightbox({
                 muted
                 playsInline
                 className="block max-h-[calc(100vh-200px)] w-full rounded-lg bg-black object-contain"
+                data-ph-no-capture
+                data-sensitive-media="outfit-lightbox-video"
               />
               <button
                 type="button"

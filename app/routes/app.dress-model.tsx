@@ -1365,6 +1365,8 @@ export default function DressModel() {
                           src={item.frontPreview}
                           alt=""
                           className="block w-full h-full object-cover"
+                          data-ph-no-capture
+                          data-sensitive-media="uploaded-flat-lay"
                           loading="lazy"
                           decoding="async"
                         />
@@ -1466,6 +1468,8 @@ export default function DressModel() {
                                         : "front"
                                     }
                                     className="block w-full h-full object-cover"
+                                    data-ph-no-capture
+                                    data-sensitive-media="uploaded-opposite-side"
                                     loading="lazy"
                                     decoding="async"
                                   />
@@ -1761,6 +1765,8 @@ export default function DressModel() {
                               src={item.cleanPreview}
                               alt="Clean flat lay"
                               className="block w-full h-full object-contain"
+                              data-ph-no-capture
+                              data-sensitive-media="clean-flat-lay"
                               loading="lazy"
                               decoding="async"
                             />
@@ -1950,6 +1956,8 @@ export default function DressModel() {
                             src={model.imageUrl}
                             alt={model.name}
                             className="block w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                            data-ph-no-capture
+                            data-sensitive-media="custom-model"
                             loading="lazy"
                             decoding="async"
                             referrerPolicy="no-referrer"
@@ -2070,6 +2078,8 @@ export default function DressModel() {
                 src={previewModel.imageUrl}
                 alt={previewModel.name}
                 className="block h-[85vh] w-auto object-contain rounded-xl shadow-2xl"
+                data-ph-no-capture
+                data-sensitive-media="model-preview"
                 decoding="async"
                 referrerPolicy="no-referrer"
               />

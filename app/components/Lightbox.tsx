@@ -33,6 +33,8 @@ export function Lightbox({ open, image, onClose }: LightboxProps) {
             src={image.url}
             alt="Generated Model"
             className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+            data-ph-no-capture
+            data-sensitive-media="generated-lightbox"
             referrerPolicy="no-referrer"
             onClick={(e) => e.stopPropagation()}
           />

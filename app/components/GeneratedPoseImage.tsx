@@ -87,6 +87,8 @@ export function GeneratedPoseImage({
       // React SSR doesn't map camelCase fetchPriority to the DOM attribute
       {...(fetchPriority ? { fetchpriority: fetchPriority } : {})}
       {...imgProps}
+      data-ph-no-capture
+      data-sensitive-media="generated-pose"
       sizes={resolvedSizes}
     />
   );

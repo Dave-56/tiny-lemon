@@ -3,6 +3,8 @@ import { Analytics, type BeforeSendEvent } from "@vercel/analytics/react";
 import appCss from "./app.css?url";
 import { isAnalyticsOptedOut } from "./lib/analyticsOptOut";
 
+const AHREFS_ANALYTICS_KEY = "kV62qS89ENNF8VlsJaEZog";
+
 export function links() {
   return [{ rel: "stylesheet", href: appCss }];
 }
@@ -32,6 +34,13 @@ export default function App() {
         />
         <Meta />
         <Links />
+        {!isAppRoute && (
+          <script
+            src="https://analytics.ahrefs.com/analytics.js"
+            data-key={AHREFS_ANALYTICS_KEY}
+            async
+          />
+        )}
       </head>
       <body>
         <Outlet />

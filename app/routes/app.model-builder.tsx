@@ -147,6 +147,8 @@ function ModelLightbox({ model, onClose }: { model: LoaderModel; onClose: () => 
           alt={model.name}
           className="max-h-full max-w-full object-contain rounded-xl"
           style={{ maxHeight: 'calc(100vh - 120px)' }}
+          data-ph-no-capture
+          data-sensitive-media="custom-model-preview"
         />
       </div>
     </div>
@@ -162,7 +164,13 @@ function CustomModelCard({ model, onZoom }: { model: LoaderModel; onZoom: () => 
   return (
     <div className={`relative rounded-xl overflow-hidden border-2 border-transparent hover:border-krea-border transition-all ${isDeleting ? 'opacity-40 pointer-events-none' : ''}`}>
       <div className="group relative cursor-pointer" onClick={onZoom}>
-        <img src={model.imageUrl} alt={model.name} className="w-full aspect-[2/3] object-cover" />
+        <img
+          src={model.imageUrl}
+          alt={model.name}
+          className="w-full aspect-[2/3] object-cover"
+          data-ph-no-capture
+          data-sensitive-media="custom-model-card"
+        />
         <div className="absolute inset-0 bg-black/25 flex items-center justify-center transition-opacity opacity-0 group-hover:opacity-100 pointer-events-none">
           <div className="p-2 rounded-full bg-white/90">
             <ZoomIn className="w-4 h-4 text-krea-text" />
