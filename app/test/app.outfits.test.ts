@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   enqueueShopifySync: vi.fn(),
   cancelRunSafely: vi.fn(),
   handleRegenerateOutfit: vi.fn(),
+  markOutfitGenerationRequestFailedByJob: vi.fn(),
 }));
 
 vi.mock("fs", async (importOriginal) => {
@@ -41,6 +42,11 @@ vi.mock("../lib/triggerGeneration.server", () => ({
   handleRegenerateOutfit: mocks.handleRegenerateOutfit,
 }));
 
+vi.mock("../lib/outfitGenerationRequests.server", () => ({
+  markOutfitGenerationRequestFailedByJob:
+    mocks.markOutfitGenerationRequestFailedByJob,
+}));
+
 import { action } from "../routes/app.outfits";
 
 describe("app.outfits action publish_to_shopify", () => {
@@ -52,6 +58,7 @@ describe("app.outfits action publish_to_shopify", () => {
     mocks.outfitUpdate.mockResolvedValue({});
     mocks.enqueueShopifySync.mockResolvedValue({ id: "run_123" });
     mocks.cancelRunSafely.mockResolvedValue(undefined);
+    mocks.markOutfitGenerationRequestFailedByJob.mockResolvedValue(undefined);
   });
 
   function makeRequest(body: Record<string, unknown>) {
@@ -204,6 +211,12 @@ describe("app.outfits action publish_to_shopify", () => {
         errorMessage: "Cancelled by user",
         jobId: null,
       },
+    });
+    expect(mocks.markOutfitGenerationRequestFailedByJob).toHaveBeenCalledWith({
+      shopId: "shop-a.myshopify.com",
+      outfitId: "outfit-123",
+      jobId: "run_finished",
+      failureReason: "Cancelled by user",
     });
   });
 });

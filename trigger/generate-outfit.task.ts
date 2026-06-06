@@ -32,6 +32,10 @@ import {
   getUserFacingGenerationError,
   maybeRefundFailedGeneration,
 } from '../app/lib/generationErrors.server';
+import {
+  markOutfitGenerationRequestCompleted,
+  markOutfitGenerationRequestFailed,
+} from '../app/lib/outfitGenerationRequests.server';
 
 // ── Payload ───────────────────────────────────────────────────────────────────
 
@@ -66,6 +70,7 @@ interface GenerateOutfitPayload {
   /** Primary category (womenswear | menswear | unisex | activewear | streetwear | formalwear | other) — shapes category context in prompt. */
   primaryCategory?: string;
   allowedPoses: string[];
+  generationRequestId?: string;
   creditReservation?: {
     reservationDescription: string;
     refundDescription: string;
@@ -125,6 +130,11 @@ export const generateOutfitTask = task({
     await prisma.outfit
       .update({ where: { id: payload.outfitId }, data: { status: 'failed', errorMessage } })
       .catch(() => {});
+    await markOutfitGenerationRequestFailed({
+      generationRequestId: payload.generationRequestId,
+      shopId: payload.shopId,
+      failureReason: errorMessage,
+    }).catch(() => undefined);
   },
 
   run: async (payload: GenerateOutfitPayload) => {
@@ -633,6 +643,10 @@ export const generateOutfitTask = task({
 
     // ── 9. Complete ───────────────────────────────────────────────────────────
     await prisma.outfit.update({ where: { id: outfitId }, data: { status: 'completed' } });
+    await markOutfitGenerationRequestCompleted({
+      generationRequestId: payload.generationRequestId,
+      shopId,
+    }).catch(() => undefined);
 
     logTaskLifecycle('task.completed', payload, {
       completedPoses: poses,

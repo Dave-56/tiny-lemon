@@ -1,6 +1,7 @@
 import type { LoaderFunctionArgs } from 'react-router';
 import prisma from '../db.server';
 import { cancelRunSafely } from '../lib/triggerJobs.server';
+import { markOutfitGenerationRequestFailedByJob } from '../lib/outfitGenerationRequests.server';
 
 const STALE_QUEUED_GENERATION_MS = 2 * 60 * 1000;
 const STALE_QUEUED_GENERATION_MESSAGE =
@@ -22,6 +23,7 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   const outfit = await prisma.outfit.findFirst({
     where: { id: outfitId, deletedAt: null, ...(shopId ? { shopId } : {}) },
     select: {
+      shopId: true,
       status: true,
       errorMessage: true,
       jobId: true,
@@ -55,6 +57,14 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
         jobId: null,
       },
     });
+    if (jobId) {
+      await markOutfitGenerationRequestFailedByJob({
+        shopId: outfit.shopId,
+        outfitId,
+        jobId,
+        failureReason: STALE_QUEUED_GENERATION_MESSAGE,
+      }).catch(() => undefined);
+    }
 
     return Response.json({
       status: 'failed',

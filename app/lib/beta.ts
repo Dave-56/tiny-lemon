@@ -41,6 +41,46 @@ export const BETA_INTENDED_USE_CASES = [
   "catalog refresh",
 ] as const;
 
+export const BETA_LAUNCH_STAGES = [
+  "pre-launch brand",
+  "live store",
+  "catalog refresh",
+  "testing TinyLemon",
+] as const;
+
+export const BETA_SHOOT_GOALS = [
+  "single product photos",
+  "styled looks/lookbook images",
+  "both product photos and styled looks",
+  "just testing output quality",
+] as const;
+
+export const BETA_HERO_PRODUCT_FOCUS = [
+  "product must stay exact",
+  "some creative styling is okay",
+  "concept exploration",
+] as const;
+
+export const BETA_STYLING_SUPPORT = [
+  "yes, style the rest of the outfit",
+  "no, keep it minimal",
+  "sometimes",
+] as const;
+
+export const BETA_GRAPHIC_SENSITIVITY = [
+  "logos/text/graphics must be preserved",
+  "some products have graphics",
+  "mostly plain products",
+  "not sure yet",
+] as const;
+
+export const BETA_OUTPUT_CHANNELS = [
+  "model photos",
+  "video",
+  "publish to Shopify",
+  "download assets",
+] as const;
+
 export const BETA_FEEDBACK_CATEGORIES = [
   "bug",
   "result quality",

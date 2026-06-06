@@ -20,6 +20,9 @@ const mocks = vi.hoisted(() => ({
   claimRegenerateRequestIdempotency: vi.fn(),
   markRequestEnqueued: vi.fn(),
   markRequestFailed: vi.fn(),
+  createOutfitGenerationRequest: vi.fn(),
+  markOutfitGenerationRequestEnqueued: vi.fn(),
+  markOutfitGenerationRequestFailed: vi.fn(),
 }));
 
 vi.mock("../db.server", () => ({
@@ -71,6 +74,12 @@ vi.mock("./requestIdempotency.server", () => ({
   claimRegenerateRequestIdempotency: mocks.claimRegenerateRequestIdempotency,
   markRequestEnqueued: mocks.markRequestEnqueued,
   markRequestFailed: mocks.markRequestFailed,
+}));
+
+vi.mock("./outfitGenerationRequests.server", () => ({
+  createOutfitGenerationRequest: mocks.createOutfitGenerationRequest,
+  markOutfitGenerationRequestEnqueued: mocks.markOutfitGenerationRequestEnqueued,
+  markOutfitGenerationRequestFailed: mocks.markOutfitGenerationRequestFailed,
 }));
 
 import {
@@ -129,6 +138,11 @@ describe("handleTriggerGeneration", () => {
     });
     mocks.markRequestEnqueued.mockResolvedValue(true);
     mocks.markRequestFailed.mockResolvedValue(true);
+    mocks.createOutfitGenerationRequest.mockResolvedValue({
+      id: "generation-request-123",
+    });
+    mocks.markOutfitGenerationRequestEnqueued.mockResolvedValue(undefined);
+    mocks.markOutfitGenerationRequestFailed.mockResolvedValue(undefined);
   });
 
   it("rejects unknown models before reserving credits", async () => {
@@ -145,6 +159,7 @@ describe("handleTriggerGeneration", () => {
     expect(mocks.reserveGenerations).not.toHaveBeenCalled();
     expect(mocks.outfitUpsert).not.toHaveBeenCalled();
     expect(mocks.enqueueGenerateOutfit).not.toHaveBeenCalled();
+    expect(mocks.createOutfitGenerationRequest).not.toHaveBeenCalled();
   });
 
   it("rejects models owned by another shop before reserving credits", async () => {
@@ -185,6 +200,7 @@ describe("handleTriggerGeneration", () => {
     expect(mocks.reserveGenerations).not.toHaveBeenCalled();
     expect(mocks.outfitUpsert).not.toHaveBeenCalled();
     expect(mocks.enqueueGenerateOutfit).not.toHaveBeenCalled();
+    expect(mocks.createOutfitGenerationRequest).not.toHaveBeenCalled();
   });
 
   it("requires a front photo or description when the uploaded primary image is the back", async () => {
@@ -255,8 +271,14 @@ describe("handleTriggerGeneration", () => {
           "https://axuxhuif6aiflbu8.public.blob.vercel-storage.com/preset-models/v3/model-01.png",
         modelGender: "Female",
         modelHeight: "5'10\" (178cm)",
+        generationRequestId: "generation-request-123",
       })
     );
+    expect(mocks.markOutfitGenerationRequestEnqueued).toHaveBeenCalledWith({
+      generationRequestId: "generation-request-123",
+      shopId: "shop-a.myshopify.com",
+      jobId: "run_123",
+    });
   });
 
   it("forwards back-primary reference context to the generate task", async () => {
@@ -298,6 +320,21 @@ describe("handleTriggerGeneration", () => {
     expect(mocks.enqueueGenerateOutfit).toHaveBeenCalledWith(
       expect.objectContaining({
         generationDirection: "Style with jeans and white sneakers.",
+      }),
+    );
+    expect(mocks.createOutfitGenerationRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shopId: "shop-a.myshopify.com",
+        outfitId: "outfit-123",
+        operation: "generate",
+        merchantDirection: "Style with jeans and white sneakers.",
+        frontDescription: null,
+        backDescription: null,
+        resolvedPoses: ["front", "three-quarter", "back"],
+        modelId: "model-01",
+        brandStyleId: "minimal",
+        requestKey: expect.any(String),
+        runToken: "run-token-generate",
       }),
     );
   });
@@ -350,6 +387,7 @@ describe("handleTriggerGeneration", () => {
     });
     expect(mocks.outfitUpsert).not.toHaveBeenCalled();
     expect(mocks.enqueueGenerateOutfit).not.toHaveBeenCalled();
+    expect(mocks.createOutfitGenerationRequest).not.toHaveBeenCalled();
   });
 
   it("refunds when enqueue fails after reservation succeeds", async () => {
@@ -375,6 +413,11 @@ describe("handleTriggerGeneration", () => {
       operation: "generate",
       requestKey: expect.any(String),
       runToken: "run-token-generate",
+    });
+    expect(mocks.markOutfitGenerationRequestFailed).toHaveBeenCalledWith({
+      generationRequestId: "generation-request-123",
+      shopId: "shop-a.myshopify.com",
+      failureReason: "Trigger unavailable",
     });
   });
 
@@ -403,6 +446,12 @@ describe("handleTriggerGeneration", () => {
       operation: "generate",
       requestKey: expect.any(String),
       runToken: "run-token-generate",
+    });
+    expect(mocks.markOutfitGenerationRequestFailed).toHaveBeenCalledWith({
+      generationRequestId: "generation-request-123",
+      shopId: "shop-a.myshopify.com",
+      failureReason:
+        "We hit a storage issue while saving your image. This attempt was not counted. Please try again.",
     });
   });
 
@@ -481,6 +530,10 @@ describe("handleTriggerGeneration", () => {
       status: "pending",
     });
     mocks.markRequestEnqueued.mockResolvedValue(true);
+    mocks.createOutfitGenerationRequest.mockResolvedValue({
+      id: "generation-request-456",
+    });
+    mocks.markOutfitGenerationRequestEnqueued.mockResolvedValue(undefined);
 
     const resB = await handleTriggerGeneration("shop-a.myshopify.com", {
       modelId: "model-01",
@@ -587,6 +640,11 @@ describe("handleRegenerateOutfit", () => {
     });
     mocks.markRequestEnqueued.mockResolvedValue(true);
     mocks.markRequestFailed.mockResolvedValue(true);
+    mocks.createOutfitGenerationRequest.mockResolvedValue({
+      id: "generation-request-123",
+    });
+    mocks.markOutfitGenerationRequestEnqueued.mockResolvedValue(undefined);
+    mocks.markOutfitGenerationRequestFailed.mockResolvedValue(undefined);
   });
 
   it("reuses an in-flight regenerate request before reserving credits", async () => {
@@ -613,6 +671,7 @@ describe("handleRegenerateOutfit", () => {
     });
     expect(mocks.reserveGenerations).not.toHaveBeenCalled();
     expect(mocks.enqueueRegenerateOutfit).not.toHaveBeenCalled();
+    expect(mocks.createOutfitGenerationRequest).not.toHaveBeenCalled();
   });
 
   it("uses the free single-image allowance for the first scoped regenerate", async () => {
@@ -636,8 +695,24 @@ describe("handleRegenerateOutfit", () => {
       expect.objectContaining({
         outfitId: "outfit-123",
         targetPoses: ["front"],
+        brandStyleId: "minimal",
+        generationRequestId: "generation-request-123",
         creditReservation: undefined,
         freeRegenerationAllowance: { pose: "front" },
+      }),
+    );
+    expect(mocks.createOutfitGenerationRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shopId: "shop-a.myshopify.com",
+        outfitId: "outfit-123",
+        operation: "regenerate",
+        merchantDirection: "less shadow",
+        targetPoses: ["front"],
+        resolvedPoses: ["front"],
+        modelId: "model-01",
+        brandStyleId: "minimal",
+        requestKey: expect.any(String),
+        runToken: "run-token-regenerate",
       }),
     );
   });
@@ -716,6 +791,11 @@ describe("handleRegenerateOutfit", () => {
       shopId: "shop-a.myshopify.com",
       outfitId: "outfit-123",
       pose: "three-quarter",
+    });
+    expect(mocks.markOutfitGenerationRequestFailed).toHaveBeenCalledWith({
+      generationRequestId: "generation-request-123",
+      shopId: "shop-a.myshopify.com",
+      failureReason: "Trigger unavailable",
     });
   });
 

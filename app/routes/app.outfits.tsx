@@ -43,6 +43,7 @@ import {
 } from "../lib/authenticatedRequest.client";
 import { getEffectiveEntitlements } from "../lib/billing.server";
 import { cancelRunSafely, enqueueShopifySync } from "../lib/triggerJobs.server";
+import { markOutfitGenerationRequestFailedByJob } from "../lib/outfitGenerationRequests.server";
 import { canUpscale, canGenerateVideo } from "../lib/plans";
 import { parsePoseImageAssetManifest } from "../lib/imageAssetManifest";
 import type { PoseImagePresetId } from "../lib/poseImagePolicy";
@@ -279,6 +280,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         jobId: null,
       },
     });
+    if (outfit.jobId) {
+      await markOutfitGenerationRequestFailedByJob({
+        shopId,
+        outfitId,
+        jobId: outfit.jobId,
+        failureReason: "Cancelled by user",
+      }).catch(() => undefined);
+    }
     return Response.json({ ok: true });
   }
 

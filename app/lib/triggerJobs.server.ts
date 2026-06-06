@@ -23,6 +23,7 @@ type GenerateOutfitTriggerPayload = {
   brandEnergy?: string;
   primaryCategory?: string;
   allowedPoses: string[];
+  generationRequestId?: string;
   creditReservation?: {
     reservationDescription: string;
     refundDescription: string;
@@ -38,10 +39,12 @@ type RegenerateOutfitTriggerPayload = {
   modelHeight?: string;
   modelGender?: string;
   styleId: string;
+  brandStyleId: string;
   pricePoint?: string;
   brandEnergy?: string;
   primaryCategory?: string;
   allowedPoses: string[];
+  generationRequestId?: string;
   creditReservation?: {
     reservationDescription: string;
     refundDescription: string;

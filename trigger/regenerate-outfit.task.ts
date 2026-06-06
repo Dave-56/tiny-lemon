@@ -35,6 +35,11 @@ import {
   maybeRefundFailedGeneration,
 } from '../app/lib/generationErrors.server';
 import type { RegeneratePose } from '../app/lib/regeneratePoses';
+import { buildRegenerationIntentPromptBlock } from '../app/lib/regenerationIntent';
+import {
+  markOutfitGenerationRequestCompleted,
+  markOutfitGenerationRequestFailed,
+} from '../app/lib/outfitGenerationRequests.server';
 
 type StoredGarmentSpec = GarmentSpec & {
   referenceContext?: {
@@ -56,6 +61,7 @@ interface RegenerateOutfitPayload {
   modelHeight?: string;
   modelGender?: string;
   styleId: string;
+  brandStyleId: string;
   /** Brand price point (value | mid-market | premium | luxury) — shapes production quality cue in prompt. */
   pricePoint?: string;
   /** Brand energy (minimal | accessible | editorial | premium | street | athletic) — shapes mood/tone cue in prompt. */
@@ -63,6 +69,7 @@ interface RegenerateOutfitPayload {
   /** Primary category (womenswear | menswear | unisex | activewear | streetwear | formalwear | other) — shapes category context in prompt. */
   primaryCategory?: string;
   allowedPoses: string[];
+  generationRequestId?: string;
   creditReservation?: {
     reservationDescription: string;
     refundDescription: string;
@@ -283,23 +290,24 @@ function extractBase64(response: {
   throw new Error('No image returned from Gemini.');
 }
 
-function appendUserDirection(prompt: string, userDirection: string | undefined): string {
-  if (!userDirection?.trim()) return prompt;
-  return `${prompt}\n\nUser direction: ${userDirection.trim()}`;
-}
-
 function appendScopedRegenerationDirection(
   prompt: string,
   targetPose: RegeneratePose | null,
   userDirection: string | undefined,
 ): string {
-  if (!targetPose) return appendUserDirection(prompt, userDirection);
+  const intentBlock = buildRegenerationIntentPromptBlock({
+    userDirection,
+    targetPoses: targetPose ? [targetPose] : null,
+  });
+  if (!intentBlock) return prompt;
 
   const scopeInstruction =
-    `Scoped regeneration: replace only the ${targetPose} image. ` +
-    'Preserve garment color, graphics, text, fit, model identity, styling continuity, lighting, and all non-target images unless the user explicitly asks for a safe visual adjustment.';
+    targetPose
+      ? `Scoped regeneration: replace only the ${targetPose} image. ` +
+        'Preserve garment color, graphics, text, fit, model identity, styling continuity, lighting, and all non-target images unless the user explicitly asks for a safe visual adjustment.'
+      : 'Full-set regeneration: update the generated set while preserving the merchant product exactly and keeping the front, three-quarter, and back outputs consistent.';
 
-  return appendUserDirection(`${prompt}\n\n${scopeInstruction}`, userDirection);
+  return `${prompt}\n\n${scopeInstruction}\n\n${intentBlock}`;
 }
 
 // ── Task ──────────────────────────────────────────────────────────────────────
@@ -354,6 +362,11 @@ export const regenerateOutfitTask = task({
         },
       })
       .catch(() => {});
+    await markOutfitGenerationRequestFailed({
+      generationRequestId: payload.generationRequestId,
+      shopId: payload.shopId,
+      failureReason: errorMessage,
+    }).catch(() => undefined);
   },
 
   run: async (payload: RegenerateOutfitPayload) => {
@@ -365,6 +378,7 @@ export const regenerateOutfitTask = task({
       modelHeight,
       modelGender,
       styleId,
+      brandStyleId,
       pricePoint,
       brandEnergy,
       primaryCategory,
@@ -390,7 +404,6 @@ export const regenerateOutfitTask = task({
         cleanFlatLayUrl: true,
         cleanBackFlatLayUrl: true,
         garmentSpec: true,
-        brandStyleId: true,
         videoStatus: true,
         videoJobId: true,
         images: {
@@ -463,7 +476,7 @@ export const regenerateOutfitTask = task({
     const normalizedModelB64 = normalizedModelBuffer.toString('base64');
 
     const stylingDir =
-      BRAND_STYLE_PRESETS.find((p) => p.id === outfit.brandStyleId) ??
+      BRAND_STYLE_PRESETS.find((p) => p.id === brandStyleId) ??
       BRAND_STYLE_PRESETS[0];
     // backdropSnippet is now driven by the brand style; stylePreset kept as fallback only
     const stylePreset = PDP_STYLE_PRESETS.find((p) => p.id === styleId) ?? PDP_STYLE_PRESETS[0];
@@ -825,6 +838,10 @@ export const regenerateOutfitTask = task({
     logTaskLifecycle('task.completed', payload, {
       completedPoses: newImages.map((image) => image.pose),
     });
+    await markOutfitGenerationRequestCompleted({
+      generationRequestId: payload.generationRequestId,
+      shopId,
+    }).catch(() => undefined);
     return { outfitId, status: 'completed' };
   },
 });

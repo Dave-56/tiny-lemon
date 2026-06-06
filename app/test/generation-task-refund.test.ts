@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   outfitUpdate: vi.fn(),
   refundReservedGeneration: vi.fn(),
   logServerEvent: vi.fn(),
+  markOutfitGenerationRequestCompleted: vi.fn(),
+  markOutfitGenerationRequestFailed: vi.fn(),
 }));
 
 const IMAGE_SERVICE_CAPACITY_MESSAGE = mocks.capacityMessage;
@@ -36,6 +38,11 @@ vi.mock('../lib/billing.server', () => ({
 
 vi.mock('../lib/observability.server', () => ({
   logServerEvent: mocks.logServerEvent,
+}));
+
+vi.mock('../lib/outfitGenerationRequests.server', () => ({
+  markOutfitGenerationRequestCompleted: mocks.markOutfitGenerationRequestCompleted,
+  markOutfitGenerationRequestFailed: mocks.markOutfitGenerationRequestFailed,
 }));
 
 vi.mock('../lib/flatLayCleanup', () => ({
@@ -141,6 +148,8 @@ describe('generation task capacity refunds', () => {
     mocks.outfitFindFirst.mockResolvedValue({ errorMessage: null });
     mocks.outfitUpdate.mockResolvedValue({});
     mocks.refundReservedGeneration.mockResolvedValue(true);
+    mocks.markOutfitGenerationRequestCompleted.mockResolvedValue(undefined);
+    mocks.markOutfitGenerationRequestFailed.mockResolvedValue(undefined);
   });
 
   it('refunds generate credits when final failure is provider capacity', async () => {
@@ -153,6 +162,7 @@ describe('generation task capacity refunds', () => {
         styleId: 'white-studio',
         brandStyleId: 'minimal',
         allowedPoses: ['front'],
+        generationRequestId: 'generation-request-1',
         creditReservation,
       },
       error: new Error(IMAGE_SERVICE_CAPACITY_MESSAGE),
@@ -169,6 +179,12 @@ describe('generation task capacity refunds', () => {
         errorMessage:
           'AI image generation provider is temporarily unavailable. This attempt was not counted. Please try again shortly.',
       },
+    });
+    expect(mocks.markOutfitGenerationRequestFailed).toHaveBeenCalledWith({
+      generationRequestId: 'generation-request-1',
+      shopId: 'shop-a.myshopify.com',
+      failureReason:
+        'AI image generation provider is temporarily unavailable. This attempt was not counted. Please try again shortly.',
     });
   });
 
@@ -322,7 +338,9 @@ describe('generation task capacity refunds', () => {
         shopId: 'shop-a.myshopify.com',
         modelImageUrl: 'https://blob.example/model.png',
         styleId: 'white-studio',
+        brandStyleId: 'minimal',
         allowedPoses: ['front'],
+        generationRequestId: 'generation-request-2',
         creditReservation: regenerateReservation,
       },
       error: new Error(IMAGE_SERVICE_CAPACITY_MESSAGE),
@@ -332,6 +350,12 @@ describe('generation task capacity refunds', () => {
       'shop-a.myshopify.com',
       regenerateReservation,
     );
+    expect(mocks.markOutfitGenerationRequestFailed).toHaveBeenCalledWith({
+      generationRequestId: 'generation-request-2',
+      shopId: 'shop-a.myshopify.com',
+      failureReason:
+        'AI image generation provider is temporarily unavailable. This attempt was not counted. Please try again shortly.',
+    });
   });
 
   it('refunds regenerate credits when graphic fidelity validation fails', async () => {
@@ -346,6 +370,7 @@ describe('generation task capacity refunds', () => {
         shopId: 'shop-a.myshopify.com',
         modelImageUrl: 'https://blob.example/model.png',
         styleId: 'white-studio',
+        brandStyleId: 'minimal',
         allowedPoses: ['front'],
         creditReservation: regenerateReservation,
       },

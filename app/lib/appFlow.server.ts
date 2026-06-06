@@ -4,9 +4,8 @@ type AppFlowState = {
   onboardingCompleted: boolean;
 };
 
-const SETUP_PATHS = new Set([
+const POST_SETUP_REDIRECT_PATHS = new Set([
   "/app/beta-welcome",
-  "/app/beta-intake",
   "/app/onboarding",
 ]);
 
@@ -16,10 +15,13 @@ export function getAppFlowRedirect(state: AppFlowState): string | null {
   }
 
   if (!state.onboardingCompleted) {
-    return state.pathname === "/app/onboarding" ? null : "/app/onboarding";
+    return state.pathname === "/app/onboarding" ||
+      state.pathname === "/app/beta-intake"
+      ? null
+      : "/app/onboarding";
   }
 
-  if (SETUP_PATHS.has(state.pathname)) {
+  if (POST_SETUP_REDIRECT_PATHS.has(state.pathname)) {
     return "/app/dress-model";
   }
 

@@ -171,13 +171,13 @@ Tasks:
 - [x] Ensure single-image regeneration replaces only the selected `GeneratedImage` row and leaves the other pose images intact.
 - [x] Apply user custom instructions only to the selected target pose(s), not globally to every generated image.
 - [x] Default custom instructions to product preservation: keep garment color, graphics, text, fit, model identity, and non-target poses unchanged unless explicitly requested.
-- [ ] Add a prompt intent normalizer that converts user text into a safe structured regeneration intent: target image(s), edit subject, normalized instruction, preservation rules, risk level, and whether clarification is needed.
+- [x] Add a prompt intent normalizer that converts user text into a safe structured regeneration intent: target image(s), edit subject, normalized instruction, preservation rules, risk level, and whether clarification is needed.
 - [ ] Avoid a chatty back-and-forth; only ask for confirmation when the instruction could change the actual product, remove/alter graphics, alter model identity, or otherwise destroy accuracy.
 - [x] Add a small UI scope summary before submit or in the regenerate modal, such as "Applies to: Front only - Product details preserved."
 - [x] If an outfit is already synced to Shopify, mark Shopify sync stale after a single-image regeneration.
 - [x] Preserve existing video behavior intentionally: either clear stale video on source-image change or label it as based on the previous image set.
 - [ ] Add tests for single-pose regeneration success, failure, refund/credit behavior, and stale Shopify sync marking.
-- [ ] Add tests proving vague background/lighting instructions preserve garment graphics and product details by default.
+- [x] Add tests proving vague background/lighting instructions preserve garment graphics and product details by default.
 - [ ] Update customer follow-up copy to acknowledge all three product asks and share which are planned vs already available.
 
 Implementation note:

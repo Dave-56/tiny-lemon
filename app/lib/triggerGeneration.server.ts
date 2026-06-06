@@ -26,6 +26,11 @@ import {
 } from "./triggerJobs.server";
 import { getUserFacingGenerationError } from "./generationErrors.server";
 import type { RegeneratePose } from "./regeneratePoses";
+import {
+  createOutfitGenerationRequest,
+  markOutfitGenerationRequestEnqueued,
+  markOutfitGenerationRequestFailed,
+} from "./outfitGenerationRequests.server";
 
 export type TriggerGenerationBody = {
   skuName?: string;
@@ -246,6 +251,7 @@ export async function handleTriggerGeneration(
   const reservation = createReservationContext("generate", modelId);
   let idempotencyClaim: OwnedRequestClaim | null = null;
   let requestKey: string | null = null;
+  let generationRequestId: string | null = null;
   let reservedCredit = false;
   let enqueueSucceeded = false;
 
@@ -355,6 +361,24 @@ export async function handleTriggerGeneration(
         shopifyProductCreatedByApp: false,
       },
     });
+    const generationRequest = await createOutfitGenerationRequest({
+      shopId,
+      outfitId: outfit.id,
+      operation: "generate",
+      merchantDirection: generationDirection,
+      frontDescription,
+      backDescription,
+      targetPoses: [],
+      resolvedPoses: allowedPoses,
+      modelId: resolvedModel.modelId,
+      brandStyleId,
+      brandEnergy: brandStyleRecord?.brandEnergy ?? null,
+      pricePoint: brandStyleRecord?.pricePoint ?? null,
+      primaryCategory: brandStyleRecord?.primaryCategory ?? null,
+      requestKey,
+      runToken: idempotencyClaim.runToken,
+    });
+    generationRequestId = generationRequest.id;
 
     const frontExt = frontMime === "image/jpeg" ? "jpg" : "png";
     const rawFrontUrl = await uploadBufferToBlob(
@@ -395,6 +419,7 @@ export async function handleTriggerGeneration(
       brandEnergy: brandStyleRecord?.brandEnergy ?? undefined,
       primaryCategory: brandStyleRecord?.primaryCategory ?? undefined,
       allowedPoses,
+      generationRequestId,
       creditReservation: {
         reservationDescription: reservation.reservationDescription,
         refundDescription: reservation.providerCapacityRefundDescription,
@@ -414,6 +439,18 @@ export async function handleTriggerGeneration(
         outfitId: outfit.id,
       });
     }
+    await markOutfitGenerationRequestEnqueued({
+      generationRequestId,
+      shopId,
+      jobId: handle.id,
+    }).catch((error) => {
+      logServerEvent("warn", "trigger_generation.request_enqueued_lifecycle_lost", {
+        shopId,
+        outfitId: outfit.id,
+        generationRequestId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
     logServerEvent("info", "trigger_generation.fresh_enqueue", {
       shopId,
       outfitId: outfit.id,
@@ -437,6 +474,13 @@ export async function handleTriggerGeneration(
         requestKey,
         runToken: idempotencyClaim.runToken,
       }).catch(() => false);
+    }
+    if (generationRequestId && !enqueueSucceeded) {
+      await markOutfitGenerationRequestFailed({
+        generationRequestId,
+        shopId,
+        failureReason: userMessage || message || "Server error",
+      }).catch(() => undefined);
     }
     if (reservedCredit && !enqueueSucceeded) {
       const refunded = await refundReservedGeneration(shopId, {
@@ -523,6 +567,7 @@ export async function handleRegenerateOutfit(
   const scopedTargetPose = scopedTargetPoses?.[0];
   let idempotencyClaim: OwnedRequestClaim | null = null;
   let requestKey: string | null = null;
+  let generationRequestId: string | null = null;
   let reservedCredit = false;
   let reservedFreeAllowancePose: RegeneratePose | null = null;
   let enqueueSucceeded = false;
@@ -623,6 +668,23 @@ export async function handleRegenerateOutfit(
     });
     const styleId = "white-studio";
     const allowedPoses = resolveAllowedPoses(entitlements);
+    const resolvedPoses = scopedTargetPoses?.length ? scopedTargetPoses : allowedPoses;
+    const generationRequest = await createOutfitGenerationRequest({
+      shopId,
+      outfitId,
+      operation: "regenerate",
+      merchantDirection: normalizedUserDirection,
+      targetPoses: scopedTargetPoses ?? [],
+      resolvedPoses,
+      modelId: outfit.modelId,
+      brandStyleId: outfit.brandStyleId,
+      brandEnergy: brandStyle?.brandEnergy ?? null,
+      pricePoint: brandStyle?.pricePoint ?? null,
+      primaryCategory: brandStyle?.primaryCategory ?? null,
+      requestKey,
+      runToken: idempotencyClaim.runToken,
+    });
+    generationRequestId = generationRequest.id;
 
     await prisma.outfit.update({
       where: { id: outfitId, shopId },
@@ -638,10 +700,12 @@ export async function handleRegenerateOutfit(
       modelHeight: model.modelHeight,
       modelGender: model.modelGender,
       styleId,
+      brandStyleId: outfit.brandStyleId,
       pricePoint: brandStyle?.pricePoint ?? undefined,
       brandEnergy: brandStyle?.brandEnergy ?? undefined,
       primaryCategory: brandStyle?.primaryCategory ?? undefined,
       allowedPoses,
+      generationRequestId,
       creditReservation: reservedCredit
         ? {
             reservationDescription: reservation.reservationDescription,
@@ -666,6 +730,18 @@ export async function handleRegenerateOutfit(
         outfitId,
       });
     }
+    await markOutfitGenerationRequestEnqueued({
+      generationRequestId,
+      shopId,
+      jobId: handle.id,
+    }).catch((error) => {
+      logServerEvent("warn", "regenerate_outfit.request_enqueued_lifecycle_lost", {
+        shopId,
+        outfitId,
+        generationRequestId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
     logServerEvent("info", "regenerate_outfit.fresh_enqueue", {
       shopId,
       outfitId,
@@ -689,6 +765,13 @@ export async function handleRegenerateOutfit(
         requestKey,
         runToken: idempotencyClaim.runToken,
       }).catch(() => false);
+    }
+    if (generationRequestId && !enqueueSucceeded) {
+      await markOutfitGenerationRequestFailed({
+        generationRequestId,
+        shopId,
+        failureReason: userMessage || message || "Server error",
+      }).catch(() => undefined);
     }
     if (reservedCredit && !enqueueSucceeded) {
       const refunded = await refundReservedGeneration(shopId, {

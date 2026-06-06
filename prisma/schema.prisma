@@ -44,12 +44,20 @@ model Shop {
   betaWelcomeCompleted    Boolean        @default(false)
   betaIntakeCompleted     Boolean        @default(false)
   betaOnboardingCompleted Boolean        @default(false)
+  contactEmail            String?
   storeUrl                String?
   catalogType             String?
   skuVolume               String?
   photoWorkflow           String?
   biggestPain             String?
   intendedUseCase         String?
+  launchStage             String?
+  shootGoal               String?
+  heroProductFocus        String?
+  stylingSupport          String?
+  graphicSensitivity      String?
+  outputChannels          String[]       @default([])
+  intakeNotes             String?
   betaFeedback            BetaFeedback[]
 
   outfits       Outfit[]
@@ -58,6 +66,7 @@ model Shop {
   creditBalance CreditBalance?
   transactions  CreditTransaction[]
   requestIdempotencies RequestIdempotency[]
+  outfitGenerationRequests OutfitGenerationRequest[]
   singleImageRegenerationAllowances SingleImageRegenerationAllowance[]
 }
 
@@ -129,9 +138,45 @@ model Outfit {
 
   shop   Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
   images GeneratedImage[]
+  generationRequests OutfitGenerationRequest[]
   singleImageRegenerationAllowances SingleImageRegenerationAllowance[]
 
   @@index([shopId, deletedAt, createdAt])
+}
+
+model OutfitGenerationRequest {
+  id                String    @id @default(cuid())
+  shopId            String
+  outfitId          String
+  operation         String    // generate | regenerate
+  merchantDirection String?
+  frontDescription  String?
+  backDescription   String?
+  targetPoses       String[]  @default([])
+  resolvedPoses     String[]  @default([])
+  modelId           String
+  brandStyleId      String
+  brandEnergy       String?
+  pricePoint        String?
+  primaryCategory   String?
+  requestKey        String
+  runToken          String
+  jobId             String?
+  status            String    @default("pending") // pending | enqueued | completed | failed
+  failureReason     String?
+  createdAt         DateTime  @default(now())
+  enqueuedAt        DateTime?
+  completedAt       DateTime?
+  failedAt          DateTime?
+  updatedAt         DateTime  @updatedAt
+
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  outfit Outfit @relation(fields: [outfitId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, operation, requestKey, runToken])
+  @@index([shopId, status, createdAt])
+  @@index([outfitId, createdAt])
+  @@index([jobId])
 }
 
 model SingleImageRegenerationAllowance {

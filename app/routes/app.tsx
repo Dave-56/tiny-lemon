@@ -1,5 +1,5 @@
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { Link, Outlet, useLoaderData, useRouteError } from "react-router";
+import { Link, Outlet, useLoaderData, useLocation, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 
@@ -64,6 +64,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export default function App() {
+  const location = useLocation();
   const {
     apiKey,
     shop,
@@ -74,17 +75,19 @@ export default function App() {
     showUpgradePrompt,
     supportEmail,
   } = useLoaderData<typeof loader>();
+  const appHref = (path: string) => `${path}${location.search}`;
 
   return (
     <AppProvider embedded apiKey={apiKey}>
       <AuthenticatedFetchProvider>
       <PendingItemsProvider>
       <s-app-nav>
-        <s-link href="/app/dress-model">Dress model</s-link>
-        <s-link href="/app/outfits">Outfits</s-link>
-        <s-link href="/app/model-builder">Model builder</s-link>
-        <s-link href="/app/brand-style">Brand style</s-link>
-        {!isBeta && <s-link href="/app/billing">Billing</s-link>}
+        <s-link href={appHref("/app/dress-model")}>Dress model</s-link>
+        <s-link href={appHref("/app/outfits")}>Outfits</s-link>
+        <s-link href={appHref("/app/model-builder")}>Model builder</s-link>
+        <s-link href={appHref("/app/brand-style")}>Brand style</s-link>
+        <s-link href={appHref("/app/beta-intake")}>Store profile</s-link>
+        {!isBeta && <s-link href={appHref("/app/billing")}>Billing</s-link>}
       </s-app-nav>
 
       {/* Usage counter — rendered outside s-app-nav to avoid App Bridge conflicts */}
@@ -96,7 +99,7 @@ export default function App() {
         )}
         <span className={used >= limit ? "text-red-500 font-medium" : ""}>{used}/{limit} generations this month</span>
         {used >= limit && showUpgradePrompt ? (
-          <Link to="/app/billing" className="text-red-500 underline underline-offset-2 font-medium">
+          <Link to={appHref("/app/billing")} className="text-red-500 underline underline-offset-2 font-medium">
             Upgrade to continue →
           </Link>
         ) : used >= limit && isBeta ? (
@@ -107,7 +110,7 @@ export default function App() {
             Contact us for more access
           </a>
         ) : plan === "free" && showUpgradePrompt ? (
-          <Link to="/app/billing" className="text-krea-accent underline underline-offset-2">
+          <Link to={appHref("/app/billing")} className="text-krea-accent underline underline-offset-2">
             Upgrade
           </Link>
         ) : null}
