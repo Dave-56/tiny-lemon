@@ -1174,6 +1174,10 @@ export default function DressModel() {
           posthog.capture("generation_triggered", {
             shop,
             skuName: item.skuName,
+            hasStylingNotes: generationDirection.trim().length > 0,
+            stylingNotesLength: generationDirection.trim().length,
+            uploadedItemCount: pending.length,
+            shootStyleId,
           });
           if (isBeta && !firstGenerationTriggeredRef.current) {
             firstGenerationTriggeredRef.current = true;
@@ -1597,15 +1601,15 @@ export default function DressModel() {
                     {item.quality === "warn" && item.status === "pending" && (
                       <p className="text-[10px] text-yellow-600 flex items-center gap-1 px-1">
                         <AlertTriangle className="w-3 h-3 flex-shrink-0" />
-                        We’re not sure this is one garment. You can still
-                        generate, or upload a clearer product photo.
+                        We couldn’t fully verify this product photo. You can
+                        still generate, or upload a clearer image.
                       </p>
                     )}
                     {item.quality === "fail" && item.status === "pending" && (
                       <p className="text-[10px] text-red-500 flex items-center gap-1 px-1">
                         <XCircle className="w-3 h-3 flex-shrink-0" />
-                        Multiple or no garments detected. Use one garment
-                        product photo.
+                        No apparel was detected. Upload a product photo with
+                        the clothing clearly visible.
                       </p>
                     )}
                     {item.status === "error" && item.error && (

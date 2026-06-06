@@ -112,6 +112,49 @@ describe("AuthenticatedFetchContext", () => {
     await expect(res.json()).resolves.toEqual({ error: SESSION_EXPIRED_MESSAGE });
   });
 
+  it("retries once with a fresh token before treating unauthorized responses as expired sessions", async () => {
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response("nope", {
+          status: 401,
+          headers: { "Content-Type": "text/plain" },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+    mockIdToken
+      .mockResolvedValueOnce("stale-session-token")
+      .mockResolvedValueOnce("fresh-session-token");
+
+    let capturedFetch: (url: string, init?: RequestInit) => Promise<Response>;
+    render(
+      <AuthenticatedFetchProvider>
+        <Consumer
+          onFetch={(fn) => {
+            capturedFetch = fn;
+          }}
+        />
+      </AuthenticatedFetchProvider>
+    );
+    await screen.findByText("Consumer");
+
+    const res = await capturedFetch!("/app/outfits", { method: "POST" });
+
+    expect(res.status).toBe(200);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    const firstHeaders = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[0][1].headers as Headers;
+    const secondHeaders = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[1][1].headers as Headers;
+    expect(firstHeaders.get("Authorization")).toBe("Bearer stale-session-token");
+    expect(secondHeaders.get("Authorization")).toBe("Bearer fresh-session-token");
+  });
+
   it("treats redirected HTML responses as expired sessions", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,

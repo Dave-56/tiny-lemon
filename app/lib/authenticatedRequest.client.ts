@@ -1,6 +1,7 @@
 import posthog from "posthog-js";
 
-export const SESSION_EXPIRED_MESSAGE = "Session expired — please refresh the page.";
+export const SESSION_EXPIRED_MESSAGE =
+  "Shopify needs to reconnect before this action. Refresh the page, then try again.";
 
 type AuthEventName =
   | "auth_request_token_fallback"
@@ -73,19 +74,33 @@ export async function fetchWithShopifyAuth({
   init = {},
 }: FetchWithShopifyAuthArgs): Promise<Response> {
   const path = toPath(input);
-  const headers = new Headers(init.headers);
 
-  try {
-    const token = await getToken();
-    headers.set("Authorization", `Bearer ${token}`);
-  } catch (error) {
-    trackAuthEvent("auth_request_token_fallback", {
-      path,
-      error: error instanceof Error ? error.message : String(error),
-    });
+  async function headersWithFreshToken() {
+    const headers = new Headers(init.headers);
+    try {
+      const token = await getToken();
+      headers.set("Authorization", `Bearer ${token}`);
+    } catch (error) {
+      trackAuthEvent("auth_request_token_fallback", {
+        path,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return headers;
   }
 
-  const response = await fetch(input, { ...init, headers });
+  let response = await fetch(input, {
+    ...init,
+    headers: await headersWithFreshToken(),
+  });
+  if (!shouldTreatAsSessionExpiry(response)) {
+    return response;
+  }
+
+  response = await fetch(input, {
+    ...init,
+    headers: await headersWithFreshToken(),
+  });
   if (!shouldTreatAsSessionExpiry(response)) {
     return response;
   }

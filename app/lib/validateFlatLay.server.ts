@@ -151,14 +151,14 @@ export async function validateFlatLayServer(
   }
 
   const ai = new GoogleGenAI({ apiKey });
-  const prompt = `You will be shown a product photo image. Task: determine how many distinct garments are present.
+  const prompt = `You will be shown a product photo image. Task: determine how many distinct apparel products are present.
 
 Rules:
 - A single shirt, dress, jacket, blazer, coat, pants, skirt, or similar garment counts as 1.
+- A coordinated outfit set, such as a top with pants or a top with skirt, is valid and should count as the number of visible apparel products.
 - The garment may be flat, hanging on a hanger, clipped, on a rail, on a mannequin, or photographed against any background.
 - Ignore hangers, clips, rails, hooks, tags, shadows, lapels, sleeves, lining, pockets, buttons, belts attached to the garment, and overlapping panels. These are not extra garments.
 - A blazer/jacket/coat with two sleeves, two lapels, an open front, visible lining, or double-breasted panels still counts as exactly 1 garment.
-- Count > 1 only when there are multiple distinct clothing products, such as a top and pants, a jacket plus a shirt, a full outfit on a person, or several separate garments laid together.
 - If no garment is visible, count = 0.
 
 Output: Only respond with strict JSON and nothing else in this exact shape:
@@ -266,22 +266,12 @@ export function classifyGarmentCount({
 }): Pick<FlatLayValidation, 'quality' | 'reasons'> {
   const reasons: string[] = [];
 
-  if (count === 1) {
+  if (count != null && count >= 1) {
     return { quality: 'good' };
   }
 
   if (count === 0) {
     reasons.push('no_garment');
-    if ((confidence ?? 0) >= STRICT_FAIL_CONFIDENCE_MIN) {
-      return { quality: 'fail', reasons };
-    }
-    reasons.push('low_confidence');
-    reasons.sort(reasonPrecedence);
-    return { quality: 'warn', reasons };
-  }
-
-  if (count != null && count > 1) {
-    reasons.push('multiple_garments');
     if ((confidence ?? 0) >= STRICT_FAIL_CONFIDENCE_MIN) {
       return { quality: 'fail', reasons };
     }

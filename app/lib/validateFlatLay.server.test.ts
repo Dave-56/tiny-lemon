@@ -8,17 +8,15 @@ describe("classifyGarmentCount", () => {
     });
   });
 
-  it("warns instead of hard-failing ambiguous multiple-garment reads", () => {
+  it("accepts multiple-garment outfit sets", () => {
     expect(classifyGarmentCount({ count: 2, confidence: 0.6 })).toEqual({
-      quality: "warn",
-      reasons: ["multiple_garments", "low_confidence"],
+      quality: "good",
     });
   });
 
-  it("fails confident multiple-garment reads", () => {
+  it("accepts confident multiple-garment outfit sets", () => {
     expect(classifyGarmentCount({ count: 2, confidence: 0.9 })).toEqual({
-      quality: "fail",
-      reasons: ["multiple_garments"],
+      quality: "good",
     });
   });
 
