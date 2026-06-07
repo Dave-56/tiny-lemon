@@ -1,5 +1,6 @@
 ---
 title: "Best Botika Alternatives for Shopify Fashion Brands"
+seoTitle: "Botika Alternatives for Shopify Fashion"
 slug: "best-botika-alternatives-for-shopify-fashion-brands"
 date: "2026-06-06"
 updated: "2026-06-06"

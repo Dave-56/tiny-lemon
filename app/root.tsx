@@ -1,13 +1,26 @@
-import { Links, Meta, Outlet, Scripts, ScrollRestoration, useLocation } from "react-router";
+import type { LoaderFunctionArgs } from "react-router";
+import { Links, Meta, Outlet, Scripts, ScrollRestoration, redirect, useLocation } from "react-router";
 import { Analytics, type BeforeSendEvent } from "@vercel/analytics/react";
 import appCss from "./app.css?url";
 import { isAnalyticsOptedOut } from "./lib/analyticsOptOut";
+import { SITE_URL } from "./lib/seo";
 
 const AHREFS_ANALYTICS_KEY = "kV62qS89ENNF8VlsJaEZog";
+const LEGACY_VERCEL_HOSTS = new Set(["tinylemon.vercel.app"]);
 
 export function links() {
   return [{ rel: "stylesheet", href: appCss }];
 }
+
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const url = new URL(request.url);
+
+  if (LEGACY_VERCEL_HOSTS.has(url.hostname)) {
+    throw redirect(`${SITE_URL}${url.pathname}${url.search}`, 301);
+  }
+
+  return null;
+};
 
 export default function App() {
   const { pathname } = useLocation();

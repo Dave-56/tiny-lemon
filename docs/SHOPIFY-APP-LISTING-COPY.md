@@ -2,7 +2,7 @@
 
 Use this doc to fill the fields you have info for. Replace placeholders where noted.
 
-**Base URL:** `https://tinylemon.vercel.app`
+**Base URL:** `https://tinylemon.xyz`
 
 ---
 
@@ -54,7 +54,7 @@ Stop waiting on photoshoots. Upload a flat-lay from your factory or supplier and
 ### Demo store URL (optional)
 
 ```
-https://tinylemon.vercel.app/try
+https://tinylemon.xyz/try
 ```
 *(Free try flow; no Shopify install required to see the demo.)*
 
@@ -84,7 +84,7 @@ Leave blank, or add e.g. **Vercel** if you want to mention hosting. Do not list 
 |-------|--------|
 | **Preferred support channel** | Support email (or Support portal if you add one) |
 | **Support email address** | *You fill: e.g. support@tinylemon.com or your preferred address* |
-| **Support portal URL** | Optional: e.g. `https://tinylemon.vercel.app` or a help URL |
+| **Support portal URL** | Optional: e.g. `https://tinylemon.xyz` or a help URL |
 | **Support phone** | Optional |
 
 ---
@@ -93,9 +93,9 @@ Leave blank, or add e.g. **Vercel** if you want to mention hosting. Do not list 
 
 | Field | Value |
 |-------|--------|
-| **Privacy policy URL** | `https://tinylemon.vercel.app/privacy` |
-| **Developer website** | `https://tinylemon.vercel.app` |
-| **Pricing (more info)** | `https://tinylemon.vercel.app/pricing` |
+| **Privacy policy URL** | `https://tinylemon.xyz/privacy` |
+| **Developer website** | `https://tinylemon.xyz` |
+| **Pricing (more info)** | `https://tinylemon.xyz/pricing` |
 | FAQ / Changelog / Tutorial / Additional docs | Optional; add if you have URLs |
 
 ---
@@ -111,7 +111,7 @@ Leave blank, or add e.g. **Vercel** if you want to mention hosting. Do not list 
 | 3 | **Growth** | 100 generations/month, detail + flat lay, 2 brand styles, priority queue. |
 | 4 | **Scale** | 300 generations/month, full set + lifestyle, unlimited models, credit rollover. |
 
-**Optional URL for more pricing info:** `https://tinylemon.vercel.app/pricing`
+**Optional URL for more pricing info:** `https://tinylemon.xyz/pricing`
 
 ---
 

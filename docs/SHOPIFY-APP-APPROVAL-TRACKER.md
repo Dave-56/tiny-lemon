@@ -23,7 +23,7 @@ Succinct checklist for submitting **tiny-lemon** to the Shopify App Store.
 |-------------|--------|--------|
 | Emergency contact (email + phone) | ⬜ | Set in Partner Dashboard / app configuration |
 | App icon 1200×1200 (JPEG or PNG) | ⬜ | In app configuration |
-| Application URL (no “Shopify” or “Example”) | ✅ | `https://tinylemon.vercel.app` |
+| Application URL (no “Shopify” or “Example”) | ✅ | `https://tinylemon.xyz` |
 | API contact email (no “Shopify”) | ⬜ | Set in app configuration |
 | Compliance webhooks subscribed | 🔶 | Handlers exist; must be **registered in `shopify.app.toml`** (see below) |
 

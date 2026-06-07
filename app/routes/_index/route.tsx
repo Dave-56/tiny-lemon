@@ -3,7 +3,7 @@ import { redirect, Link, useLoaderData } from "react-router";
 
 import { BeforeAfterSlider } from "../../components/BeforeAfterSlider";
 import { SHOPIFY_APP_STORE_URL } from "../../lib/shopifyAppStoreUrl";
-import { buildSeoMeta } from "../../lib/seo";
+import { SITE_URL, buildSeoMeta } from "../../lib/seo";
 import { BETA_LAUNCH_GENERATION_CAP } from "../../lib/planConstants";
 import {
   trackShopifyAppStoreClick,
@@ -83,13 +83,12 @@ export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const title = "Tiny Lemon Shopify App for AI Model Photos & Video";
   const description =
     `Tiny Lemon turns flat-lay and supplier photos into AI model photos and short product videos for Shopify fashion listings. Early merchants can get up to ${BETA_LAUNCH_GENERATION_CAP} free launch generations.`;
-  const origin = data?.origin ?? "https://tinylemon.xyz";
   const installUrl = data?.installUrl ?? SHOPIFY_APP_STORE_URL;
   return buildSeoMeta({
     title,
     description,
     path: "/",
-    extra: [{ "script:ld+json": getStructuredData(origin, installUrl) }],
+    extra: [{ "script:ld+json": getStructuredData(SITE_URL, installUrl) }],
   });
 };
 
@@ -101,8 +100,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   const installUrl = SHOPIFY_APP_STORE_URL;
-  const origin = new URL(request.url).origin;
-  return { hasInstallUrl: Boolean(installUrl), installUrl, origin };
+  return { hasInstallUrl: Boolean(installUrl), installUrl };
 };
 
 export default function LandingPage() {

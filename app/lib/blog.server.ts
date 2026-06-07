@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from "fs";
 import { join } from "path";
 import { marked } from "marked";
+import { SITE_URL } from "./seo";
 
 const BLOG_DIR = join(process.cwd(), "content", "blog");
 
@@ -18,14 +19,8 @@ export type BlogPost = {
   bodyHtml: string;
 };
 
-export function getSiteBaseUrl(request: Request): string {
-  const configuredUrl =
-    process.env.SHOPIFY_APP_URL ||
-    process.env.VERCEL_PROJECT_PRODUCTION_URL ||
-    process.env.VERCEL_URL;
-  const fallbackUrl = new URL(request.url).origin;
-  const baseUrl = configuredUrl || fallbackUrl;
-  return baseUrl.startsWith("http") ? baseUrl : `https://${baseUrl}`;
+export function getSiteBaseUrl(_request?: Request): string {
+  return SITE_URL;
 }
 
 function parseFrontmatter(raw: string): { frontmatter: Record<string, string>; body: string } {

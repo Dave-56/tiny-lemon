@@ -10,8 +10,8 @@ function escapeXml(s: string): string {
     .replace(/'/g, "&apos;");
 }
 
-export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const baseUrl = getSiteBaseUrl(request);
+export const loader = async ({ request: _request }: LoaderFunctionArgs) => {
+  const baseUrl = getSiteBaseUrl();
   const slugs = getBlogSlugs();
   const urls: string[] = [
     "",
