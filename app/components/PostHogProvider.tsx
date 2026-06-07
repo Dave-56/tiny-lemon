@@ -1,27 +1,24 @@
 import { useEffect } from 'react';
-import posthog from 'posthog-js';
-
-const SENSITIVE_REPLAY_SELECTOR = [
-  "[data-ph-no-capture]",
-  ".ph-no-capture",
-  "[data-sensitive-media]",
-  ".sensitive-media",
-].join(",");
+import { useLocation } from "react-router";
+import {
+  captureTinyLemonPageview,
+  identifyTinyLemonShop,
+} from "../lib/posthog";
 
 export function PostHogProvider({ shop, plan }: { shop: string; plan: string }) {
+  const location = useLocation();
+
   useEffect(() => {
-    posthog.init(import.meta.env.VITE_POSTHOG_KEY as string, {
-      api_host: 'https://us.i.posthog.com',
-      persistence: 'localStorage+cookie',
-      disable_session_recording: false,
-      session_recording: {
-        maskAllInputs: true,
-        maskTextSelector: "[data-ph-mask-text], .ph-mask-text",
-        blockSelector: SENSITIVE_REPLAY_SELECTOR,
-      },
-    });
-    posthog.identify(shop, { plan, app: "tiny-lemon" });
+    identifyTinyLemonShop(shop, { plan, app: "tiny-lemon", surface: "app" });
   }, [shop, plan]);
+
+  useEffect(() => {
+    captureTinyLemonPageview({
+      surface: "app",
+      path: location.pathname,
+      search: location.search || null,
+    });
+  }, [location.pathname, location.search]);
 
   return null;
 }

@@ -1,5 +1,6 @@
 import { track } from "@vercel/analytics/react";
 import { isAnalyticsOptedOut } from "./analyticsOptOut";
+import { trackGoogleAnalyticsEvent } from "./googleAnalytics";
 
 type MarketingEventName =
   | "app_store_link_clicked"
@@ -31,6 +32,10 @@ export function trackMarketingEvent(
     }
 
     track(name, {
+      path: window.location.pathname,
+      ...properties,
+    });
+    trackGoogleAnalyticsEvent(name, {
       path: window.location.pathname,
       ...properties,
     });

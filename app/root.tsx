@@ -1,6 +1,7 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { Links, Meta, Outlet, Scripts, ScrollRestoration, redirect, useLocation } from "react-router";
 import { Analytics, type BeforeSendEvent } from "@vercel/analytics/react";
+import { GoogleAnalytics } from "./components/GoogleAnalytics";
 import appCss from "./app.css?url";
 import { isAnalyticsOptedOut } from "./lib/analyticsOptOut";
 import { SITE_URL } from "./lib/seo";
@@ -56,6 +57,7 @@ export default function App() {
         )}
       </head>
       <body>
+        <GoogleAnalytics enabled={!isAppRoute} />
         <Outlet />
         <ScrollRestoration />
         <Scripts />
