@@ -29,10 +29,10 @@ export function initGoogleAnalytics() {
     return true;
   }
 
-  window.gtag("js", new Date());
-  window.gtag("config", GOOGLE_ANALYTICS_ID, { send_page_view: false });
-
   if (!document.querySelector(`script[src*="gtag/js?id=${GOOGLE_ANALYTICS_ID}"]`)) {
+    window.gtag("js", new Date());
+    window.gtag("config", GOOGLE_ANALYTICS_ID);
+
     const script = document.createElement("script");
     script.async = true;
     script.src = `https://www.googletagmanager.com/gtag/js?id=${GOOGLE_ANALYTICS_ID}`;

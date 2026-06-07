@@ -4,6 +4,7 @@ import { Analytics, type BeforeSendEvent } from "@vercel/analytics/react";
 import { GoogleAnalytics } from "./components/GoogleAnalytics";
 import appCss from "./app.css?url";
 import { isAnalyticsOptedOut } from "./lib/analyticsOptOut";
+import { GOOGLE_ANALYTICS_ID } from "./lib/googleAnalytics";
 import { SITE_URL } from "./lib/seo";
 
 const AHREFS_ANALYTICS_KEY = "kV62qS89ENNF8VlsJaEZog";
@@ -37,6 +38,24 @@ export default function App() {
   return (
     <html lang="en">
       <head>
+        {!isAppRoute && (
+          <>
+            <script
+              async
+              src={`https://www.googletagmanager.com/gtag/js?id=${GOOGLE_ANALYTICS_ID}`}
+            />
+            <script
+              dangerouslySetInnerHTML={{
+                __html: `
+                  window.dataLayer = window.dataLayer || [];
+                  function gtag(){dataLayer.push(arguments);}
+                  gtag('js', new Date());
+                  gtag('config', '${GOOGLE_ANALYTICS_ID}');
+                `,
+              }}
+            />
+          </>
+        )}
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width,initial-scale=1" />
         <link rel="icon" href="/app-icon-1200x1200.png" type="image/png" />
