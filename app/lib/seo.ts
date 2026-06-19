@@ -4,6 +4,13 @@ export const SITE_URL = "https://tinylemon.xyz";
 export const DEFAULT_OG_IMAGE_PATH = "/og-default.jpg";
 export const DEFAULT_OG_IMAGE_ALT =
   "TinyLemon turns flat-lay fashion product photos into Shopify-ready AI model images.";
+const SITE_ORIGIN = new URL(SITE_URL).origin;
+const SITE_HOSTNAME = new URL(SITE_URL).hostname;
+const REDIRECTABLE_CANONICAL_HOSTS = new Set([
+  SITE_HOSTNAME,
+  "www.tinylemon.xyz",
+  "tinylemon.vercel.app",
+]);
 
 type SeoMetaOptions = {
   title: string;
@@ -15,6 +22,28 @@ type SeoMetaOptions = {
   extra?: MetaDescriptor[];
 };
 
+export function normalizeCanonicalPath(path: string): string {
+  let pathname = path;
+
+  try {
+    pathname = new URL(path, SITE_URL).pathname;
+  } catch {
+    pathname = path.startsWith("/") ? path : `/${path}`;
+  }
+
+  pathname = pathname.split(/[?#]/, 1)[0] || "/";
+
+  if (pathname !== "/") {
+    pathname = pathname.replace(/\/+$/, "");
+  }
+
+  return pathname || "/";
+}
+
+export function canonicalSiteUrl(path: string): string {
+  return `${SITE_ORIGIN}${normalizeCanonicalPath(path)}`;
+}
+
 export function absoluteSiteUrl(path: string): string {
   if (path.startsWith("https://") || path.startsWith("http://")) {
     return path;
@@ -22,6 +51,39 @@ export function absoluteSiteUrl(path: string): string {
 
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return `${SITE_URL}${normalizedPath === "/" ? "/" : normalizedPath}`;
+}
+
+export function getCanonicalRedirectUrl(request: Request): string | null {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return null;
+  }
+
+  const url = new URL(request.url);
+
+  if (!REDIRECTABLE_CANONICAL_HOSTS.has(url.hostname)) {
+    return null;
+  }
+
+  const canonicalUrl = new URL(url);
+  let shouldRedirect = false;
+
+  if (canonicalUrl.protocol !== "https:") {
+    canonicalUrl.protocol = "https:";
+    shouldRedirect = true;
+  }
+
+  if (canonicalUrl.hostname !== SITE_HOSTNAME) {
+    canonicalUrl.host = SITE_HOSTNAME;
+    shouldRedirect = true;
+  }
+
+  const normalizedPath = normalizeCanonicalPath(canonicalUrl.pathname);
+  if (normalizedPath !== canonicalUrl.pathname) {
+    canonicalUrl.pathname = normalizedPath;
+    shouldRedirect = true;
+  }
+
+  return shouldRedirect ? canonicalUrl.toString() : null;
 }
 
 export function buildSeoMeta({
@@ -33,7 +95,7 @@ export function buildSeoMeta({
   ogImageAlt = DEFAULT_OG_IMAGE_ALT,
   extra = [],
 }: SeoMetaOptions): MetaDescriptor[] {
-  const canonicalUrl = absoluteSiteUrl(path);
+  const canonicalUrl = canonicalSiteUrl(path);
   const ogImageUrl = absoluteSiteUrl(ogImagePath);
 
   return [

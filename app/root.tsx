@@ -5,20 +5,19 @@ import { GoogleAnalytics } from "./components/GoogleAnalytics";
 import appCss from "./app.css?url";
 import { isAnalyticsOptedOut } from "./lib/analyticsOptOut";
 import { GOOGLE_ANALYTICS_ID } from "./lib/googleAnalytics";
-import { SITE_URL } from "./lib/seo";
+import { getCanonicalRedirectUrl } from "./lib/seo";
 
 const AHREFS_ANALYTICS_KEY = "kV62qS89ENNF8VlsJaEZog";
-const LEGACY_VERCEL_HOSTS = new Set(["tinylemon.vercel.app"]);
 
 export function links() {
   return [{ rel: "stylesheet", href: appCss }];
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const url = new URL(request.url);
+  const canonicalRedirectUrl = getCanonicalRedirectUrl(request);
 
-  if (LEGACY_VERCEL_HOSTS.has(url.hostname)) {
-    throw redirect(`${SITE_URL}${url.pathname}${url.search}`, 301);
+  if (canonicalRedirectUrl) {
+    throw redirect(canonicalRedirectUrl, 301);
   }
 
   return null;
