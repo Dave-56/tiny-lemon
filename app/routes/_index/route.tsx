@@ -12,6 +12,13 @@ import {
 
 import styles from "./styles.module.css";
 
+const LAUNCH_GENERATION_LABEL = `${BETA_LAUNCH_GENERATION_CAP} free ${
+  BETA_LAUNCH_GENERATION_CAP === 1 ? "generation" : "generations"
+}`;
+const LAUNCH_OUTFIT_GENERATION_LABEL = `${BETA_LAUNCH_GENERATION_CAP} free outfit ${
+  BETA_LAUNCH_GENERATION_CAP === 1 ? "generation" : "generations"
+}`;
+
 const LANDING_1 = { before: "/landing-before.png", after: "/landing-after.png" };
 const LANDING_2 = {
   before: "/landing-before-1.png",
@@ -31,7 +38,7 @@ const FAQ_ITEMS = [
   },
   {
     question: "Can I try Tiny Lemon for free?",
-    answer: `Yes. With launch access, eligible early Shopify fashion merchants can get up to ${BETA_LAUNCH_GENERATION_CAP} free outfit generations to test Tiny Lemon with real products before choosing a paid plan.`,
+    answer: `Yes. With launch access, eligible early Shopify fashion merchants can get ${LAUNCH_OUTFIT_GENERATION_LABEL} to test Tiny Lemon with a real product before choosing a paid plan.`,
   },
 ];
 
@@ -55,7 +62,7 @@ function getStructuredData(origin: string, installUrl: string) {
         featureList: [
           "AI model photos from flat-lay and supplier product photos",
           "Short product videos for fashion product listings",
-          `Launch access with up to ${BETA_LAUNCH_GENERATION_CAP} free outfit generations`,
+          `Launch access with ${LAUNCH_OUTFIT_GENERATION_LABEL}`,
           "Shopify product media workflow for clothing stores",
         ],
         offers: {
@@ -82,7 +89,7 @@ function getStructuredData(origin: string, installUrl: string) {
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const title = "Tiny Lemon Shopify App for AI Model Photos & Video";
   const description =
-    `Tiny Lemon turns flat-lay and supplier photos into AI model photos and short product videos for Shopify fashion listings. Early merchants can get up to ${BETA_LAUNCH_GENERATION_CAP} free launch generations.`;
+    `Tiny Lemon turns flat-lay and supplier photos into AI model photos and short product videos for Shopify fashion listings. Early merchants can get ${LAUNCH_GENERATION_LABEL}.`;
   const installUrl = data?.installUrl ?? SHOPIFY_APP_STORE_URL;
   return buildSeoMeta({
     title,
@@ -177,10 +184,10 @@ export default function LandingPage() {
           </p>
           <p
             className={styles.heroOffer}
-            aria-label={`Get up to ${BETA_LAUNCH_GENERATION_CAP} free outfit generations with launch access.`}
+            aria-label={`Get ${LAUNCH_OUTFIT_GENERATION_LABEL} with launch access.`}
           >
-            <span>Get up to </span>
-            <strong>{BETA_LAUNCH_GENERATION_CAP} free outfit generations</strong>
+            <span>Get </span>
+            <strong>{LAUNCH_OUTFIT_GENERATION_LABEL}</strong>
             <span> with launch access.</span>
           </p>
           <p className={styles.heroAppStoreNote}>
@@ -200,7 +207,7 @@ export default function LandingPage() {
                   )
                 }
               >
-                Claim {BETA_LAUNCH_GENERATION_CAP} free generations
+                Claim {LAUNCH_GENERATION_LABEL}
               </a>
             )}
             <Link
@@ -341,8 +348,8 @@ export default function LandingPage() {
           {hasInstallUrl ? (
             <>
               <p className={styles.loginSubtext}>
-                Install Tiny Lemon from the Shopify App Store to claim up to{" "}
-                {BETA_LAUNCH_GENERATION_CAP} free launch generations and create
+                Install Tiny Lemon from the Shopify App Store to claim{" "}
+                {LAUNCH_GENERATION_LABEL} and create
                 AI model photos plus short product videos directly inside Shopify.
               </p>
               <a
@@ -357,7 +364,7 @@ export default function LandingPage() {
                   )
                 }
               >
-                Claim {BETA_LAUNCH_GENERATION_CAP} free generations
+                Claim {LAUNCH_GENERATION_LABEL}
               </a>
               <p className={styles.loginDivider}>
                 Already installed? Open Tiny Lemon from your Shopify admin under Apps.

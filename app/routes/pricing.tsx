@@ -17,10 +17,19 @@ import {
 import landingStyles from "./_index/styles.module.css";
 import styles from "../styles/pricing.module.css";
 
+const LAUNCH_GENERATION_LABEL = `${BETA_LAUNCH_GENERATION_CAP} free ${
+  BETA_LAUNCH_GENERATION_CAP === 1 ? "generation" : "generations"
+}`;
+const LAUNCH_MONTHLY_LABEL = `${BETA_LAUNCH_GENERATION_CAP}/month`;
+const FREE_MONTHLY_LABEL = `${FREE_PLAN_GENERATION_LIMIT}/month`;
+const FREE_OUTFIT_GENERATION_LABEL = `${FREE_PLAN_GENERATION_LIMIT} outfit ${
+  FREE_PLAN_GENERATION_LIMIT === 1 ? "generation" : "generations"
+}/month`;
+
 export const meta: MetaFunction = () => {
-  const title = `AI Fashion Pricing: ${BETA_LAUNCH_GENERATION_CAP} Free Generations | TinyLemon`;
+  const title = `AI Fashion Pricing: ${LAUNCH_GENERATION_LABEL} | TinyLemon`;
   const description =
-    `TinyLemon pricing for Shopify fashion brands. Start with up to ${BETA_LAUNCH_GENERATION_CAP} launch generations for AI model photos and short product videos.`;
+    `TinyLemon pricing for Shopify fashion brands. Start with ${LAUNCH_GENERATION_LABEL} for AI model photos and short product videos.`;
   return buildSeoMeta({ title, description, path: "/pricing" });
 };
 
@@ -76,7 +85,7 @@ export default function PricingPage() {
                   trackShopifyAppStoreClick("pricing_header", "Add to Shopify")
                 }
               >
-                Claim {BETA_LAUNCH_GENERATION_CAP} free
+                Claim {LAUNCH_GENERATION_LABEL}
               </a>
             )}
           </div>
@@ -88,7 +97,7 @@ export default function PricingPage() {
           <div className={styles.launchBanner}>
             <p className={styles.launchEyebrow}>Launch offer</p>
             <h1 className={styles.pageTitle}>
-              Start with {BETA_LAUNCH_GENERATION_CAP} launch generations
+              Start with {LAUNCH_GENERATION_LABEL}
             </h1>
             <p className={styles.subtitle}>
               Install Tiny Lemon, test it with real Shopify products, and only
@@ -107,20 +116,18 @@ export default function PricingPage() {
                 });
                 trackShopifyAppStoreClick(
                   "pricing_hero",
-                  `Claim ${BETA_LAUNCH_GENERATION_CAP} launch generations`,
+                  `Claim ${LAUNCH_GENERATION_LABEL}`,
                   { plan: "beta_launch" },
                 );
               }}
             >
-              Claim {BETA_LAUNCH_GENERATION_CAP} launch generations
+              Claim {LAUNCH_GENERATION_LABEL}
             </a>
             <p className={styles.launchFinePrint}>
               No credit card required. Launch access is available for early
-              Shopify fashion merchants while the program is open. It raises the
-              Free plan from {FREE_PLAN_GENERATION_LIMIT} to{" "}
-              {BETA_LAUNCH_GENERATION_CAP} generations during the program.
-              Short product videos are included during launch, and each new or
-              regenerated video uses 1 generation.
+              Shopify fashion merchants while the program is open. The Free plan
+              includes {FREE_MONTHLY_LABEL}. Short product videos are included
+              during launch, and each new or regenerated video uses 1 generation.
             </p>
           </div>
 
@@ -161,8 +168,8 @@ export default function PricingPage() {
                 Claim launch access →
               </a>
               <ul className={styles.tierList}>
-                <li>{FREE_PLAN_GENERATION_LIMIT} outfit generations/month</li>
-                <li>Launch access raises this to {BETA_LAUNCH_GENERATION_CAP}</li>
+                <li>{FREE_OUTFIT_GENERATION_LABEL}</li>
+                <li>Launch access is included for early merchants</li>
                 <li>1 model save</li>
                 <li>Full 3-angle set (Front + 3/4 + Back)</li>
                 <li>Launch video generation included</li>
@@ -286,7 +293,7 @@ export default function PricingPage() {
               <tbody>
                 <tr>
                   <td>Monthly generations</td>
-                  <td>{BETA_LAUNCH_GENERATION_CAP} during launch, then {FREE_PLAN_GENERATION_LIMIT}/month</td>
+                  <td>{LAUNCH_MONTHLY_LABEL} during launch, then {FREE_MONTHLY_LABEL}</td>
                   <td>100/month</td>
                   <td>300/month</td>
                 </tr>

@@ -29,6 +29,7 @@ vi.mock("../db.server", () => ({
 
 vi.mock("../lib/billing.server", () => ({
   getEffectiveEntitlements: mocks.getEffectiveEntitlements,
+  isManualBetaAccess: vi.fn(() => false),
 }));
 
 vi.mock("../shopify-params", () => ({

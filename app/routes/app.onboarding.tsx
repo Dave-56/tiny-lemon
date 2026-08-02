@@ -5,7 +5,7 @@ import posthog from 'posthog-js';
 import { authenticate } from '../shopify.server';
 import prisma, { ensureShop } from '../db.server';
 import { BRAND_STYLE_PRESETS } from '../lib/pdpPresets';
-import { getEffectiveEntitlements } from '../lib/billing.server';
+import { getEffectiveEntitlements, isManualBetaAccess } from '../lib/billing.server';
 import type { BrandEnergy, PrimaryCategory } from '../lib/brandProfileMapping';
 import { shopifyRedirect } from '../shopify-params';
 
@@ -19,6 +19,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       select: {
         betaAccess: true,
         betaStatus: true,
+        betaGrantedBy: true,
         catalogType: true,
         intendedUseCase: true,
         shootGoal: true,
@@ -34,10 +35,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
   return {
     ready: true,
-    isBeta:
-      shop?.betaAccess === true &&
-      shop.betaStatus !== 'paused' &&
-      shop.betaStatus !== 'ended',
+    isBeta: isManualBetaAccess(shop),
     profile: {
       catalogType: shop?.catalogType ?? null,
       intendedUseCase: shop?.intendedUseCase ?? null,

@@ -125,7 +125,7 @@ The most important signal is that the product value is real, but the testing win
 
 **Possible experiments:**
 
-- Increase the free trial from 3 generations to 50 generations during launch/testing.
+- Keep the free trial to 1 generation during launch/testing.
 - Offer a "first product free" trial where the user can fully generate one useful product set.
 - Give early testers a temporary unlimited or high-credit trial.
 - Separate image and video credits if video generation consumes value differently.

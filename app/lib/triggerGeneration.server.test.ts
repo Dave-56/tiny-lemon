@@ -50,7 +50,7 @@ vi.mock("./triggerJobs.server", () => ({
 vi.mock("./billing.server", () => ({
   DEMO_SHOP_ID: "__demo__",
   PLAN_LIMITS: {
-    free: 50,
+    free: 1,
     Starter: 30,
     Growth: 100,
     Scale: 300,
@@ -361,12 +361,12 @@ describe("handleTriggerGeneration", () => {
   it("returns plan usage details when credits are exhausted", async () => {
     mocks.modelFindFirst.mockResolvedValue(null);
     mocks.reserveGenerations.mockRejectedValueOnce(new Error("insufficient_credits"));
-    mocks.getMonthlyUsage.mockResolvedValueOnce(50);
+    mocks.getMonthlyUsage.mockResolvedValueOnce(1);
     mocks.getEffectiveEntitlements.mockResolvedValueOnce({
       publicPlan: "free",
       isBeta: false,
       betaStatus: null,
-      effectiveLimit: 50,
+      effectiveLimit: 1,
       effectiveAngles: ["front"],
       showUpgradePrompt: true,
     });
@@ -379,8 +379,8 @@ describe("handleTriggerGeneration", () => {
     expect(res.status).toBe(402);
     await expect(res.json()).resolves.toEqual({
       error: "limit_reached",
-      used: 50,
-      limit: 50,
+      used: 1,
+      limit: 1,
       plan: "free",
       isBeta: false,
       message: "You've used all your generations this month. Upgrade to continue.",
@@ -558,7 +558,7 @@ describe("handleTriggerGeneration", () => {
       publicPlan: "free",
       isBeta: true,
       betaStatus: "active",
-      effectiveLimit: 50,
+      effectiveLimit: 1,
       effectiveAngles: ["front", "three-quarter", "back"],
       showUpgradePrompt: false,
     });

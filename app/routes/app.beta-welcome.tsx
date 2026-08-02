@@ -6,7 +6,7 @@ import posthog from "posthog-js";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { shopifyRedirect } from "../shopify-params";
-import { getEffectiveEntitlements } from "../lib/billing.server";
+import { getEffectiveEntitlements, isManualBetaAccess } from "../lib/billing.server";
 import { BETA_STATUS } from "../lib/beta";
 import { getSupportEmail } from "../lib/support.server";
 
@@ -18,14 +18,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     select: {
       betaAccess: true,
       betaStatus: true,
+      betaGrantedBy: true,
       betaWelcomeCompleted: true,
     },
   });
 
-  const isBeta =
-    shop?.betaAccess === true &&
-    shop.betaStatus !== BETA_STATUS.paused &&
-    shop.betaStatus !== BETA_STATUS.ended;
+  const isBeta = isManualBetaAccess(shop);
 
   if (!isBeta) {
     return shopifyRedirect(request, "/app");

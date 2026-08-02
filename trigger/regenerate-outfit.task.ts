@@ -219,7 +219,15 @@ async function generateImageContent(
   },
 ) {
   try {
-    return await ai.models.generateContent(request);
+    const response = await ai.models.generateContent(request);
+    if (!responseHasInlineImage(response)) {
+      logServerEvent('warn', 'image_provider.gemini_no_image_response', {
+        taskId: 'regenerate-outfit',
+        ...context,
+        ...summarizeGeminiImageResponse(response),
+      });
+    }
+    return response;
   } catch (error) {
     logImageProviderError(error, {
       taskId: 'regenerate-outfit',
@@ -230,6 +238,38 @@ async function generateImageContent(
       'Failed to generate outfit image. Please try again.',
     );
   }
+}
+
+function responseHasInlineImage(response: {
+  candidates?: Array<{
+    content?: { parts?: Array<{ inlineData?: { data?: string } }> };
+  }>;
+}) {
+  return response.candidates?.some(candidate =>
+    candidate.content?.parts?.some(part => !!part.inlineData?.data),
+  ) ?? false;
+}
+
+function summarizeGeminiImageResponse(response: {
+  candidates?: Array<{
+    finishReason?: string;
+    content?: { parts?: Array<{ inlineData?: { data?: string }; text?: string }> };
+  }>;
+}) {
+  const candidate = response.candidates?.[0];
+  const parts = candidate?.content?.parts ?? [];
+  const textPreview = parts
+    .map(part => part.text)
+    .filter((text): text is string => !!text)
+    .join('\n')
+    .slice(0, 500);
+
+  return {
+    candidateCount: response.candidates?.length ?? 0,
+    finishReason: candidate?.finishReason ?? null,
+    partTypes: parts.map(part => part.inlineData ? 'inlineData' : part.text ? 'text' : 'unknown'),
+    textPreview: textPreview || null,
+  };
 }
 
 /**
@@ -277,7 +317,7 @@ async function validatePose(
 function extractBase64(response: {
   candidates?: Array<{
     finishReason?: string;
-    content?: { parts?: Array<{ inlineData?: { data?: string } }> };
+    content?: { parts?: Array<{ inlineData?: { data?: string }; text?: string }> };
   }>;
 }): string {
   for (const part of response.candidates?.[0]?.content?.parts ?? []) {
@@ -487,6 +527,7 @@ export const regenerateOutfitTask = task({
     // Per-pose temperature: front is conservative (consistency), 3/4 and back
     // need more creative latitude to commit to the rotation.
     const baseGenConfig = {
+      responseModalities: ['IMAGE' as const],
       imageConfig: { aspectRatio: '2:3' as const, imageSize: '1K' as const },
       thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
     };

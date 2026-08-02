@@ -30,9 +30,13 @@ export const PLAN_ANGLES: Record<string, string[]> = {
 export function getEffectiveBetaLimit(
   publicPlan: string,
   betaCap: number | null | undefined,
+  betaGrantedBy?: string | null,
 ): number {
   const planLimit = PLAN_LIMITS[publicPlan] ?? PLAN_LIMITS.free;
-  return Math.max(betaCap ?? BETA_DEFAULT_CAP, BETA_DEFAULT_CAP, planLimit);
+  const betaLimit = betaGrantedBy === "default_beta"
+    ? BETA_DEFAULT_CAP
+    : betaCap ?? BETA_DEFAULT_CAP;
+  return Math.max(betaLimit, BETA_DEFAULT_CAP, planLimit);
 }
 
 type ReserveGenerationsOptions = {
@@ -59,6 +63,20 @@ export type EffectiveEntitlements = {
   effectiveAngles: readonly string[];
   showUpgradePrompt: boolean;
 };
+
+export function isManualBetaAccess(shop: {
+  betaAccess?: boolean | null;
+  betaStatus?: string | null;
+  betaGrantedBy?: string | null;
+} | null | undefined): boolean {
+  return (
+    shop?.betaAccess === true &&
+    shop.betaGrantedBy != null &&
+    shop.betaGrantedBy !== "default_beta" &&
+    shop.betaStatus !== "paused" &&
+    shop.betaStatus !== "ended"
+  );
+}
 
 function startOfCalendarMonth(): Date {
   const d = new Date();
@@ -113,22 +131,20 @@ export async function getEffectiveEntitlements(
       betaAccess: true,
       betaStatus: true,
       betaCap: true,
+      betaGrantedBy: true,
     },
   });
 
   const publicPlan = shop?.plan ?? "free";
   const betaStatus = shop?.betaStatus ?? null;
-  const isBeta =
-    shop?.betaAccess === true &&
-    betaStatus !== "paused" &&
-    betaStatus !== "ended";
+  const isBeta = isManualBetaAccess(shop);
 
   if (isBeta) {
     return {
       publicPlan,
       isBeta: true,
       betaStatus,
-      effectiveLimit: getEffectiveBetaLimit(publicPlan, shop?.betaCap),
+      effectiveLimit: getEffectiveBetaLimit(publicPlan, shop?.betaCap, shop?.betaGrantedBy),
       effectiveAngles: BETA_FULL_ANGLES,
       showUpgradePrompt: false,
     };

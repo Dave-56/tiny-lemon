@@ -75,19 +75,39 @@ describe("billing.server", () => {
     }
   });
 
-  it("returns beta entitlements with the default beta cap", async () => {
+  it("ignores legacy default beta access", async () => {
     mocks.shopFindUnique.mockResolvedValueOnce({
-      plan: "Starter",
+      plan: "free",
       betaAccess: true,
       betaStatus: "active",
-      betaCap: null,
+      betaCap: 100,
+      betaGrantedBy: "default_beta",
     });
 
     await expect(getEffectiveEntitlements("shop-a")).resolves.toEqual({
-      publicPlan: "Starter",
+      publicPlan: "free",
+      isBeta: false,
+      betaStatus: "active",
+      effectiveLimit: PLAN_LIMITS.free,
+      effectiveAngles: PLAN_ANGLES.free,
+      showUpgradePrompt: true,
+    });
+  });
+
+  it("returns beta entitlements for manual support grants", async () => {
+    mocks.shopFindUnique.mockResolvedValueOnce({
+      plan: "free",
+      betaAccess: true,
+      betaStatus: "active",
+      betaCap: 7,
+      betaGrantedBy: "support",
+    });
+
+    await expect(getEffectiveEntitlements("shop-a")).resolves.toEqual({
+      publicPlan: "free",
       isBeta: true,
       betaStatus: "active",
-      effectiveLimit: BETA_DEFAULT_CAP,
+      effectiveLimit: 7,
       effectiveAngles: BETA_FULL_ANGLES,
       showUpgradePrompt: false,
     });
@@ -117,6 +137,7 @@ describe("billing.server", () => {
       betaAccess: true,
       betaStatus: "active",
       betaCap: 100,
+      betaGrantedBy: "support",
     });
 
     await expect(getEffectiveEntitlements("shop-a")).resolves.toEqual({

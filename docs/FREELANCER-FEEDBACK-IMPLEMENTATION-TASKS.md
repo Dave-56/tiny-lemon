@@ -4,7 +4,7 @@ Use this checklist to turn the early tester feedback into concrete Tiny Lemon ap
 
 ## Current State To Preserve
 
-- Free plan limit is already 50 generations/month in `app/lib/billing.server.ts`.
+- Free plan limit is 1 generation/month via `app/lib/planConstants.ts`.
 - All app plans already receive the full image set: front, three-quarter, and back.
 - Old front-only brand-style records should not trap users into one image; regression coverage exists in `app/lib/triggerGeneration.server.test.ts`.
 - The schema already supports `betaAccess`, `betaStatus`, and `betaCap` on `Shop`, but there is no polished admin/user workflow for granting or explaining special tester access.
@@ -35,9 +35,9 @@ Suggested files:
 
 Goal: avoid confusing “3 generations was too low” feedback while not overbuilding pricing infrastructure.
 
-Important: do not build full regional pricing yet. The app already has a 50-generation free cap and beta cap fields. The missing piece is a clear operational workflow.
+Important: do not build full regional pricing yet. The app has a 1-generation free cap and beta cap fields. The missing piece is a clear operational workflow.
 
-- [ ] Confirm production free plan cap is 50 and reflected in billing UI.
+- [ ] Confirm production free plan cap is 1 and reflected in billing UI.
 - [ ] Confirm beta users can receive a custom `betaCap`.
 - [ ] Add or document a simple internal way to grant tester access, such as a script that sets `betaAccess=true`, `betaStatus="active"`, and `betaCap=100`.
 - [ ] Add a short note in the beta/billing UI explaining that early testers can request more room if they hit the cap.

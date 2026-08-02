@@ -6,7 +6,8 @@ import { boundary } from '@shopify/shopify-app-react-router/server';
 import { authenticate } from '../shopify.server';
 import { BILLING_PLANS } from '../lib/plans';
 import prisma, { ensureShop } from '../db.server';
-import { getMonthlyUsage, getEffectiveEntitlements } from '../lib/billing.server';
+import { getMonthlyUsage, getEffectiveEntitlements, isManualBetaAccess } from '../lib/billing.server';
+import { FREE_PLAN_GENERATION_LIMIT } from '../lib/planConstants';
 import { getSupportEmail } from '../lib/support.server';
 import { createLoaderTiming } from '../lib/loaderTiming.server';
 
@@ -26,13 +27,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const shop = await timing.measure('shopStatusLookupMs', () =>
     prisma.shop.findUnique({
       where: { id: session.shop },
-      select: { betaAccess: true, betaStatus: true },
+      select: { betaAccess: true, betaStatus: true, betaGrantedBy: true },
     }),
   );
-  const isBeta =
-    shop?.betaAccess === true &&
-    shop.betaStatus !== 'paused' &&
-    shop.betaStatus !== 'ended';
+  const isBeta = isManualBetaAccess(shop);
 
   let activePlan = 'free';
   if (!isBeta) {
@@ -86,9 +84,9 @@ const PLANS = [
     id: 'free',
     label: 'Free',
     price: '$0',
-    generations: 50,
+    generations: FREE_PLAN_GENERATION_LIMIT,
     angles: 'Front · 3/4 · Back',
-    features: ['50 generations / month', 'Full 3-angle structural set', 'Short product videos during launch', '1 brand style profile'],
+    features: [`${FREE_PLAN_GENERATION_LIMIT} generation / month`, 'Full 3-angle structural set', 'Short product videos during launch', '1 brand style profile'],
   },
   {
     id: BILLING_PLANS.Starter,

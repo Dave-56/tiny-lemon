@@ -16,8 +16,6 @@ vi.mock("../db.server", () => ({
   ensureShop: mocks.ensureShop,
 }));
 
-import { BETA_STATUS } from "./beta";
-import { BETA_DEFAULT_CAP } from "./billing.server";
 import { ensureBetaAccessForShop } from "./betaAccess.server";
 
 describe("ensureBetaAccessForShop", () => {
@@ -25,19 +23,16 @@ describe("ensureBetaAccessForShop", () => {
     vi.clearAllMocks();
   });
 
-  it("grants default beta access with the default cap for a shop that is not already beta", async () => {
+  it("ensures the shop exists but does not auto-grant beta access", async () => {
     mocks.shopFindUnique.mockResolvedValueOnce({
-      plan: "free",
       betaAccess: false,
       betaStatus: null,
-      betaCap: null,
       betaGrantedBy: null,
     });
-    mocks.shopUpdate.mockResolvedValueOnce({});
 
     await expect(
       ensureBetaAccessForShop(" Atlantic-Mood.myshopify.com "),
-    ).resolves.toEqual({ granted: true });
+    ).resolves.toEqual({ granted: false, skipped: "manual_only" });
 
     expect(mocks.ensureShop).toHaveBeenCalledWith(
       "atlantic-mood.myshopify.com",
@@ -45,103 +40,11 @@ describe("ensureBetaAccessForShop", () => {
     expect(mocks.shopFindUnique).toHaveBeenCalledWith({
       where: { id: "atlantic-mood.myshopify.com" },
       select: {
-        plan: true,
         betaAccess: true,
         betaStatus: true,
-        betaCap: true,
         betaGrantedBy: true,
       },
     });
-    expect(mocks.shopUpdate).toHaveBeenCalledWith({
-      where: { id: "atlantic-mood.myshopify.com" },
-      data: {
-        betaAccess: true,
-        betaStatus: BETA_STATUS.invited,
-        betaCap: BETA_DEFAULT_CAP,
-        betaGrantedAt: expect.any(Date),
-        betaGrantedBy: "default_beta",
-      },
-    });
-  });
-
-  it("does not re-enable paused or ended beta shops", async () => {
-    mocks.shopFindUnique.mockResolvedValueOnce({
-      plan: "free",
-      betaAccess: false,
-      betaStatus: BETA_STATUS.paused,
-      betaCap: null,
-      betaGrantedBy: null,
-    });
-
-    await expect(ensureBetaAccessForShop("shop-a.myshopify.com")).resolves.toEqual({
-      granted: false,
-      skipped: BETA_STATUS.paused,
-    });
-
     expect(mocks.shopUpdate).not.toHaveBeenCalled();
-  });
-
-  it("keeps default-beta shops aligned with the current default cap", async () => {
-    mocks.shopFindUnique.mockResolvedValueOnce({
-      plan: "free",
-      betaAccess: true,
-      betaStatus: BETA_STATUS.active,
-      betaCap: 50,
-      betaGrantedBy: "default_beta",
-    });
-    mocks.shopUpdate.mockResolvedValueOnce({});
-
-    await expect(ensureBetaAccessForShop("shop-a.myshopify.com")).resolves.toEqual({
-      granted: false,
-      skipped: "already_granted",
-    });
-
-    expect(mocks.shopUpdate).toHaveBeenCalledWith({
-      where: { id: "shop-a.myshopify.com" },
-      data: { betaCap: BETA_DEFAULT_CAP },
-    });
-  });
-
-  it("preserves manually granted beta caps", async () => {
-    mocks.shopFindUnique.mockResolvedValueOnce({
-      plan: "Growth",
-      betaAccess: true,
-      betaStatus: BETA_STATUS.active,
-      betaCap: 150,
-      betaGrantedBy: "support",
-    });
-
-    await expect(ensureBetaAccessForShop("shop-a.myshopify.com")).resolves.toEqual({
-      granted: false,
-      skipped: "already_granted",
-    });
-
-    expect(mocks.shopUpdate).not.toHaveBeenCalled();
-  });
-
-  it("does not let default beta lower a higher paid plan limit", async () => {
-    mocks.shopFindUnique.mockResolvedValueOnce({
-      plan: "Scale",
-      betaAccess: false,
-      betaStatus: null,
-      betaCap: null,
-      betaGrantedBy: null,
-    });
-    mocks.shopUpdate.mockResolvedValueOnce({});
-
-    await expect(ensureBetaAccessForShop("shop-a.myshopify.com")).resolves.toEqual({
-      granted: true,
-    });
-
-    expect(mocks.shopUpdate).toHaveBeenCalledWith({
-      where: { id: "shop-a.myshopify.com" },
-      data: {
-        betaAccess: true,
-        betaStatus: BETA_STATUS.invited,
-        betaCap: 300,
-        betaGrantedAt: expect.any(Date),
-        betaGrantedBy: "default_beta",
-      },
-    });
   });
 });
