@@ -12,6 +12,7 @@ import {
   refundReservedGeneration,
   DEMO_SHOP_ID,
 } from "./billing.server";
+import { createLimitReachedMessage } from "./planConstants";
 import {
   claimGenerateRequestIdempotency,
   claimRegenerateRequestIdempotency,
@@ -112,13 +113,6 @@ function createReservationContext(flow: "generate" | "regenerate", referenceId: 
     preEnqueueRefundDescription: `generation refund:${prefix}:pre_enqueue_failure`,
     providerCapacityRefundDescription: `generation refund:${prefix}:provider_capacity_failure`,
   };
-}
-
-function createLimitReachedMessage(isBeta: boolean) {
-  if (isBeta) {
-    return "You've used your beta allocation for now. Contact us if you need more access.";
-  }
-  return "You've used all your generations this month. Upgrade to continue.";
 }
 
 function normalizeOptionalInput(value?: string | null): string | null {
@@ -316,7 +310,7 @@ export async function handleTriggerGeneration(
             limit: effectiveEntitlements.effectiveLimit,
             plan: effectiveEntitlements.publicPlan,
             isBeta: effectiveEntitlements.isBeta,
-            message: createLimitReachedMessage(effectiveEntitlements.isBeta),
+            message: createLimitReachedMessage(effectiveEntitlements),
           },
           { status: 402 }
         );
@@ -654,7 +648,7 @@ export async function handleRegenerateOutfit(
             limit: effectiveEntitlements.effectiveLimit,
             plan: effectiveEntitlements.publicPlan,
             isBeta: effectiveEntitlements.isBeta,
-            message: createLimitReachedMessage(effectiveEntitlements.isBeta),
+            message: createLimitReachedMessage(effectiveEntitlements),
           },
           { status: 402 }
         );

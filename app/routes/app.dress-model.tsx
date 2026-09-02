@@ -39,6 +39,7 @@ import {
   getMonthlyUsage,
 } from "../lib/billing.server";
 import { handleTriggerGeneration } from "../lib/triggerGeneration.server";
+import { FREE_TRIAL_LIMIT_MESSAGE } from "../lib/planConstants";
 import {
   isSessionExpiredResponse,
   SESSION_EXPIRED_MESSAGE,
@@ -535,6 +536,17 @@ function ErrorMsg({
   msg: string;
   isBeta: boolean;
 }) {
+  if (msg === FREE_TRIAL_LIMIT_MESSAGE) {
+    return (
+      <span>
+        You&apos;ve used your free outfits.{" "}
+        <Link to="/app/billing" className="underline font-medium">
+          Pick a plan
+        </Link>{" "}
+        to keep generating.
+      </span>
+    );
+  }
   if (msg === UPGRADE_MSG) {
     return (
       <span>

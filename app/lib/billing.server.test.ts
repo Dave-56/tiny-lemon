@@ -91,6 +91,7 @@ describe("billing.server", () => {
       effectiveLimit: PLAN_LIMITS.free,
       effectiveAngles: PLAN_ANGLES.free,
       showUpgradePrompt: true,
+      usageWindow: "lifetime",
     });
   });
 
@@ -110,6 +111,7 @@ describe("billing.server", () => {
       effectiveLimit: 7,
       effectiveAngles: BETA_FULL_ANGLES,
       showUpgradePrompt: false,
+      usageWindow: "month",
     });
   });
 
@@ -128,6 +130,7 @@ describe("billing.server", () => {
       effectiveLimit: PLAN_LIMITS.Growth,
       effectiveAngles: PLAN_ANGLES.Growth,
       showUpgradePrompt: true,
+      usageWindow: "month",
     });
   });
 
@@ -147,6 +150,7 @@ describe("billing.server", () => {
       effectiveLimit: PLAN_LIMITS.Scale,
       effectiveAngles: BETA_FULL_ANGLES,
       showUpgradePrompt: false,
+      usageWindow: "month",
     });
   });
 
@@ -217,7 +221,14 @@ describe("billing.server", () => {
     expect(mocks.txCreateMany).not.toHaveBeenCalled();
   });
 
-  it("subtracts refund transactions from monthly usage", async () => {
+  it("subtracts refund transactions from monthly usage on a paid plan", async () => {
+    mocks.shopFindUnique.mockResolvedValueOnce({
+      plan: "Starter",
+      betaAccess: false,
+      betaStatus: null,
+      betaCap: null,
+      betaGrantedBy: null,
+    });
     mocks.creditAggregate.mockResolvedValueOnce({ _sum: { amount: -3 } });
 
     await expect(getMonthlyUsage("shop-a")).resolves.toBe(3);
@@ -229,6 +240,52 @@ describe("billing.server", () => {
       },
       _sum: { amount: true },
     });
+  });
+
+  it("counts the free trial over the shop's lifetime, not the calendar month", async () => {
+    mocks.shopFindUnique.mockResolvedValue({
+      plan: "free",
+      betaAccess: false,
+      betaStatus: null,
+      betaCap: null,
+      betaGrantedBy: null,
+    });
+    mocks.creditAggregate.mockResolvedValueOnce({ _sum: { amount: -59 } });
+
+    const entitlements = await getEffectiveEntitlements("shop-a");
+    expect(entitlements.usageWindow).toBe("lifetime");
+    expect(entitlements.effectiveLimit).toBe(PLAN_LIMITS.free);
+
+    await expect(getMonthlyUsage("shop-a")).resolves.toBe(59);
+    expect(mocks.creditAggregate).toHaveBeenCalledWith({
+      where: {
+        shopId: "shop-a",
+        type: { in: ["usage", "refund"] },
+      },
+      _sum: { amount: true },
+    });
+  });
+
+  it("blocks a free-trial shop that spent its trial in an earlier month", async () => {
+    process.env.NODE_ENV = "production";
+    mocks.shopFindUnique.mockResolvedValue({
+      plan: "free",
+      betaAccess: false,
+      betaStatus: null,
+      betaCap: null,
+      betaGrantedBy: null,
+    });
+    mocks.txCreditAggregate.mockResolvedValueOnce({ _sum: { amount: -PLAN_LIMITS.free } });
+
+    await expect(reserveGenerations("shop-a", 1)).rejects.toThrow("insufficient_credits");
+    expect(mocks.txCreditAggregate).toHaveBeenCalledWith({
+      where: {
+        shopId: "shop-a",
+        type: { in: ["usage", "refund"] },
+      },
+      _sum: { amount: true },
+    });
+    expect(mocks.txCreateMany).not.toHaveBeenCalled();
   });
 
   it("never reports negative monthly usage when refunds exceed usage", async () => {

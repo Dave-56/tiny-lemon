@@ -7,7 +7,7 @@ import { authenticate } from '../shopify.server';
 import { BILLING_PLANS } from '../lib/plans';
 import prisma, { ensureShop } from '../db.server';
 import { getMonthlyUsage, getEffectiveEntitlements, isManualBetaAccess } from '../lib/billing.server';
-import { FREE_PLAN_GENERATION_LIMIT } from '../lib/planConstants';
+import { FREE_TRIAL_GENERATION_LIMIT } from '../lib/planConstants';
 import { getSupportEmail } from '../lib/support.server';
 import { createLoaderTiming } from '../lib/loaderTiming.server';
 
@@ -84,9 +84,9 @@ const PLANS = [
     id: 'free',
     label: 'Free',
     price: '$0',
-    generations: FREE_PLAN_GENERATION_LIMIT,
+    generations: FREE_TRIAL_GENERATION_LIMIT,
     angles: 'Front · 3/4 · Back',
-    features: [`${FREE_PLAN_GENERATION_LIMIT} generation / month`, 'Full 3-angle structural set', 'Short product videos during launch', '1 brand style profile'],
+    features: [`${FREE_TRIAL_GENERATION_LIMIT} free outfits to start`, 'Full 3-angle structural set', 'Short product videos during launch', '1 brand style profile'],
   },
   {
     id: BILLING_PLANS.Starter,
@@ -118,6 +118,7 @@ const PLANS = [
 
 export default function Billing() {
   const { shop, plan, used, limit, isBeta, supportEmail, appHandle } = useLoaderData<typeof loader>();
+  const isFreeTrial = plan === 'free' && !isBeta;
 
   useEffect(() => {
     posthog.capture('billing_viewed', { shop, plan });
@@ -135,15 +136,18 @@ export default function Billing() {
 
         {/* Usage meter */}
         <section className="space-y-2">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-krea-muted">This month</p>
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-krea-muted">
+            {isFreeTrial ? 'Free trial' : 'This month'}
+          </p>
           <div className="bg-white rounded-xl border border-krea-border px-4 py-3 flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-krea-text">
-                {used} / {limit} generations used
+                {used} / {limit} {isFreeTrial ? 'free outfits used' : 'generations used'}
               </p>
               <p className="text-xs text-krea-muted mt-0.5">
-                Outfit generations and new or regenerated videos both count
-                toward this allowance. Resets on the 1st of each month.
+                {isFreeTrial
+                  ? `Your free trial covers ${limit} outfits in total. Pick a plan below to keep generating.`
+                  : 'Outfit generations and new or regenerated videos both count toward this allowance. Resets on the 1st of each month.'}
               </p>
             </div>
             <div className="w-32 h-1.5 bg-krea-border rounded-full overflow-hidden">

@@ -161,7 +161,9 @@ export default function App() {
             Beta
           </span>
         )}
-        <span className={used >= limit ? "text-red-500 font-medium" : ""}>{used}/{limit} generations this month</span>
+        <span className={used >= limit ? "text-red-500 font-medium" : ""}>
+          {used}/{limit} {plan === "free" && !isBeta ? "free outfits used" : "generations this month"}
+        </span>
         {used >= limit && showUpgradePrompt ? (
           <Link to={appHref("/app/billing")} className="text-red-500 underline underline-offset-2 font-medium">
             Upgrade to continue →

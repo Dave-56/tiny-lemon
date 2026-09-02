@@ -3,7 +3,7 @@ import prisma from "../db.server";
 import type { RegeneratePose } from "./regeneratePoses";
 import {
   BETA_LAUNCH_GENERATION_CAP,
-  FREE_PLAN_GENERATION_LIMIT,
+  FREE_TRIAL_GENERATION_LIMIT,
 } from "./planConstants";
 
 /** Demo shop id for public /try free tool. No credits; rate limit only. */
@@ -12,8 +12,9 @@ export const BETA_DEFAULT_CAP = BETA_LAUNCH_GENERATION_CAP;
 export const FULL_GENERATION_ANGLES = ["front", "three-quarter", "back"] as const;
 export const BETA_FULL_ANGLES = FULL_GENERATION_ANGLES;
 
+// `free` is a one-time trial counted over the shop's lifetime; paid plans reset monthly.
 export const PLAN_LIMITS: Record<string, number> = {
-  free: FREE_PLAN_GENERATION_LIMIT,
+  free: FREE_TRIAL_GENERATION_LIMIT,
   Starter: 30,
   Growth: 100,
   Scale: 300,
@@ -32,7 +33,9 @@ export function getEffectiveBetaLimit(
   betaCap: number | null | undefined,
   betaGrantedBy?: string | null,
 ): number {
-  const planLimit = PLAN_LIMITS[publicPlan] ?? PLAN_LIMITS.free;
+  // The free tier is a one-time trial, so it never raises an internal store's
+  // monthly allowance; only a paid plan can.
+  const planLimit = publicPlan === "free" ? 0 : (PLAN_LIMITS[publicPlan] ?? 0);
   const betaLimit = betaGrantedBy === "default_beta"
     ? BETA_DEFAULT_CAP
     : betaCap ?? BETA_DEFAULT_CAP;
@@ -55,6 +58,9 @@ type SingleImageRegenerationAllowanceArgs = {
   pose: RegeneratePose;
 };
 
+/** Which ledger window `effectiveLimit` applies to. */
+export type UsageWindow = "lifetime" | "month";
+
 export type EffectiveEntitlements = {
   publicPlan: string;
   isBeta: boolean;
@@ -62,6 +68,7 @@ export type EffectiveEntitlements = {
   effectiveLimit: number;
   effectiveAngles: readonly string[];
   showUpgradePrompt: boolean;
+  usageWindow: UsageWindow;
 };
 
 export function isManualBetaAccess(shop: {
@@ -89,16 +96,33 @@ function usageFromLedgerAmount(amount: number | null | undefined): number {
   return Math.max(0, -(amount ?? 0));
 }
 
+/**
+ * Generation usage inside the shop's billing window: the whole lifetime for
+ * the one-time free trial, the current calendar month for paid plans and
+ * internal stores. The name is kept for existing call sites.
+ */
 export async function getMonthlyUsage(shopId: string): Promise<number> {
+  return getGenerationUsage(shopId);
+}
+
+export async function getGenerationUsage(
+  shopId: string,
+  entitlements?: EffectiveEntitlements,
+): Promise<number> {
+  const resolved = entitlements ?? (await getEffectiveEntitlements(shopId));
   const aggregate = await prisma.creditTransaction.aggregate({
-    where: {
-      shopId,
-      type: { in: ["usage", "refund"] },
-      createdAt: { gte: startOfCalendarMonth() },
-    },
+    where: usageLedgerWhere(shopId, resolved.usageWindow),
     _sum: { amount: true },
   });
   return usageFromLedgerAmount(aggregate._sum.amount);
+}
+
+function usageLedgerWhere(shopId: string, window: UsageWindow) {
+  return {
+    shopId,
+    type: { in: ["usage", "refund"] },
+    ...(window === "month" ? { createdAt: { gte: startOfCalendarMonth() } } : {}),
+  };
 }
 
 export async function getPlanForShop(shopId: string): Promise<string> {
@@ -121,6 +145,7 @@ export async function getEffectiveEntitlements(
       effectiveLimit: PLAN_LIMITS.free,
       effectiveAngles: PLAN_ANGLES.free,
       showUpgradePrompt: true,
+      usageWindow: "lifetime",
     };
   }
 
@@ -147,6 +172,7 @@ export async function getEffectiveEntitlements(
       effectiveLimit: getEffectiveBetaLimit(publicPlan, shop?.betaCap, shop?.betaGrantedBy),
       effectiveAngles: BETA_FULL_ANGLES,
       showUpgradePrompt: false,
+      usageWindow: "month",
     };
   }
 
@@ -157,6 +183,7 @@ export async function getEffectiveEntitlements(
     effectiveLimit: PLAN_LIMITS[publicPlan] ?? PLAN_LIMITS.free,
     effectiveAngles: PLAN_ANGLES[publicPlan] ?? PLAN_ANGLES.free,
     showUpgradePrompt: true,
+    usageWindow: publicPlan === "free" ? "lifetime" : "month",
   };
 }
 
@@ -184,16 +211,11 @@ export async function reserveGenerations(
   }
   const entitlements = await getEffectiveEntitlements(shopId);
   const limit = entitlements.effectiveLimit;
-  const startOfMonth = startOfCalendarMonth();
 
   await prisma.$transaction(
     async (tx) => {
       const usageAggregate = await tx.creditTransaction.aggregate({
-        where: {
-          shopId,
-          type: { in: ["usage", "refund"] },
-          createdAt: { gte: startOfMonth },
-        },
+        where: usageLedgerWhere(shopId, entitlements.usageWindow),
         _sum: { amount: true },
       });
       const used = usageFromLedgerAmount(usageAggregate._sum.amount);
