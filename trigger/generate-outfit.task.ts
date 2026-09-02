@@ -1,6 +1,12 @@
 import { task } from '@trigger.dev/sdk';
-import { GoogleGenAI, ThinkingLevel } from '@google/genai';
+import { ThinkingLevel } from '@google/genai';
 import prisma from '../app/db.server';
+import {
+  createGenAIClient,
+  getGenAIApiKey,
+  type GenAIClient,
+  type GenAIRequest,
+} from '../app/lib/genaiClient';
 import { uploadImageToBlob } from '../app/blob.server';
 import {
   cleanFlatLay,
@@ -164,7 +170,7 @@ export const generateOutfitTask = task({
       isDemo: payload.shopId === DEMO_SHOP_ID,
     });
     const poses = allowedPoses?.length ? allowedPoses : ['front'];
-    const apiKey = process.env.GEMINI_API_KEY!;
+    const apiKey = getGenAIApiKey()!;
     const isDemo = shopId === DEMO_SHOP_ID;
 
     // ── Validate ──────────────────────────────────────────────────────────────
@@ -355,7 +361,7 @@ export const generateOutfitTask = task({
     // Each pose is an independent generateContent call — no shared chat session.
     // Non-front poses receive the generated front only as a background/lighting
     // and outfit anchor; simplified pose text keeps stance from being overdriven.
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+    const ai = createGenAIClient();
     const MODEL = GEMINI_IMAGE_MODEL;
     // Per-pose temperature: front is conservative (consistency), 3/4 and back
     // need more creative latitude to commit to the rotation.
@@ -712,7 +718,7 @@ async function prepareCleanFlatLay(args: {
   }
 }
 
-type GenerateContentRequest = Parameters<GoogleGenAI['models']['generateContent']>[0];
+type GenerateContentRequest = GenAIRequest;
 type GenerateContentPart =
   | { text: string }
   | { inlineData: { data: string; mimeType: 'image/png' | 'image/jpeg' } };
@@ -765,7 +771,7 @@ function buildGenerationParts(args: {
 }
 
 async function retryIfGraphicFidelityFailed(args: {
-  ai: GoogleGenAI;
+  ai: GenAIClient;
   b64: string;
   contents: GenerateContentRequest['contents'];
   config: GenerateContentRequest['config'];
@@ -809,7 +815,7 @@ async function retryIfGraphicFidelityFailed(args: {
 }
 
 async function generateImageContent(
-  ai: GoogleGenAI,
+  ai: GenAIClient,
   request: GenerateContentRequest,
   context: {
     outfitId: string;
@@ -876,7 +882,7 @@ function summarizeGeminiImageResponse(response: {
  * Uses a fast model to check the output image. Returns true if pose looks correct.
  */
 async function validatePose(
-  ai: GoogleGenAI,
+  ai: GenAIClient,
   imageB64: string,
   expectedPose: 'three-quarter' | 'back',
   context: {

@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { createGenAIClient, type GenAIResponse } from './genaiClient';
 import { GEMINI_IMAGE_MODEL } from './geminiModels';
 import { logServerEvent } from './observability.server';
 
@@ -65,10 +65,10 @@ export async function cleanFlatLay(
   mimeType: string,
   apiKey: string,
 ): Promise<string> {
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = createGenAIClient({ apiKey });
   const mime = mimeType === 'image/jpeg' ? 'image/jpeg' : 'image/png';
 
-  let response: Awaited<ReturnType<typeof ai.models.generateContent>>;
+  let response: GenAIResponse;
   try {
     response = await ai.models.generateContent({
       model: GEMINI_IMAGE_MODEL,
@@ -126,10 +126,10 @@ export async function cleanFlatLayForDemo(
   mimeType: string,
   apiKey: string,
 ): Promise<string> {
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = createGenAIClient({ apiKey });
   const mime = mimeType === 'image/jpeg' ? 'image/jpeg' : 'image/png';
 
-  let response: Awaited<ReturnType<typeof ai.models.generateContent>>;
+  let response: GenAIResponse;
   try {
     response = await ai.models.generateContent({
       model: GEMINI_IMAGE_MODEL,
@@ -209,10 +209,15 @@ export function createUserFacingImageProviderError(error: unknown, fallback: str
 export function classifyImageProviderError(error: unknown): ImageProviderErrorKind {
   const msg = getImageProviderErrorMessage(error).toLowerCase();
 
+  // Substring classification works for both providers: Gemini surfaces gRPC
+  // status names (RESOURCE_EXHAUSTED, INVALID_ARGUMENT); OpenRouter errors are
+  // formatted as "OpenRouter <endpoint> <status> <code>: <message>".
   if (
     msg.includes('safety') ||
     msg.includes('blocked') ||
-    msg.includes('prohibited')
+    msg.includes('prohibited') ||
+    msg.includes('moderation') ||
+    msg.includes('flagged')
   ) {
     return 'safety';
   }
@@ -227,10 +232,17 @@ export function classifyImageProviderError(error: unknown): ImageProviderErrorKi
     return 'invalid_input';
   }
 
+  // Billing and credential failures are ours, not the merchant's: they alert
+  // internally and refund. OpenRouter: 402 insufficient credits, 401/403 key.
   if (
     msg.includes('billing') ||
     msg.includes('payment') ||
-    msg.includes('credit')
+    msg.includes('credit') ||
+    msg.includes('402') ||
+    msg.includes('401') ||
+    msg.includes('unauthorized') ||
+    msg.includes('api key') ||
+    msg.includes('no auth credentials')
   ) {
     return 'provider_billing';
   }
@@ -254,7 +266,12 @@ export function classifyImageProviderError(error: unknown): ImageProviderErrorKi
     msg.includes('deadline') ||
     msg.includes('internal') ||
     msg.includes('500') ||
-    msg.includes('503')
+    msg.includes('502') ||
+    msg.includes('503') ||
+    msg.includes('504') ||
+    msg.includes('bad gateway') ||
+    msg.includes('fetch failed') ||
+    msg.includes('econnreset')
   ) {
     return 'provider_unavailable';
   }

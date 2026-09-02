@@ -1,4 +1,5 @@
 import type { ActionFunctionArgs } from 'react-router';
+import { getGenAIApiKey } from '../lib/genaiClient';
 import { logServerEvent } from '../lib/observability.server';
 import { buildRateLimitHeaders, consumeRateLimit } from '../lib/rateLimit.server';
 import { getNormalizedRateLimitSubject } from '../lib/rateLimitSubject.server';
@@ -86,7 +87,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     );
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = getGenAIApiKey();
   if (!apiKey) {
     return jsonNoStore({ error: 'service_unavailable' }, { status: 503 }, rateLimitHeaders);
   }

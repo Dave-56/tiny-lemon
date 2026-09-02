@@ -123,6 +123,11 @@ vi.mock('../lib/geminiModels', () => ({
   GEMINI_TEXT_MODEL: 'gemini-text',
 }));
 
+vi.mock('../lib/genaiClient', () => ({
+  createGenAIClient: vi.fn(),
+  getGenAIApiKey: () => 'test-key',
+}));
+
 import { generateOutfitTask as _generateOutfitTask } from '../../trigger/generate-outfit.task';
 import { regenerateOutfitTask as _regenerateOutfitTask } from '../../trigger/regenerate-outfit.task';
 import { GraphicFidelityGenerationError } from '../lib/generationErrors.server';

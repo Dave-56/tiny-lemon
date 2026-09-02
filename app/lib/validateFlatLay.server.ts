@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { createGenAIClient } from './genaiClient';
 import { LruCache } from './lruCache';
 
 export type FlatLayQuality = 'good' | 'warn' | 'fail';
@@ -150,7 +150,7 @@ export async function validateFlatLayServer(
     return { ...cached, cacheHit: true };
   }
 
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = createGenAIClient({ apiKey });
   const prompt = `You will be shown a product photo image. Task: determine how many distinct apparel products are present.
 
 Rules:
@@ -178,8 +178,8 @@ Output: Only respond with strict JSON and nothing else in this exact shape:
           { text: prompt },
         ],
       }],
-      // SDK may not support signal; timeout still bounds our handler
-    } as any);
+      // Provider clients do not take an abort signal; the timeout still bounds our handler.
+    });
     // Attempt to get text from response helper or fallback
     text = (response.text ?? '').trim();
   } catch (e) {
@@ -199,7 +199,10 @@ Output: Only respond with strict JSON and nothing else in this exact shape:
       lowerMsg.includes('forbidden') ||
       lowerMsg.includes('unauthorized') ||
       lowerMsg.includes('api key') ||
-      lowerMsg.includes('403')
+      lowerMsg.includes('403') ||
+      lowerMsg.includes('401') ||
+      lowerMsg.includes('402') ||
+      lowerMsg.includes('credit')
     ) {
       throw Object.assign(new Error('service_unavailable'), { code: 'SERVICE_UNAVAILABLE' });
     }
