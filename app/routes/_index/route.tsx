@@ -4,7 +4,7 @@ import { redirect, Link, useLoaderData } from "react-router";
 import { BeforeAfterSlider } from "../../components/BeforeAfterSlider";
 import { SHOPIFY_APP_STORE_URL } from "../../lib/shopifyAppStoreUrl";
 import { SITE_URL, buildSeoMeta } from "../../lib/seo";
-import { BETA_LAUNCH_GENERATION_CAP } from "../../lib/planConstants";
+import { FREE_TRIAL_GENERATION_LIMIT } from "../../lib/planConstants";
 import {
   trackShopifyAppStoreClick,
   trackTryDemoClick,
@@ -12,12 +12,8 @@ import {
 
 import styles from "./styles.module.css";
 
-const LAUNCH_GENERATION_LABEL = `${BETA_LAUNCH_GENERATION_CAP} free ${
-  BETA_LAUNCH_GENERATION_CAP === 1 ? "generation" : "generations"
-}`;
-const LAUNCH_OUTFIT_GENERATION_LABEL = `${BETA_LAUNCH_GENERATION_CAP} free outfit ${
-  BETA_LAUNCH_GENERATION_CAP === 1 ? "generation" : "generations"
-}`;
+const LAUNCH_GENERATION_LABEL = `${FREE_TRIAL_GENERATION_LIMIT} free outfits`;
+const LAUNCH_OUTFIT_GENERATION_LABEL = `${FREE_TRIAL_GENERATION_LIMIT} free outfit generations`;
 
 const LANDING_1 = { before: "/landing-before.png", after: "/landing-after.png" };
 const LANDING_2 = {
@@ -38,7 +34,7 @@ const FAQ_ITEMS = [
   },
   {
     question: "Can I try Tiny Lemon for free?",
-    answer: `Yes. With launch access, eligible early Shopify fashion merchants can get ${LAUNCH_OUTFIT_GENERATION_LABEL} to test Tiny Lemon with a real product before choosing a paid plan.`,
+    answer: `Yes. Every store starts with ${LAUNCH_OUTFIT_GENERATION_LABEL} to test Tiny Lemon with real products before choosing a paid plan.`,
   },
 ];
 
@@ -62,7 +58,7 @@ function getStructuredData(origin: string, installUrl: string) {
         featureList: [
           "AI model photos from flat-lay and supplier product photos",
           "Short product videos for fashion product listings",
-          `Launch access with ${LAUNCH_OUTFIT_GENERATION_LABEL}`,
+          `${LAUNCH_OUTFIT_GENERATION_LABEL} to start`,
           "Shopify product media workflow for clothing stores",
         ],
         offers: {
@@ -157,7 +153,7 @@ export default function LandingPage() {
                   )
                 }
               >
-                Claim {BETA_LAUNCH_GENERATION_CAP} free
+                Claim {LAUNCH_GENERATION_LABEL}
               </a>
             )}
             <Link
@@ -184,11 +180,11 @@ export default function LandingPage() {
           </p>
           <p
             className={styles.heroOffer}
-            aria-label={`Get ${LAUNCH_OUTFIT_GENERATION_LABEL} with launch access.`}
+            aria-label={`Get ${LAUNCH_OUTFIT_GENERATION_LABEL} to start.`}
           >
             <span>Get </span>
             <strong>{LAUNCH_OUTFIT_GENERATION_LABEL}</strong>
-            <span> with launch access.</span>
+            <span> to start.</span>
           </p>
           <p className={styles.heroAppStoreNote}>
             No credit card. Test with real products before choosing a paid plan.

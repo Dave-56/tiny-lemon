@@ -361,14 +361,15 @@ describe("handleTriggerGeneration", () => {
   it("returns plan usage details when credits are exhausted", async () => {
     mocks.modelFindFirst.mockResolvedValue(null);
     mocks.reserveGenerations.mockRejectedValueOnce(new Error("insufficient_credits"));
-    mocks.getMonthlyUsage.mockResolvedValueOnce(1);
+    mocks.getMonthlyUsage.mockResolvedValueOnce(10);
     mocks.getEffectiveEntitlements.mockResolvedValueOnce({
       publicPlan: "free",
       isBeta: false,
       betaStatus: null,
-      effectiveLimit: 1,
+      effectiveLimit: 10,
       effectiveAngles: ["front"],
       showUpgradePrompt: true,
+      usageWindow: "lifetime",
     });
 
     const res = await handleTriggerGeneration("shop-a.myshopify.com", {
@@ -379,11 +380,11 @@ describe("handleTriggerGeneration", () => {
     expect(res.status).toBe(402);
     await expect(res.json()).resolves.toEqual({
       error: "limit_reached",
-      used: 1,
-      limit: 1,
+      used: 10,
+      limit: 10,
       plan: "free",
       isBeta: false,
-      message: "You've used all your generations this month. Upgrade to continue.",
+      message: "You've used your 10 free outfits. Upgrade to keep generating.",
     });
     expect(mocks.outfitUpsert).not.toHaveBeenCalled();
     expect(mocks.enqueueGenerateOutfit).not.toHaveBeenCalled();

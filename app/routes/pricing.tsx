@@ -3,10 +3,7 @@ import type { LoaderFunctionArgs, MetaFunction } from "react-router";
 import { Link, useLoaderData } from "react-router";
 
 import { SHOPIFY_APP_STORE_URL } from "../lib/shopifyAppStoreUrl";
-import {
-  BETA_LAUNCH_GENERATION_CAP,
-  FREE_PLAN_GENERATION_LIMIT,
-} from "../lib/planConstants";
+import { FREE_TRIAL_GENERATION_LIMIT } from "../lib/planConstants";
 import { buildSeoMeta } from "../lib/seo";
 import {
   trackMarketingEvent,
@@ -17,14 +14,9 @@ import {
 import landingStyles from "./_index/styles.module.css";
 import styles from "../styles/pricing.module.css";
 
-const LAUNCH_GENERATION_LABEL = `${BETA_LAUNCH_GENERATION_CAP} free ${
-  BETA_LAUNCH_GENERATION_CAP === 1 ? "generation" : "generations"
-}`;
-const LAUNCH_MONTHLY_LABEL = `${BETA_LAUNCH_GENERATION_CAP}/month`;
-const FREE_MONTHLY_LABEL = `${FREE_PLAN_GENERATION_LIMIT}/month`;
-const FREE_OUTFIT_GENERATION_LABEL = `${FREE_PLAN_GENERATION_LIMIT} outfit ${
-  FREE_PLAN_GENERATION_LIMIT === 1 ? "generation" : "generations"
-}/month`;
+const LAUNCH_GENERATION_LABEL = `${FREE_TRIAL_GENERATION_LIMIT} free outfits`;
+const FREE_TRIAL_LABEL = `${FREE_TRIAL_GENERATION_LIMIT} free outfits to start`;
+const FREE_OUTFIT_GENERATION_LABEL = `${FREE_TRIAL_GENERATION_LIMIT} free outfit generations to start`;
 
 export const meta: MetaFunction = () => {
   const title = `AI Fashion Pricing: ${LAUNCH_GENERATION_LABEL} | TinyLemon`;
@@ -95,7 +87,7 @@ export default function PricingPage() {
       <main>
         <section className={styles.section}>
           <div className={styles.launchBanner}>
-            <p className={styles.launchEyebrow}>Launch offer</p>
+            <p className={styles.launchEyebrow}>Free trial</p>
             <h1 className={styles.pageTitle}>
               Start with {LAUNCH_GENERATION_LABEL}
             </h1>
@@ -124,10 +116,9 @@ export default function PricingPage() {
               Claim {LAUNCH_GENERATION_LABEL}
             </a>
             <p className={styles.launchFinePrint}>
-              No credit card required. Launch access is available for early
-              Shopify fashion merchants while the program is open. The Free plan
-              includes {FREE_MONTHLY_LABEL}. Short product videos are included
-              during launch, and each new or regenerated video uses 1 generation.
+              No credit card required. Every store gets {FREE_TRIAL_LABEL},
+              then picks a plan to keep generating. Short product videos are
+              included, and each new or regenerated video uses 1 generation.
             </p>
           </div>
 
@@ -165,11 +156,11 @@ export default function PricingPage() {
                   });
                 }}
               >
-                Claim launch access →
+                Start free →
               </a>
               <ul className={styles.tierList}>
                 <li>{FREE_OUTFIT_GENERATION_LABEL}</li>
-                <li>Launch access is included for early merchants</li>
+                <li>No credit card required</li>
                 <li>1 model save</li>
                 <li>Full 3-angle set (Front + 3/4 + Back)</li>
                 <li>Launch video generation included</li>
@@ -285,15 +276,15 @@ export default function PricingPage() {
               <thead>
                 <tr>
                   <th>Feature</th>
-                  <th>Launch / Free</th>
+                  <th>Free</th>
                   <th>Growth</th>
                   <th>Scale</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td>Monthly generations</td>
-                  <td>{LAUNCH_MONTHLY_LABEL} during launch, then {FREE_MONTHLY_LABEL}</td>
+                  <td>Generations</td>
+                  <td>{FREE_TRIAL_LABEL}</td>
                   <td>100/month</td>
                   <td>300/month</td>
                 </tr>

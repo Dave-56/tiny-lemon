@@ -6,6 +6,7 @@ import {
   refundReservedGeneration,
   reserveGenerations,
 } from "./billing.server";
+import { createLimitReachedMessage } from "./planConstants";
 import { enqueueGenerateVideo, cancelRunSafely } from "./triggerJobs.server";
 import { logServerEvent } from "./observability.server";
 import { Prisma } from "@prisma/client";
@@ -44,13 +45,6 @@ function createVideoReservationContext(
     preEnqueueRefundDescription: `generation refund:${prefix}:pre_enqueue_failure`,
     noOutputRefundDescription: `generation refund:${prefix}:no_output_failure`,
   };
-}
-
-function createLimitReachedMessage(isBeta: boolean) {
-  if (isBeta) {
-    return "You've used your beta allocation for now. Contact us if you need more access.";
-  }
-  return "You've used all your generations this month. Upgrade to continue.";
 }
 
 // ── Access check ─────────────────────────────────────────────────────────────
@@ -266,7 +260,7 @@ export async function handleVideoGenerateRequest(args: {
             limit: entitlements.effectiveLimit,
             plan: entitlements.publicPlan,
             isBeta: entitlements.isBeta,
-            message: createLimitReachedMessage(entitlements.isBeta),
+            message: createLimitReachedMessage(entitlements),
           },
           { status: 402 },
         );
