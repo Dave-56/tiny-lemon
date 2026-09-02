@@ -83,8 +83,8 @@ function parseSpecFromText(text: string): GarmentSpec | null {
   }
 }
 
-import { GoogleGenAI } from '@google/genai';
 import { createUserFacingImageProviderError, logImageProviderError } from './flatLayCleanup';
+import { createGenAIClient, type GenAIResponse } from './genaiClient';
 import { GEMINI_TEXT_MODEL } from './geminiModels';
 
 /**
@@ -98,9 +98,9 @@ export async function extractGarmentSpec(
   sourceSide: 'front' | 'back' = 'front',
   frontDescription?: string,
 ): Promise<GarmentSpec> {
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = createGenAIClient({ apiKey });
   const mime = mimeType === 'image/jpeg' ? 'image/jpeg' : 'image/png';
-  let response: Awaited<ReturnType<typeof ai.models.generateContent>>;
+  let response: GenAIResponse;
   try {
     response = await ai.models.generateContent({
       model: GEMINI_TEXT_MODEL,

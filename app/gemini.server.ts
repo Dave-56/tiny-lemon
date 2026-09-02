@@ -1,8 +1,15 @@
-import { GoogleGenAI, ThinkingLevel } from '@google/genai';
+import { ThinkingLevel } from '@google/genai';
 import { getUserFacingImageServiceError } from './lib/flatLayCleanup';
+import { createGenAIClient, type GenAIClient, type GenAIResponse } from './lib/genaiClient';
 import { GEMINI_IMAGE_MODEL, GEMINI_TEXT_MODEL } from './lib/geminiModels';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+// Lazy so importing this module never throws when the provider key is absent
+// (e.g. at build time or in tests); the first real call surfaces the error.
+let client: GenAIClient | undefined;
+function ai(): GenAIClient {
+  client ??= createGenAIClient();
+  return client;
+}
 
 export interface ModelAttributes {
   name: string;
@@ -58,9 +65,9 @@ export async function generateModelImage(
   angleSnippet: string,
 ): Promise<string> {
   const prompt = buildModelPrompt(attrs, styleSnippet, angleSnippet);
-  let response: Awaited<ReturnType<typeof ai.models.generateContent>>;
+  let response: GenAIResponse;
   try {
-    response = await ai.models.generateContent({
+    response = await ai().models.generateContent({
       model: GEMINI_IMAGE_MODEL,
       contents: { parts: [{ text: prompt }] },
       config: {
@@ -91,7 +98,7 @@ export async function generateModelImage(
 
 /** Estimate age range from a generated model image. Returns null on failure. */
 export async function estimateAge(base64: string): Promise<string | null> {
-  const response = await ai.models.generateContent({
+  const response = await ai().models.generateContent({
     model: GEMINI_TEXT_MODEL,
     contents: {
       parts: [

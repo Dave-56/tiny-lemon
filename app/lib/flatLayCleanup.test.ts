@@ -156,4 +156,35 @@ describe("flat lay cleanup helpers", () => {
       }),
     );
   });
+
+  describe("OpenRouter-shaped errors", () => {
+    it("treats insufficient credits and bad keys as refundable configuration failures", () => {
+      const credits = new Error(
+        "OpenRouter /images 402 402: Insufficient credits. Add more using https://openrouter.ai/settings/credits",
+      );
+      const badKey = new Error("OpenRouter /images 401 401: No auth credentials found");
+
+      expect(classifyImageProviderError(credits)).toBe("provider_billing");
+      expect(classifyImageProviderError(badKey)).toBe("provider_billing");
+      expect(
+        isRefundableImageProviderFailure(createUserFacingImageProviderError(credits, "fallback")),
+      ).toBe(true);
+      expect(getUserFacingImageServiceError(credits, "fallback")).toBe(
+        "AI image generation is currently unavailable. Our team has been alerted. Please try again later.",
+      );
+    });
+
+    it("classifies rate limits, upstream outages, and moderation", () => {
+      expect(
+        classifyImageProviderError(new Error("OpenRouter /images 429 429: Rate limit exceeded")),
+      ).toBe("quota_or_rate_limit");
+      expect(
+        classifyImageProviderError(new Error("OpenRouter /images 502 502: Provider returned error (bad gateway)")),
+      ).toBe("provider_unavailable");
+      expect(classifyImageProviderError(new TypeError("fetch failed"))).toBe("provider_unavailable");
+      expect(
+        classifyImageProviderError(new Error("OpenRouter /images 403 403: Your input was flagged by moderation")),
+      ).toBe("safety");
+    });
+  });
 });

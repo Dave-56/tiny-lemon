@@ -1,5 +1,5 @@
 import type { GarmentSpec } from './garmentSpec';
-import type { GoogleGenAI } from '@google/genai';
+import type { GenAIClient } from './genaiClient';
 import { GEMINI_TEXT_MODEL } from './geminiModels';
 import { logImageProviderError } from './flatLayCleanup';
 
@@ -192,7 +192,7 @@ export async function extractGraphicReferenceCrop(rawImageBase64: string): Promi
 }
 
 export async function validateGeneratedGraphicFidelity(
-  ai: GoogleGenAI,
+  ai: GenAIClient,
   args: {
     referenceCropBase64: string;
     generatedImageBase64: string;
