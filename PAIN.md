@@ -302,3 +302,174 @@ Legend: **[HUMAN]** needs an account/form/decision only a person can do ·
   Nothing in the MPP doc says the stablecoin capability is a prerequisite for
   the Tempo method it shows by default.
 
+
+## Sandbox loop findings
+
+Full loop run 2026-09-03 21:30–21:45 UTC against a local server on the pulled
+Development env (Stripe sandbox key + `profile_test_61VL57…` + Stripe sandbox
+Tempo deposit address, CDP keys, Base Sepolia). Buyer side is
+`scripts/buyer-agent.ts`; its append-only ledger and downloads are ignored by
+version control. Payments in this loop: 3 buyer purchases (2 card, 1
+Tempo-through-Stripe), 1 bad-input purchase, 1 purchase cancelled
+mid-generation. Earlier today: 2 validator card charges, 1 validator
+Tempo-through-Stripe charge, 2 direct Tempo testnet charges. Validator runs
+today: 3 in total, none during this loop; step 1 and 2 evidence comes from
+those.
+
+### Step 1 — merchant, cards
+
+- Worked. `mppx validate` paid with `pm_card_visa` twice earlier today:
+  `pi_3UBhEKRoC7n8hydS09PpX7Ra` and `pi_3UBhHURoC7n8hydS122wDPwo`, 50 USD
+  cents each, `succeeded`. They sit under Payments in the sandbox Dashboard
+  (`dashboard.stripe.com/test/payments/pi_…`).
+- **[HUMAN]** the validator only exercises the card leg with
+  `MPPX_STRIPE_SECRET_KEY` exported (or a Stripe CLI old enough to keep the
+  key in `config.toml`); nothing on the machine supplies it otherwise.
+- **[RAIL] What the Dashboard row says about what was bought: nothing.**
+  `description` is null on every PaymentIntent. The only memo is metadata
+  mppx adds: `machine_payment=true`, `mpp_challenge_id`, `mpp_intent=charge`,
+  `mpp_server_id=localhost` (the realm). No product, no job id, no buyer.
+- **[RAIL] Card economics at $0.50.** Balance transactions show fee 31 on
+  amount 50 → net 19 cents (2.9 % + 30 ¢). The card rail keeps 62 % of the
+  sale. The Tempo-through-Stripe payment had fee 1 → net 49.
+
+### Step 2 — merchant, Tempo through Stripe
+
+- Worked. A Tempo testnet transfer to Stripe's sandbox deposit address
+  becomes a PaymentIntent with `payment_method_types: ["crypto"]` and a
+  `py_…` charge (validator: `pi_3UBhH0RoC7n8hydS00Tt67Oy`; buyer:
+  `pi_3UBiHBRoC7n8hydS1zTqTMmM`), settled into the Stripe balance
+  (`balance_transactions` type `payment`, net 49).
+- On-chain hash **is** visible from Stripe: the charge carries
+  `payment_method_details.crypto.{buyer_address, network:"tempo",
+  token_currency:"usdc", transaction_hash}`. Good.
+- **[DOC]** the crypto PaymentIntent has *less* metadata than the card one
+  (only `machine_payment=true`, no `mpp_challenge_id`), so it cannot be tied
+  back to an MPP challenge at all.
+- **[DESIGN]** the Stripe deposit address on Tempo Moderato now holds
+  ~1,648 pathUSD of accumulated test transfers; nothing shows what Stripe
+  "offramped" versus what just sits at the address.
+
+### Step 3 — buyer
+
+- Three purchases via `scripts/buyer-agent.ts`: Tempo (receipt
+  `0xeb27fa3c…`, job `201b441d`), card (`pi_3UBiIaRoC7n8hydS1GMW3HVI`, job
+  `ba90fe65`), card model-09 (`pi_3UBiJDRoC7n8hydS0h3IMIT3`, job `caf79a66`).
+  Each: 402 → pay → 202 → 2–3 polls → image downloaded (1.2–1.5 MB PNG).
+- **[HUMAN]** a real buyer cannot mint a Stripe SPT: the script had to use
+  the *merchant's* sandbox secret against
+  `/v1/test_helpers/shared_payment/granted_tokens`, exactly like
+  `mppx validate`. The customer path is `npx @stripe/link-cli auth login`,
+  a browser login.
+- **[RAIL]** the test helper rejects `seller_details` ("Received unknown
+  parameter"), so the token is minted with no seller binding and no
+  metadata; mppx silently retries the same way.
+
+The five questions, answered only from what the buyer holds (ledger +
+receipts + 402 headers + files):
+
+1. *How much did I spend in total?* Not answerable from receipts. The
+   `Payment-Receipt` has `method, status, timestamp, reference` and **no
+   amount**. The buyer must go back to the 402 offer (`amount:"500000"` in
+   token units for Tempo, `"50"` in cents for Stripe) and trust that the
+   charge matched. Summing offers: 3 × $0.50 = $1.50 (plus 0.000799 pathUSD
+   gas on the Tempo purchase, visible only on-chain). **[RAIL]**
+2. *On what?* The receipt names no product, no job id, no merchant beyond
+   the realm (`localhost`). Correlation is by timestamp only. **[RAIL]**
+3. *Was each result correct?* Only by opening the PNGs: 3/3 show the striped
+   polo on the requested model. Nothing machine-readable asserts it. The
+   status body has no hash, no prompt echo, no garment fingerprint. **[DESIGN]**
+4. *How would I cap this at $1/day?* Nothing on the MPP side. mppx's client
+   has no spend controls; an SPT carries a per-token `usage_limits.max_amount`
+   but that caps one payment, not a day; AgentCash offers `--max-amount` per
+   request; CDP's x402 client has `applySpendControls` (x402 only). A daily
+   cap is the buyer's own ledger. **[RAIL]**
+5. *How would I hand this to an accountant?* A JSONL of receipt references.
+   Stripe generated a `receipt_url` for every charge, but the buyer never
+   receives it (no email, no header); the Tempo purchase has a tx hash and
+   no invoice; no seller name, tax, or line item anywhere. **[RAIL]**
+
+### Step 4 — refund
+
+- Card (`pi_3UBiIa…`): `POST /v1/refunds` → `re_3UBiIa…` `succeeded`
+  immediately, charge `refunded:true`, acquirer reference available.
+- Tempo-through-Stripe (`pi_3UBiHB…`): `pyr_1UBiJq…` created `pending`,
+  charge `refunded:true`, then `succeeded` within a minute. Worked.
+- **[RAIL] The buyer received nothing.** No MPP message, no header, no
+  callback exists for "you were refunded". The Tempo buyer wallet
+  (`0x4501F4…`) still shows 999,999.499201 pathUSD twenty minutes later and
+  Stripe's refund object has `destination_details.crypto.reference: null`,
+  so even on-chain there is nothing to point to yet.
+- **[RAIL] The buyer could not have asked.** There is no MPP intent for
+  refund; it would need a merchant endpoint that takes the receipt
+  `reference` (pi_ / tx hash) and proves the caller paid it (the credential
+  is single-use, so the proof would be the receipt itself).
+- **[RAIL] Refunds cost the merchant the fee.** Balance after two refunds:
+  6 card nets × 19 + 2 crypto nets × 49 − 2 × 50 = 112 pending cents, i.e.
+  the 31 ¢ card fee is not returned. Refunding a $0.50 card sale loses 31 ¢.
+
+### Step 5 — reconcile
+
+One-page statement, sandbox, 2026-09-03 (all 50 ¢):
+
+| Stripe object | Rail | Our outfit (job) | Result | Refund |
+| --- | --- | --- | --- | --- |
+| (none, direct Tempo tx `0x98096c5e…`) | tempo direct | `9feefecd` | completed | — |
+| (none, direct Tempo tx `0xcf494c8b…`) | tempo direct | `36363d24` | completed | — |
+| `pi_3UBhEK…` card | validator | `da0b4205` | completed | — |
+| `pi_3UBhH0…` crypto | validator | `b28b7eb9` | completed | — |
+| `pi_3UBhHU…` card | validator | `72995c35` | completed | — |
+| `pi_3UBiHB…` crypto | buyer | `201b441d` | completed | `pyr_…` succeeded |
+| `pi_3UBiIa…` card | buyer | `ba90fe65` | completed | `re_…` succeeded |
+| `pi_3UBiJD…` card | buyer | `caf79a66` | completed | — |
+| `pi_3UBiKK…` card | buyer, 1×1 px garment | `437531a5` | "completed" (fabricated shirt) | — |
+| `pi_3UBiLU…` card | buyer, run cancelled | `682cc2fb` | stuck `generating_front` | — |
+
+- **What Stripe knows:** amount, fee, net, status, refund state, payment
+  method, `mpp_challenge_id` (cards only), buyer wallet + tx hash (crypto).
+- **What only our DB knows:** outfit id, model, status, Trigger run id, the
+  image URL, our own nonce in `name` (`agent:mpp:<uuid>`).
+- **What neither knows:** which payment paid for which outfit. **The join I
+  could not make:** `PaymentIntent.metadata.mpp_challenge_id` ↔ anything in
+  `Outfit` / `OutfitGenerationRequest`. Our nonce is generated *after* the
+  credential is verified and never sent to Stripe; the challenge id is never
+  written to the DB. The table above was built by ordering both sides by
+  timestamp and matching 1:1, which works only because traffic was serial.
+  Two concurrent buyers would be unreconcilable. **[DESIGN, us]**
+- Neither side knows that `437531a5` is garbage or that `682cc2fb` will
+  never finish.
+
+### Step 6 — failure after payment
+
+- **Attempt 1, invalid garment (1×1 transparent PNG): did not fail.** The
+  pipeline cleaned the "flat-lay", the spec extractor described a garment
+  that was never there, and the front pose was generated: a plain blue
+  button-down on model-01, `status: completed`, 200 in 55 s. The buyer paid
+  `pi_3UBiKK…` for a fabricated product and every system reports success.
+  Nothing refunds; nothing flags it. **[DESIGN, us]** — input validation
+  needs an "is this a garment" gate before the charge, and the output needs
+  a confidence the buyer can act on.
+- **Attempt 2, run cancelled after payment (`runs.cancel` on
+  `run_06g6idfpj4q1…`, buyer had paid `pi_3UBiLU…`, 202 returned):**
+  Trigger marks the run CANCELED, but the task's `onFailure` never fires for
+  a cancel, so the outfit stays `generating_front` with no error forever.
+  The buyer's status URL answers `processing` indefinitely (the buyer script
+  gave up after 60 polls). Stripe records a clean `succeeded` payment.
+  Nothing refunds automatically. **[DESIGN, us]** — a watchdog must fail
+  outfits whose run is terminal, and a failed outfit must trigger a refund
+  of the recorded reference (which, per step 5, is not recorded).
+- **How I found the failed payment afterwards:** only by querying our DB for
+  agent outfits not in `completed/failed` and pairing the newest with the
+  newest PaymentIntent by time. Stripe cannot show it: from Stripe's side
+  every one of the ten payments is a success.
+
+### Summary table
+
+| Step | Worked | Gap found | Who owns it |
+| --- | --- | --- | --- |
+| 1 Cards (merchant) | yes, 2 sandbox charges | no memo of what was bought; 31 ¢ fee on 50 ¢; validator needs the secret key by hand | Stripe (fee, memo), rail (receipt has no amount), us (description) |
+| 2 Tempo via Stripe | yes, crypto PaymentIntent with tx hash | no challenge id on crypto PIs; capability gate on live | Stripe |
+| 3 Buyer | yes, 3/3 images correct | no amount/product/merchant in receipt; no spend cap; buyer can't mint SPT; no invoice | rail (MPP receipt), Stripe (Link login), nobody (daily cap) |
+| 4 Refund | yes, card and crypto via API | buyer never told; no way to request; merchant eats the fee; crypto refund not visible on-chain | rail (no refund intent), Stripe (fee), us (request endpoint) |
+| 5 Reconcile | manual, by timestamp only | payment ↔ outfit join does not exist | us |
+| 6 Failure | cancel reproduced; bad input did not fail | stuck job never fails, no auto-refund, fabricated garment counted as success | us (watchdog, refund, input gate) |
