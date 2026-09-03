@@ -157,3 +157,67 @@ Legend: **[HUMAN]** needs an account/form/decision only a person can do ·
   second run (Tempo testnet receipt `0xcf494c8b…`); AgentCash `discover` and
   `check` clean; x402 challenge decodes with the bazaar declaration.
 
+## 6. AgentCash end-to-end (buyer side), 2026-09-03
+
+- **[RAIL] AgentCash never pays a testnet.** Its wallet holds USDC on Base
+  mainnet, Solana mainnet, and Tempo mainnet only. So an end-to-end test of
+  "AgentCash pays my endpoint" is always real money, and the one mainnet rail
+  we can offer without a third-party account is MPP over Tempo (mppx verifies
+  the transfer on the public RPC). Base mainnet x402 still needs the CDP key.
+- **[HUMAN] Funding the buyer wallet is a browser flow.** `npx agentcash
+  accounts` creates a wallet with no login (`0x876968DE…` on Base + Tempo,
+  a Solana address too), but the only free money is the onboarding bonus:
+  connect GitHub/Twitter/LinkedIn at agentcash.dev/onboard, get a one-time
+  claim code, run `npx agentcash onboard <CODE>`. Otherwise deposit USDC at the
+  wallet's deposit link. No CLI-only path.
+- **Result so far:** server in mainnet mode issues a Tempo (chainId 4217)
+  USDC.e challenge for 500000 units; `agentcash check` reads the schema and
+  `requiresPayment: true`; `agentcash fetch … -p mpp --payment-network tempo`
+  fails with `INSUFFICIENT_BALANCE: costs 0.5 USDC on tempo, balance 0`. The
+  payment itself is untested until the wallet holds ≥ $0.50 on Tempo (or on
+  Base, then "bridge between accounts" as the error suggests).
+- **[DESIGN] The $0.50 would land on the throwaway key.** With no company
+  wallet, a real payment goes to the laptop-generated address in `.env.local`.
+  Fine for one test; not a payout setup.
+
+## 7. Stripe CLI and AgentCash funding, 2026-09-03 afternoon
+
+- **[HUMAN][DOC] The Stripe MPP doc's validator auto-detect is dead on the
+  current CLI.** `mppx validate` finds the sandbox key by grepping
+  `test_mode_api_key` out of `stripe config --list`, but Stripe CLI 1.50 stores
+  keys in the OS keychain and the config only carries `account_id` /
+  `device_name`. Logging in with the CLI therefore does nothing for MPP: the
+  sandbox secret key still has to be copied from the Dashboard into
+  `STRIPE_SECRET_KEY` (server) and `MPPX_STRIPE_SECRET_KEY` (validator).
+- **[HUMAN] The Business Profile is a Dashboard object.** The doc says "create
+  a Stripe profile in the Dashboard" and only shows an API call to *read* it
+  (`GET /v2/network/business_profiles/me`, preview API version). No CLI or
+  API creation path is documented.
+- **[RAIL] AgentCash's own onramp had no liquidity.** The "Add Funds" page
+  (debit card → USDC via Stripe) showed "No quotes found" at $5.00, so a buyer
+  with a card and no crypto could not fund the wallet at all at that moment.
+  The founder was left "waiting on AgentCash to give me money".
+
+## 8. Stripe sandbox leg, 2026-09-03 evening
+
+- **Result:** with `STRIPE_SECRET_KEY` + `STRIPE_PROFILE_ID` (sandbox, pulled
+  from Vercel's Development env) the challenge advertises `stripe/charge`
+  (card, link) and `mppx validate` pays with `pm_card_visa`: PaymentIntent
+  `pi_3UBhEK…` for 50 cents `succeeded`, HTTP 202, job completed with an
+  image. 19/19 checks passed.
+- **[DOC] `defaultMethods()` silently drops Tempo unless you hand it an
+  address.** The Stripe MPP page shows the async form ("Stripe automatically
+  offramps…") but in mppx 0.9.2 the Tempo rail is only created when
+  `depositAddresses` is a static object or a resolver *function*; with nothing
+  passed the sync path returns Stripe-only and logs nothing. First validate run
+  therefore had no Tempo offer at all. Fixed by passing
+  `depositAddresses: (network) => stripe.findOrCreateDepositAddress(client, network)`
+  when `TEMPO_DEPOSIT_ADDRESS` is unset.
+- **[HUMAN] Sandbox deposit address had to be created by API.** Stripe's
+  sandbox listed no `crypto/deposit_addresses`; `POST …?network=tempo`
+  (preview API version) created `0x5ff8d73e…` (USDC on Tempo). Production
+  needs the same call against the live key, or the resolver above at boot.
+- **[RAIL] Sandbox card charges cost real generations.** Every validator run
+  against the Stripe leg enqueues a real Trigger job and spends OpenRouter
+  credit, same as the Tempo runs.
+

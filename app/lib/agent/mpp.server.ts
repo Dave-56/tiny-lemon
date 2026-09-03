@@ -50,13 +50,17 @@ async function buildMethods(env: NodeJS.ProcessEnv) {
   if (status.provider === "stripe") {
     const { default: Stripe } = await import("stripe");
     const client = new Stripe(env.STRIPE_SECRET_KEY!);
+    // mppx only offers the Tempo rail when it has a deposit address. With a
+    // plain object (or nothing) it never calls Stripe, so pass a resolver that
+    // finds or creates the address unless TEMPO_DEPOSIT_ADDRESS pins one.
     const machinePayments = stripe.create({
       client,
       networkId: env.STRIPE_PROFILE_ID!,
       livemode: !env.STRIPE_SECRET_KEY!.includes("_test_"),
-      ...(env.TEMPO_DEPOSIT_ADDRESS ? { depositAddresses: { tempo: env.TEMPO_DEPOSIT_ADDRESS } } : {}),
+      depositAddresses: env.TEMPO_DEPOSIT_ADDRESS
+        ? { tempo: env.TEMPO_DEPOSIT_ADDRESS }
+        : (network) => stripe.findOrCreateDepositAddress(client, network),
     });
-    // Without a static deposit address mppx asks Stripe for one (async).
     return await machinePayments.defaultMethods();
   }
 
