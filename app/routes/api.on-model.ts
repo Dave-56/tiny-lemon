@@ -79,14 +79,29 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   }
 
-  const parsed = parseOnModelInput(body);
-  if (!parsed.ok) {
+  // A bare POST (no body at all) is how the Coinbase x402 validator and the
+  // Bazaar crawler probe a route: they expect the 402 challenge, not input
+  // validation. Real callers with a present-but-invalid body still get the
+  // free 400 before any payment.
+  const isProbe = rawBody.trim().length === 0;
+  const parsed = isProbe ? null : parseOnModelInput(body);
+  if (parsed && !parsed.ok) {
     return Response.json({ error: parsed.error, message: parsed.message }, { status: parsed.status });
   }
-  const input = parsed.input;
 
   const outcome = await negotiateAgentPayment(request, body);
   if (outcome.kind === "response") return outcome.response;
+  if (!parsed) {
+    // Paid with no input: refuse before starting work. x402 does not settle on
+    // a non-2xx; an MPP credential bound to an empty body cannot be reused.
+    return outcome.finalize(
+      Response.json(
+        { error: "missing_garment", message: "Provide garmentImageUrl (https) or garmentImageBase64." },
+        { status: 400 },
+      ),
+    );
+  }
+  const input = parsed.input;
 
   const origin = publicOrigin(request);
   const nonce = crypto.randomUUID();

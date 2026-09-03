@@ -221,3 +221,69 @@ Legend: **[HUMAN]** needs an account/form/decision only a person can do ·
   against the Stripe leg enqueues a real Trigger job and spends OpenRouter
   credit, same as the Tempo runs.
 
+## 9. Payout setup, 2026-09-03 night
+
+- **[HUMAN] CDP cannot mint a wallet with the API key alone.** The project's
+  CDP API key lists zero EVM accounts and `cdp.evm.getOrCreateAccount()` fails
+  with "Wallet Secret not configured". The Wallet Secret is generated in the
+  CDP Portal (Server Wallets → Wallet Secret) and is never returned by the API,
+  so a custodied Coinbase payout wallet needs a person in the portal first.
+  → Workaround: the Base payout address is a locally generated EOA; its
+  private key lives only in `~/.config/tinylemon/x402-payout-base.key` (mode
+  0600) on this laptop. Back it up or replace it with a CDP wallet by
+  changing `X402_PAY_TO` once the Wallet Secret exists.
+- **[DESIGN] Two payout keys, two custodians.** Tempo money (MPP) lands in
+  Stripe's deposit address and offramps into the Stripe balance; Base money
+  (x402) lands in a raw EOA nobody offramps. Reconciliation for one $0.50
+  product now spans a Stripe balance and an on-chain wallet.
+
+- **[DESIGN] AgentCash onboarding rewrites other tools' configs.** Redeeming
+  the invite code (`npx agentcash onboard <code>`) credited 20 USDC on Tempo,
+  but it also installed a skill under `~/.agents/skills/agentcash` and wrote
+  MCP server entries into Codex, Cursor, Gemini CLI, Claude Code
+  (`~/.claude.json`), Claude Desktop, and Zed configs without a prompt, and
+  failed on Windsurf's (empty JSON). A merchant testing their own listing now
+  has AgentCash wired into every agent on the laptop.
+- **[HUMAN] The bonus is per social identity, one code, one wallet.** The
+  code was generated in the browser after connecting a social account; a
+  second redeem answers "already redeemed". Fine for a founder, unusable for
+  a CI job that wants a fresh funded buyer.
+
+## 10. Live Stripe account, 2026-09-03 night
+
+- **[HUMAN] The live account has no Business Profile.** `GET
+  /v2/network/business_profiles/me` with the `sk_live_` key returns 404
+  "Stripe business profile not found". The sandbox had one because it was
+  created by hand in the sandbox Dashboard; live mode needs the same manual
+  step at dashboard.stripe.com/profiles. There is no API to create it.
+- **[HUMAN] Stablecoin payments are a gated capability.** `POST
+  /v1/crypto/deposit_addresses?network=tempo` on the live account fails with
+  "The `crypto_payments` capability must be active on your account". The MPP
+  doc's "Create a deposit address" step silently assumes the capability is on;
+  enabling it is a Dashboard request that may need Stripe review. Until then
+  the live MPP offer would be card-only (SPT) even with the profile in place.
+- **State:** `STRIPE_SECRET_KEY` (live) is in Vercel Production as a sensitive
+  var; `STRIPE_PROFILE_ID` and `TEMPO_DEPOSIT_ADDRESS` are still missing, so
+  the server keeps MPP off in production and only x402 (Base mainnet via CDP,
+  payTo `0x44E4CC09…`) is armed.
+
+## 11. First production traffic, 2026-09-03 night
+
+- **[DOC] `@coinbase/cdp-sdk/x402` needs `@x402/svm` even for an EVM-only
+  server.** Production answered a plain 500 on every paid POST: the SDK's
+  `server-extensions.js` imports `@x402/svm` unconditionally, and the seller
+  quickstart lists it in one install line without saying it is required. It
+  never surfaced locally because the keyless testnet facilitator path never
+  loads the CDP module. Fixed by installing it and by making x402 init
+  failures fall back to a 503 instead of crashing the route.
+- **[RAIL] Coinbase's x402 validator probes with a bare POST and demands a
+  402.** `POST …/x402/validate` sends the method with no body; our "validate
+  input first, 400 is free" design answered 400 and the check failed
+  (`returns_402: false`). mppx's validator retries with a schema-built body;
+  Coinbase's does not. Changed: an empty body now gets the 402 (a probe), a
+  present-but-invalid body still gets the free 400.
+- **[RAIL] Production went live with x402 only.** With the live Stripe
+  profile and crypto capability still missing, the only armed rail is Base
+  USDC to a raw EOA; MPP buyers (AgentCash on Tempo, Stripe cards) get a
+  challenge with no offer they can pay.
+

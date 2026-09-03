@@ -146,11 +146,15 @@ export function getX402Http(env: NodeJS.ProcessEnv = process.env): Promise<x402H
       });
       return http;
     })();
-    httpServerPromise.catch((error) => {
+    // Initialization failures (missing peer package, facilitator down, bad
+    // CDP key) must not turn every paid call into a 500: resolve to null so
+    // the paywall answers with whatever rail is left, and retry next call.
+    httpServerPromise = httpServerPromise.catch((error) => {
       logServerEvent("error", "agent_x402.init_failed", {
         error: error instanceof Error ? error.message : String(error),
       });
       httpServerPromise = null;
+      return null;
     });
   }
   return httpServerPromise;
