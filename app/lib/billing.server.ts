@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import prisma from "../db.server";
+import { AGENT_SHOP_ID } from "./agent/config.server";
 import type { RegeneratePose } from "./regeneratePoses";
 import {
   BETA_LAUNCH_GENERATION_CAP,
@@ -8,6 +9,12 @@ import {
 
 /** Demo shop id for public /try free tool. No credits; rate limit only. */
 export const DEMO_SHOP_ID = process.env.DEMO_SHOP_ID ?? "__demo__";
+/** Agent (pay-per-call) system shop. Paid over MPP/x402, so no credit ledger. */
+export { AGENT_SHOP_ID };
+/** Demo and agent shops bypass plans, credits, and refunds entirely. */
+export function isSystemShop(shopId: string): boolean {
+  return shopId === DEMO_SHOP_ID || shopId === AGENT_SHOP_ID;
+}
 export const BETA_DEFAULT_CAP = BETA_LAUNCH_GENERATION_CAP;
 export const FULL_GENERATION_ANGLES = ["front", "three-quarter", "back"] as const;
 export const BETA_FULL_ANGLES = FULL_GENERATION_ANGLES;
@@ -126,7 +133,7 @@ function usageLedgerWhere(shopId: string, window: UsageWindow) {
 }
 
 export async function getPlanForShop(shopId: string): Promise<string> {
-  if (shopId === DEMO_SHOP_ID) return "free";
+  if (isSystemShop(shopId)) return "free";
   const shop = await prisma.shop.findUnique({
     where: { id: shopId },
     select: { plan: true },
@@ -137,7 +144,7 @@ export async function getPlanForShop(shopId: string): Promise<string> {
 export async function getEffectiveEntitlements(
   shopId: string,
 ): Promise<EffectiveEntitlements> {
-  if (shopId === DEMO_SHOP_ID) {
+  if (isSystemShop(shopId)) {
     return {
       publicPlan: "free",
       isBeta: false,
@@ -206,7 +213,7 @@ export async function reserveGenerations(
   count: number,
   options: ReserveGenerationsOptions = {},
 ): Promise<EffectiveEntitlements> {
-  if (shopId === DEMO_SHOP_ID) {
+  if (isSystemShop(shopId)) {
     return getEffectiveEntitlements(shopId);
   }
   const entitlements = await getEffectiveEntitlements(shopId);
@@ -250,7 +257,7 @@ export async function refundReservedGeneration(
     refundDescription,
   }: RefundReservationArgs,
 ): Promise<boolean> {
-  if (shopId === DEMO_SHOP_ID) {
+  if (isSystemShop(shopId)) {
     return false;
   }
 
@@ -299,7 +306,7 @@ export async function reserveFreeSingleImageRegeneration({
   outfitId,
   pose,
 }: SingleImageRegenerationAllowanceArgs): Promise<boolean> {
-  if (shopId === DEMO_SHOP_ID) return true;
+  if (isSystemShop(shopId)) return true;
 
   return prisma.$transaction(
     async (tx) => {
@@ -334,7 +341,7 @@ export async function markFreeSingleImageRegenerationCompleted({
   outfitId,
   pose,
 }: SingleImageRegenerationAllowanceArgs): Promise<void> {
-  if (shopId === DEMO_SHOP_ID) return;
+  if (isSystemShop(shopId)) return;
 
   await prisma.singleImageRegenerationAllowance.updateMany({
     where: { shopId, outfitId, pose, status: "pending" },
@@ -347,7 +354,7 @@ export async function markFreeSingleImageRegenerationFailed({
   outfitId,
   pose,
 }: SingleImageRegenerationAllowanceArgs): Promise<void> {
-  if (shopId === DEMO_SHOP_ID) return;
+  if (isSystemShop(shopId)) return;
 
   await prisma.singleImageRegenerationAllowance.updateMany({
     where: { shopId, outfitId, pose, status: "pending" },
