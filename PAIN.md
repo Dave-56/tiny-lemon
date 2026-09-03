@@ -287,3 +287,18 @@ Legend: **[HUMAN]** needs an account/form/decision only a person can do ·
   USDC to a raw EOA; MPP buyers (AgentCash on Tempo, Stripe cards) get a
   challenge with no offer they can pay.
 
+- **Update:** the live Business Profile now exists (`profile_61VL5x…`,
+  "TryEliza, Inc.", livemode) and is in Vercel Production. The
+  `crypto_payments` capability is still inactive, so no Tempo deposit address
+  can be created; production MPP therefore offers the Stripe card/Link rail
+  only, and Tempo buyers such as AgentCash still have nothing to pay.
+
+- **[RAIL] Coinbase's probe is `POST {}` not an empty POST.** After the
+  bare-body fix production still failed `returns_402` because the validator
+  sends an empty JSON object. An empty object is now also treated as a probe.
+- **[DOC] Stripe's Tempo rail is invisible in the live MPP offer.** With the
+  `crypto_payments` capability inactive, mppx's resolver cannot get a deposit
+  address, so live `/openapi.json` lists `stripe/charge` (card, link) only.
+  Nothing in the MPP doc says the stablecoin capability is a prerequisite for
+  the Tempo method it shows by default.
+
