@@ -12,6 +12,7 @@ import {
   refundReservedGeneration,
   DEMO_SHOP_ID,
 } from "./billing.server";
+import { AGENT_SHOP_ID } from "./agent/config.server";
 import { createLimitReachedMessage } from "./planConstants";
 import {
   claimGenerateRequestIdempotency,
@@ -325,7 +326,7 @@ export async function handleTriggerGeneration(
       select: { pricePoint: true, brandEnergy: true, primaryCategory: true },
     });
     let allowedPoses = resolveAllowedPoses(entitlements);
-    if (shopId === DEMO_SHOP_ID) {
+    if (shopId === DEMO_SHOP_ID || shopId === AGENT_SHOP_ID) {
       allowedPoses = ["front"];
     }
 
